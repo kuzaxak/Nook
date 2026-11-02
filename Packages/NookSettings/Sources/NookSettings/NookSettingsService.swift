@@ -61,6 +61,7 @@ public final class NookSettingsService {
     private let autoRenamePinnedTabsKey = "settings.autoRenamePinnedTabs"
     private let newTabsAtTopLevelKey = "settings.newTabsAtTopLevel"
     private let nestLinkTabsUnderOpenerKey = "settings.nestLinkTabsUnderOpener"
+    private let archiveTabsAfterHoursKey = "settings.archiveTabsAfterHours"
     private let tidyDownloadsKey = "settings.tidyDownloads"
     private let linkPreviewsKey = "settings.linkPreviews"
     private let autoPictureInPictureKey = "settings.autoPictureInPicture"
@@ -469,6 +470,16 @@ public final class NookSettingsService {
         }
     }
 
+    /// The choices for archiving unseen normal tabs, in hours: 12 hours to 30 days.
+    public static let archiveTabsAfterHoursChoices = [12, 24, 72, 168, 336, 720]
+
+    /// Normal tabs not seen for this many hours are archived; bookmarks never are.
+    public var archiveTabsAfterHours: Int {
+        didSet {
+            userDefaults.set(archiveTabsAfterHours, forKey: archiveTabsAfterHoursKey)
+        }
+    }
+
     /// Renames downloads with meaningless names (ids, hashes) on the on-device model.
     public var tidyDownloads: Bool {
         didSet {
@@ -597,6 +608,7 @@ public final class NookSettingsService {
             autoRenamePinnedTabsKey: true,
             newTabsAtTopLevelKey: true,
             nestLinkTabsUnderOpenerKey: true,
+            archiveTabsAfterHoursKey: 72,
             tidyDownloadsKey: false,
             linkPreviewsKey: false,
             sponsorBlockEnabledKey: false,
@@ -726,6 +738,8 @@ public final class NookSettingsService {
         self.autoRenamePinnedTabs = userDefaults.bool(forKey: autoRenamePinnedTabsKey)
         self.newTabsAtTopLevel = userDefaults.bool(forKey: newTabsAtTopLevelKey)
         self.nestLinkTabsUnderOpener = userDefaults.bool(forKey: nestLinkTabsUnderOpenerKey)
+        let archiveHours = userDefaults.integer(forKey: archiveTabsAfterHoursKey)
+        self.archiveTabsAfterHours = Self.archiveTabsAfterHoursChoices.contains(archiveHours) ? archiveHours : 72
         self.tidyDownloads = userDefaults.bool(forKey: tidyDownloadsKey)
         self.linkPreviews = userDefaults.bool(forKey: linkPreviewsKey)
         self.autoPictureInPicture = userDefaults.bool(forKey: autoPictureInPictureKey)

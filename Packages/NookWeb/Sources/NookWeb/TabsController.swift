@@ -47,6 +47,7 @@ public final class TabsController {
     public internal(set) var liveStatus: [UUID: LiveFolderStatus] = [:]
     @ObservationIgnored var liveRefreshed: [UUID: Date] = [:]
     @ObservationIgnored var liveRefreshing: Set<UUID> = []
+    @ObservationIgnored private var archiveTimer: Timer?
     /// The tab DevMCP page tools act on, in the Agent space (see `TabsController+Agent.swift`).
     public internal(set) var agentItemID: UUID?
     /// DevMCP tool calls running now; the sidebar's agent row pulses while it is above zero.
@@ -149,7 +150,13 @@ public final class TabsController {
             log.info("Merged profiles into \(self.tree.orderedSpaces.count) spaces")
         }
         NotificationCenter.default.addObserver(forName: appDidBecomeActive, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshLiveFolders() }
+            MainActor.assumeIsolated {
+                self?.refreshLiveFolders()
+                self?.archiveStaleTabs()
+            }
+        }
+        archiveTimer = Timer.scheduledTimer(withTimeInterval: 15 * 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.archiveStaleTabs() }
         }
     }
 
@@ -582,6 +589,25 @@ public final class TabsController {
     }
 
     // MARK: - Device State Edits
+
+    /// Stamps tabs as seen at `now`; the next save writes it.
+    func markSeen(_ itemIDs: [UUID], at now: Date = Date()) {
+        var records = device.lastSeen ?? [:]
+        for id in itemIDs { records[id] = now }
+        device.lastSeen = records
+    }
+
+    /// Starts the archive clock of every tab that has none yet: tabs from before archiving
+    /// existed, and tabs opened in the background and never shown.
+    func startSeenClocks(at now: Date) {
+        var records = device.lastSeen ?? [:]
+        for item in tree.items.values where item.deletedAt == nil && !item.isFolder && records[item.id] == nil {
+            records[item.id] = now
+        }
+        guard records != device.lastSeen else { return }
+        device.lastSeen = records
+        save()
+    }
 
     func recordOpener(_ opener: UUID, of itemID: UUID) {
         var records = device.openers ?? [:]

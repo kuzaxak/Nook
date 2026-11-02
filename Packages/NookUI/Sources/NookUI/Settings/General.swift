@@ -54,10 +54,15 @@ public struct SettingsGeneralTab: View {
             Section {
                 Toggle("Open new tabs ungrouped", isOn: $settings.newTabsAtTopLevel)
                 Toggle("Nest link tabs under the page that opened them", isOn: $settings.nestLinkTabsUnderOpener)
+                Picker("Archive tabs not seen for", selection: $settings.archiveTabsAfterHours) {
+                    ForEach(NookSettingsService.archiveTabsAfterHoursChoices, id: \.self) { hours in
+                        Text(hours < 24 ? "\(hours) hours" : hours == 24 ? "1 day" : "\(hours / 24) days").tag(hours)
+                    }
+                }
             } header: {
                 Text("Tabs")
             } footer: {
-                Text("Ungrouped tabs land below the selected tab's folder instead of inside it. Tabs opened from a pinned tab, a favorite or a folder always land in Tabs.")
+                Text("Ungrouped tabs land below the selected tab's folder instead of inside it. Tabs opened from a pinned tab, a favorite or a folder always land in Tabs. Archived tabs can be reopened with Reopen Closed Tab; pinned tabs, favorites and tabs in folders are never archived.")
             }
 
             Section {

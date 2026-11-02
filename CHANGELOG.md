@@ -11,6 +11,10 @@
 - Tabs inside folders are bookmarks: closing one ends its page and keeps it, as a pinned tab does
 - Cmd+D bookmarks a tab (to Pinned) or turns a bookmark back into a normal tab
 
+### Added
+
+- Normal tabs not seen for 3 days are archived to Reopen Closed Tab (12 hours to 30 days in Settings → General → Tabs)
+
 ## 1.4.0
 
 ### Added

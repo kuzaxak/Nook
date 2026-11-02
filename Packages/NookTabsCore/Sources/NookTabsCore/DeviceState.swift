@@ -18,6 +18,8 @@ public struct DeviceState: Codable, Equatable, Sendable {
     /// The tab whose page opened each link tab that is not its child, so Back can return to it.
     /// Optional because files written before opener records have no such key.
     public var openers: [UUID: UUID]?
+    /// When each normal tab was last selected or left, for archiving tabs left unseen.
+    public var lastSeen: [UUID: Date]?
 
     public init() {}
 
@@ -32,6 +34,7 @@ public struct DeviceState: Codable, Equatable, Sendable {
         openPages = openPages.filter { tree.item($0.key) != nil && tree.scope(of: $0.key) == .synced }
         liveDismissed = liveDismissed?.filter { tree.item($0.key)?.live != nil }
         openers = openers?.filter { tree.item($0.key) != nil && tree.item($0.value) != nil }
+        lastSeen = lastSeen?.filter { tree.item($0.key) != nil }
         for i in windows.indices {
             if let spaceID = windows[i].spaceID, tree.space(spaceID) == nil { windows[i].spaceID = nil }
             windows[i].selectedItemBySpace = windows[i].selectedItemBySpace.filter { tree.space($0.key) != nil && tree.item($0.value) != nil }

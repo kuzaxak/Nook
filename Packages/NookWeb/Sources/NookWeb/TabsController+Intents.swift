@@ -205,6 +205,7 @@ extension TabsController {
         if movedSpace { sessionDelegate?.windowSpaceChanged(window) }
         window.selectedItemBySpace[spaceID] = itemID
         window.emptiedSpaces.remove(spaceID)
+        if case .main = owner { markSeen([itemID] + (previous.map { [$0.itemID] } ?? [])) }
         // The latest window to select a page takes its live view; others show a placeholder.
         takeControl(itemID, in: window)
         var recent = window.recentItemsBySpace[spaceID, default: []]
