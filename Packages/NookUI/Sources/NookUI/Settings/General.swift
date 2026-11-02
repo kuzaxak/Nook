@@ -52,6 +52,15 @@ public struct SettingsGeneralTab: View {
             #endif
 
             Section {
+                Toggle("Open new tabs ungrouped", isOn: $settings.newTabsAtTopLevel)
+                Toggle("Nest link tabs under the page that opened them", isOn: $settings.nestLinkTabsUnderOpener)
+            } header: {
+                Text("Tabs")
+            } footer: {
+                Text("Ungrouped tabs land below the selected tab's folder instead of inside it. Tabs opened from a pinned tab, a favorite or a folder always land in Tabs.")
+            }
+
+            Section {
                 Picker("Tab Management", selection: Binding(
                     get: { nookSettings.tabManagementMode },
                     set: { nookSettings.tabManagementMode = $0 }

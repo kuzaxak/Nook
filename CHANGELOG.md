@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (fork)
+
+### Changed
+
+- New tabs open ungrouped, below the selected tab's folder (Settings → General → Tabs)
+- Tabs opened from a pinned tab, a favorite or a folder land in Tabs; a run of background links keeps click order
+- Option to stop nesting link tabs under their opener; Back still returns to the opener
+- Duplicate Tab keeps the copy next to the original, in Pinned, Favorites or the same folder
+
 ## 1.4.0
 
 ### Added

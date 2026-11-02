@@ -187,6 +187,8 @@ public class BrowserWindowState {
 
     /// A private window's reopen-closed history, newest last. Memory only.
     var privateClosed: [ClosedEntry] = []
+    /// Opener records of the private tree, kept off disk like everything else in it.
+    var privateOpeners: [UUID: UUID] = [:]
 
     public init(id: UUID = UUID()) {
         self.id = id

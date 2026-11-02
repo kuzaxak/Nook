@@ -59,6 +59,8 @@ public final class NookSettingsService {
     private let developerSitesKey = "settings.developerSites"
     private let tabOrganizerEnabledKey = "settings.tabOrganizerEnabled"
     private let autoRenamePinnedTabsKey = "settings.autoRenamePinnedTabs"
+    private let newTabsAtTopLevelKey = "settings.newTabsAtTopLevel"
+    private let nestLinkTabsUnderOpenerKey = "settings.nestLinkTabsUnderOpener"
     private let tidyDownloadsKey = "settings.tidyDownloads"
     private let linkPreviewsKey = "settings.linkPreviews"
     private let autoPictureInPictureKey = "settings.autoPictureInPicture"
@@ -452,6 +454,21 @@ public final class NookSettingsService {
         }
     }
 
+    /// New tabs land in the Tabs section below the selected tab's outermost folder or trail,
+    /// never inside a folder.
+    public var newTabsAtTopLevel: Bool {
+        didSet {
+            userDefaults.set(newTabsAtTopLevel, forKey: newTabsAtTopLevelKey)
+        }
+    }
+
+    /// Tabs opened from a page become children of that page's tab. Off, they land like new tabs.
+    public var nestLinkTabsUnderOpener: Bool {
+        didSet {
+            userDefaults.set(nestLinkTabsUnderOpener, forKey: nestLinkTabsUnderOpenerKey)
+        }
+    }
+
     /// Renames downloads with meaningless names (ids, hashes) on the on-device model.
     public var tidyDownloads: Bool {
         didSet {
@@ -578,6 +595,8 @@ public final class NookSettingsService {
             appearanceModeKey: AppearanceMode.system.rawValue,
             tabOrganizerEnabledKey: false,
             autoRenamePinnedTabsKey: true,
+            newTabsAtTopLevelKey: true,
+            nestLinkTabsUnderOpenerKey: true,
             tidyDownloadsKey: false,
             linkPreviewsKey: false,
             sponsorBlockEnabledKey: false,
@@ -705,6 +724,8 @@ public final class NookSettingsService {
         self.didFinishOnboarding = userDefaults.bool(forKey: didFinishOnboardingKey)
         self.tabOrganizerEnabled = userDefaults.bool(forKey: tabOrganizerEnabledKey)
         self.autoRenamePinnedTabs = userDefaults.bool(forKey: autoRenamePinnedTabsKey)
+        self.newTabsAtTopLevel = userDefaults.bool(forKey: newTabsAtTopLevelKey)
+        self.nestLinkTabsUnderOpener = userDefaults.bool(forKey: nestLinkTabsUnderOpenerKey)
         self.tidyDownloads = userDefaults.bool(forKey: tidyDownloadsKey)
         self.linkPreviews = userDefaults.bool(forKey: linkPreviewsKey)
         self.autoPictureInPicture = userDefaults.bool(forKey: autoPictureInPictureKey)

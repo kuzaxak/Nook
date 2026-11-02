@@ -13,9 +13,9 @@ import WebKit
 extension TabsController {
     // MARK: - Open
 
-    /// Creates a tab for `url`: at the top of `parent` when one is given; as the last child of
-    /// `opener`, the tab whose page opened the link (`childTabPosition`); else right below the
-    /// window's selected tab (`newTabPosition`). `.newTab` selects it, `.background` leaves
+    /// Creates a tab for `url`: at the top of `parent` when one is given; where a link from
+    /// `opener`'s page goes (`childTabPosition`); else right below the window's selected tab
+    /// (`newTabPosition`). `.newTab` selects it, `.background` leaves
     /// selection alone and loads nothing, `.replaceCurrent` loads `url` in the selected page.
     /// `title` stands in for the page title until the page loads.
     @discardableResult
@@ -34,47 +34,46 @@ extension TabsController {
             try $0.createTab(id: id, url: url, title: title ?? url.host ?? url.absoluteString, in: position.0, after: position.1)
         }
         guard created != nil else { return nil }
-        if opener != nil { revealTrail(position.0) }
+        if let opener { linked(id, from: opener, at: position.0, owner: owner(of: window)) }
         if placement != .background { select(id, in: window) }
         return id
     }
 
-    /// Where a new tab goes: right below `anchor` when it is a tab in the window's tabs section,
-    /// else the top of that section. A pinned tab or favorite keeps its section to itself.
-    /// A new tab is no one's child, so an anchor inside a trail places it below the trail's top tab.
+    /// Where a new tab goes: right below the selected tab, or below its outermost folder with
+    /// "Open new tabs ungrouped" on; else the top of the tabs section. A pinned tab or favorite
+    /// keeps its section to itself. A new tab is no one's child, so trails are always climbed.
     func newTabPosition(in window: BrowserWindowState, space: UUID? = nil, after anchor: UUID?) -> (Parent, UUID?)? {
         guard let spaceID = space ?? window.spaceID else { return nil }
-        let source = tree(owner(of: window))
-        if let anchor, var item = source.item(anchor), !item.isFolder,
-           source.scope(of: anchor) == .device, source.spaceID(of: anchor) == spaceID {
-            while let host = source.trailParent(of: item.id).flatMap(source.item) { item = host }
-            return (item.parent, item.id)
-        }
-        return (.tabs(spaceID: spaceID), nil)
+        return tree(owner(of: window)).newTabPosition(in: spaceID, after: anchor, climbingFolders: settings.newTabsAtTopLevel)
     }
 
-    /// Where a tab opened from `opener`'s page goes: its last child, so a run of links keeps its
-    /// order under it (a trail). A tab at the depth limit gets it as its next sibling; a pinned
-    /// tab or favorite takes no children, so the tab goes to the top of the tabs section.
+    /// Where a tab opened from `opener`'s page goes (`TabTree.linkTabPosition`): a child of a
+    /// normal tab while nesting is on, else after the tabs already opened from it in the Tabs section.
     func childTabPosition(in window: BrowserWindowState, opener: UUID) -> (Parent, UUID?)? {
-        let source = tree(owner(of: window))
+        let owner = owner(of: window)
         // An agent page's tabs stay in the Agent space whatever the window shows.
-        let spaceID = isInAgentSpace(opener) ? agentSpaceID : window.spaceID
-        guard source.spaceID(of: opener) == spaceID, source.canTakeChild(opener) else {
-            if let item = source.item(opener), source.scope(of: opener) == .device,
-               source.spaceID(of: opener) == spaceID {
-                return (item.parent, opener)
-            }
-            return newTabPosition(in: window, space: spaceID, after: opener)
-        }
-        let trail = Parent.folder(itemID: opener)
-        return (trail, source.children(of: trail).last?.id)
+        guard let spaceID = isInAgentSpace(opener) ? agentSpaceID : window.spaceID else { return nil }
+        return tree(owner).linkTabPosition(in: spaceID, opener: opener, nest: settings.nestLinkTabsUnderOpener, openers: openers(owner))
     }
 
-    /// A new child shows at once, even when its tab was collapsed.
-    private func revealTrail(_ parent: Parent) {
-        guard case .folder(let hostID) = parent, item(hostID)?.isFolder == false else { return }
-        openFolder(hostID)
+    /// After a link tab is created: a child shows at once, even when its tab was collapsed; a
+    /// sibling remembers its opener for Back.
+    private func linked(_ id: UUID, from opener: UUID, at parent: Parent, owner: Owner) {
+        if parent == .folder(itemID: opener) {
+            openFolder(opener)
+            return
+        }
+        switch owner {
+        case .main: recordOpener(opener, of: id)
+        case .privateWindow(let window): window.privateOpeners[id] = opener
+        }
+    }
+
+    func openers(_ owner: Owner) -> [UUID: UUID] {
+        switch owner {
+        case .main: return device.openers ?? [:]
+        case .privateWindow(let window): return window.privateOpeners
+        }
     }
 
     // MARK: - Detached Pages
@@ -125,7 +124,7 @@ extension TabsController {
             endDetached(session)
             return id
         }
-        revealTrail(position.0)
+        if let opener { linked(session.itemID, from: opener, at: position.0, owner: owner(of: window)) }
         session.detachedProfile = nil
         session.detachedWindow = nil
         session.onClose = nil
@@ -155,7 +154,7 @@ extension TabsController {
         guard perform(owner(of: window), "popup", {
             try $0.createTab(id: id, url: pageURL, title: "New Tab", in: position.0, after: position.1)
         }) != nil else { return nil }
-        revealTrail(position.0)
+        linked(id, from: opener.itemID, at: position.0, owner: owner(of: window))
         let session = PageSession(
             itemID: id, url: pageURL, title: "New Tab", isPrivate: window.privateTree != nil,
             controller: self)
@@ -392,9 +391,13 @@ extension TabsController {
         close(selected)
     }
 
-    /// The tab whose page opened `itemID`, which Back returns to once the page has no history.
+    /// The tab whose page opened `itemID`, which Back returns to once the page has no history:
+    /// its trail parent, else the recorded opener of a link tab placed as a sibling.
     public func opener(of itemID: UUID) -> UUID? {
-        owner(ofItem: itemID).flatMap { tree($0).trailParent(of: itemID) }
+        guard let owner = owner(ofItem: itemID) else { return nil }
+        let source = tree(owner)
+        if let parent = source.trailParent(of: itemID) { return parent }
+        return openers(owner)[itemID].flatMap { source.item($0) != nil ? $0 : nil }
     }
 
     /// Back with no page left: shows the tab that opened `itemID` and closes it, as Safari and
@@ -549,18 +552,16 @@ extension TabsController {
         perform(owner, "rename") { try $0.rename(itemID, customTitle: customTitle) }
     }
 
-    /// A copy of a tab showing its current page: next to it in the tabs section, or at the top of
-    /// the window's tabs section for pinned tabs and favorites. The copy is selected.
+    /// A copy of a tab showing its current page, right after it under the same parent: a pinned
+    /// tab's copy is pinned, a copy in a folder stays in it. The copy is selected.
     @discardableResult
     public func duplicate(_ itemID: UUID, in window: BrowserWindowState) -> UUID? {
         guard let owner = owner(ofItem: itemID), let item = tree(owner).item(itemID),
               case .tab(let url, let pageTitle) = item.kind else { return nil }
         let page = session(for: itemID)
-        let deviceScope = tree(owner).scope(of: itemID) == .device
-        guard let target = deviceScope ? item.parent : window.spaceID.map({ Parent.tabs(spaceID: $0) }) else { return nil }
         let id = UUID()
         guard perform(owner, "duplicate", {
-            var change = try $0.createTab(id: id, url: page?.url ?? url, title: page?.title ?? pageTitle, in: target, after: deviceScope ? itemID : nil)
+            var change = try $0.createTab(id: id, url: page?.url ?? url, title: page?.title ?? pageTitle, in: item.parent, after: itemID)
             if let customTitle = item.customTitle { change.merge(try $0.rename(id, customTitle: customTitle)) }
             return change
         }) != nil else { return nil }

@@ -583,6 +583,13 @@ public final class TabsController {
 
     // MARK: - Device State Edits
 
+    func recordOpener(_ opener: UUID, of itemID: UUID) {
+        var records = device.openers ?? [:]
+        records[itemID] = opener
+        device.openers = records
+        save()
+    }
+
     func setOpenPage(_ itemID: UUID, _ page: OpenPage?) {
         guard device.openPages[itemID] != page else { return }
         device.openPages[itemID] = page
