@@ -150,6 +150,31 @@ struct PlacementTests {
         #expect(device.openers == [:])
     }
 
+    @Test func cmdDMovesANormalTabToPinnedAndABookmarkToTheTopOfTabs() {
+        var f = Fixture()
+        let tabs = Parent.tabs(spaceID: f.spaceA)
+        let pinnedSection = Parent.pinned(spaceID: f.spaceA)
+        f.tab("first", in: tabs)
+        let normal = f.tab("normal", in: tabs)
+        let child = f.tab("child", in: .folder(itemID: normal))
+        let lastPinned = f.tab("last pinned", in: pinnedSection)
+        let folder = f.folder("folder", in: tabs)
+        let inFolder = f.tab("in folder", in: .folder(itemID: folder))
+        let favorite = f.tab("favorite", in: .favorites(spaceID: f.spaceA))
+
+        for id in [normal, child] {
+            let target = f.tree.bookmarkTogglePosition(of: id)
+            #expect(target?.0 == pinnedSection)
+            #expect(target?.1 == lastPinned)
+        }
+        for id in [lastPinned, inFolder, favorite] {
+            let target = f.tree.bookmarkTogglePosition(of: id)
+            #expect(target?.0 == tabs)
+            #expect(target?.1 == nil)
+        }
+        #expect(f.tree.bookmarkTogglePosition(of: folder) == nil)
+    }
+
     @Test func aLinkTabFromAnotherSpaceGoesToTheTopOfTabs() {
         var f = Fixture()
         let opener = f.tab("opener", in: .tabs(spaceID: f.spaceB))

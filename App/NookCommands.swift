@@ -167,6 +167,13 @@ struct NookCommands: Commands {
             .modifier(dynamicShortcut(.copyCurrentURL))
             .disabled(browserManager.tabs.activeWindowSession == nil)
 
+            let selectedItem = windowRegistry.activeWindow?.selectedItemID
+            Button(selectedItem.map(browserManager.tabs.isBookmark) == true ? "Remove Bookmark" : "Bookmark Tab") {
+                if let selectedItem { browserManager.tabs.toggleBookmark(selectedItem) }
+            }
+            .modifier(dynamicShortcut(.toggleBookmark))
+            .disabled(selectedItem == nil)
+
             Divider()
             Button("Print…") {
                 browserManager.printCurrentPage()

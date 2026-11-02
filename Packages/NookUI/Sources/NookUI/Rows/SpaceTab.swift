@@ -153,9 +153,9 @@ public struct SpaceTab: View {
                             .help("Reset to Pinned URL")
                             .onHoverTracking { isResetHovering = $0 }
                         }
-                        // Synced loaded tabs: "-" unloads the page; unloaded synced tabs: "x" removes the item;
-                        // tabs section: "x" closes.
-                        let useUnload = tabs.isSynced(item.id) && !isUnloaded
+                        // Loaded bookmarks: "-" unloads the page; unloaded bookmarks: "x" removes the item;
+                        // normal tabs: "x" closes.
+                        let useUnload = tabs.isBookmark(item.id) && !isUnloaded
                         Button(action: {
                             if useUnload { tabs.unload(item.id) } else { tabs.remove(item.id) }
                             // The next row slides under the pointer; let it show its close button.

@@ -301,6 +301,12 @@ public struct TabContextMenu: View {
             } label: {
                 Label("Remove from Space", systemImage: "trash")
             }
+        } else if case .tabs = section, tabs.isBookmark(itemID) {
+            Button(role: .destructive) {
+                tabs.remove(itemID)
+            } label: {
+                Label("Remove from Folder", systemImage: "trash")
+            }
         }
 
         // Close others / below apply to the tabs section, where closing removes items. Each

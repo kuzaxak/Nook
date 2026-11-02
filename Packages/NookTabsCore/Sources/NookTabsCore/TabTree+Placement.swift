@@ -49,4 +49,13 @@ extension TabTree {
         }
         return (start.0, after)
     }
+
+    /// Where Cmd+D moves a tab: a normal tab to the end of its space's Pinned section, a bookmark
+    /// to the top of Tabs. nil for a folder.
+    public func bookmarkTogglePosition(of id: UUID) -> (Parent, UUID?)? {
+        guard let item = item(id), !item.isFolder, let spaceID = spaceID(of: id) else { return nil }
+        if isBookmark(id) { return (.tabs(spaceID: spaceID), nil) }
+        let pinned = Parent.pinned(spaceID: spaceID)
+        return (pinned, children(of: pinned).last?.id)
+    }
 }

@@ -55,6 +55,7 @@ enum ShortcutAction: String, CaseIterable, Hashable, Codable {
     case goToTab8 = "go_to_tab_8"
     case goToLastTab = "go_to_last_tab"
     case duplicateTab = "duplicate_tab"
+    case toggleBookmark = "toggle_bookmark"
     case toggleTopBarAddressView = "toggle_top_bar_address_view"
 
     // Space Management
@@ -125,6 +126,7 @@ enum ShortcutAction: String, CaseIterable, Hashable, Codable {
         case .goToTab8: return "Go to Tab 8"
         case .goToLastTab: return "Go to Last Tab"
         case .duplicateTab: return "Duplicate Tab"
+        case .toggleBookmark: return "Bookmark Tab"
         case .toggleTopBarAddressView: return "Toggle Top Bar Address View"
         case .nextSpace: return "Next Space"
         case .previousSpace: return "Previous Space"
@@ -175,7 +177,7 @@ enum ShortcutAction: String, CaseIterable, Hashable, Codable {
         switch self {
         case .goBack, .goForward, .refresh, .clearCookiesAndRefresh:
             return .navigation
-        case .newTab, .closeTab, .undoCloseTab, .nextTab, .previousTab, .goToTab1, .goToTab2, .goToTab3, .goToTab4, .goToTab5, .goToTab6, .goToTab7, .goToTab8, .goToLastTab, .duplicateTab, .toggleTopBarAddressView:
+        case .newTab, .closeTab, .undoCloseTab, .nextTab, .previousTab, .goToTab1, .goToTab2, .goToTab3, .goToTab4, .goToTab5, .goToTab6, .goToTab7, .goToTab8, .goToLastTab, .duplicateTab, .toggleBookmark, .toggleTopBarAddressView:
             return .tabs
         case .nextSpace, .previousSpace, .goToSpace1, .goToSpace2, .goToSpace3, .goToSpace4, .goToSpace5, .goToSpace6, .goToSpace7, .goToSpace8, .goToSpace9:
             return .spaces
@@ -364,6 +366,7 @@ extension KeyboardShortcut {
             KeyboardShortcut(action: .goToTab8, keyCombination: KeyCombination(key: "8", modifiers: [.command])),
             KeyboardShortcut(action: .goToLastTab, keyCombination: KeyCombination(key: "9", modifiers: [.command])),
             KeyboardShortcut(action: .duplicateTab, keyCombination: KeyCombination(key: "d", modifiers: [.option])),
+            KeyboardShortcut(action: .toggleBookmark, keyCombination: KeyCombination(key: "d", modifiers: [.command])),
             KeyboardShortcut(action: .toggleTopBarAddressView, keyCombination: KeyCombination(key: "t", modifiers: [.command, .option])),
 
             // Space Management

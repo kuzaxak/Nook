@@ -8,6 +8,8 @@
 - Tabs opened from a pinned tab, a favorite or a folder land in Tabs; a run of background links keeps click order
 - Option to stop nesting link tabs under their opener; Back still returns to the opener
 - Duplicate Tab keeps the copy next to the original, in Pinned, Favorites or the same folder
+- Tabs inside folders are bookmarks: closing one ends its page and keeps it, as a pinned tab does
+- Cmd+D bookmarks a tab (to Pinned) or turns a bookmark back into a normal tab
 
 ## 1.4.0
 

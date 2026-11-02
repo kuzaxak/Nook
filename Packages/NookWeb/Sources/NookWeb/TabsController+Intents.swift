@@ -325,13 +325,13 @@ extension TabsController {
 
     // MARK: - Close
 
-    /// A pinned or favorite tab ends its page and keeps the item. Anything in the tabs section,
-    /// and any folder, is removed into the reopen history.
+    /// A bookmark (a pinned tab, a favorite, or a tab inside a folder) ends its page and keeps
+    /// the item. A normal tab, and any folder, is removed into the reopen history.
     public func close(_ itemID: UUID) {
         guard let owner = owner(ofItem: itemID) else { return }
         let source = tree(owner)
         guard let item = source.item(itemID) else { return }
-        if !item.isFolder, source.scope(of: itemID) == .synced {
+        if !item.isFolder, source.isBookmark(itemID) {
             // The page it showed, so Reopen Closed Tab can bring it back in place.
             var page = session(for: itemID).map { OpenPage(url: $0.url, title: $0.title) }
             if page == nil, case .main = owner { page = device.openPages[itemID] }
@@ -421,7 +421,8 @@ extension TabsController {
                 window.privateClosed.removeLast()
             } else {
                 dropLastClosed()
-                setOpenPage(root.id, page)
+                // A tab in a Tabs-section folder keeps its page as its own URL.
+                if tree.scope(of: root.id) == .synced { setOpenPage(root.id, page) }
             }
             select(root.id, in: window)
             save()
@@ -470,7 +471,7 @@ extension TabsController {
             // whose page is still open. With none left the window shows the empty space.
             let isOpen: (UUID) -> Bool = { id in
                 // A reopened page is recorded before its session exists.
-                source.scope(of: id) == .device || self.session(for: id) != nil || self.device.openPages[id] != nil
+                !source.isBookmark(id) || self.session(for: id) != nil || self.device.openPages[id] != nil
             }
             let recent = (window.recentItemsBySpace[spaceID] ?? []).reversed().filter { id in
                 guard let item = source.item(id), !item.isFolder, isOpen(id) else { return false }
@@ -537,6 +538,19 @@ extension TabsController {
     /// Appends to a pinned section (`.pinned`) or favorites (`.favorites`).
     public func pin(_ itemID: UUID, to parent: Parent) {
         move(itemID, to: parent, after: children(of: parent).last?.id)
+    }
+
+    /// Cmd+D: a normal tab becomes a bookmark at the end of Pinned; a bookmark (pinned, a
+    /// favorite or inside a folder) becomes a normal tab at the top of Tabs.
+    public func toggleBookmark(_ itemID: UUID) {
+        guard let owner = owner(ofItem: itemID),
+              let target = tree(owner).bookmarkTogglePosition(of: itemID) else { return }
+        move(itemID, to: target.0, after: target.1)
+    }
+
+    /// A tab the person chose to keep: pinned, a favorite, or inside a folder.
+    public func isBookmark(_ itemID: UUID) -> Bool {
+        owner(ofItem: itemID).map { tree($0).isBookmark(itemID) } ?? false
     }
 
     /// Moves a pinned tab or favorite to the top of its space's tabs section.
