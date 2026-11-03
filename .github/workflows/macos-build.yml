@@ -18,7 +18,7 @@ jobs:
     name: Build on macOS 26
     # Same runner and default Xcode as the release workflow.
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -30,13 +30,20 @@ jobs:
 
       - name: Build without signing secrets
         run: |
-          xcodebuild -scheme Nook -configuration Release -arch arm64 \
+          xcodebuild -scheme Nook -configuration Release \
+            ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
             ENABLE_CODE_COVERAGE=NO \
             CLANG_COVERAGE_MAPPING=NO
+
+      - name: Check both architectures
+        run: |
+          archs=$(lipo -archs build/Build/Products/Release/Nook.app/Contents/MacOS/Nook)
+          echo "$archs"
+          [[ " $archs " == *" arm64 "* && " $archs " == *" x86_64 "* ]]
 
       - name: Ad-hoc sign and pack
         run: |
