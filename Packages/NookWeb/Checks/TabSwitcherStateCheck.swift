@@ -36,6 +36,15 @@ struct TabSwitcherStateCheck {
         precondition(TabSwitcherState.start(items: [a, b], step: 1, columns: 5)!.columns == 2, "never more columns than tabs")
         precondition(TabSwitcherState.columns(forWidth: 600) < TabSwitcherState.columns(forWidth: 1400))
         precondition(TabSwitcherState.columns(forWidth: 100) == 1)
+        // Control is held, and macOS keeps Control-arrows for Spaces and Mission Control, so
+        // Cocoa's Control-F/B/N/P move as well.
+        var keys = TabSwitcherState.start(items: many, step: 1, columns: 5)!
+        precondition(keys.move(keyCode: 3, characters: "f") && keys.index == 2, "Control-F: next")
+        precondition(keys.move(keyCode: 11, characters: "b") && keys.index == 1, "Control-B: previous")
+        precondition(keys.move(keyCode: 45, characters: "n") && keys.index == 6, "Control-N: row below")
+        precondition(keys.move(keyCode: 35, characters: "p") && keys.index == 1, "Control-P: row above")
+        precondition(keys.move(keyCode: 124, characters: nil) && keys.index == 2, "arrows where Mission Control lets them through")
+        precondition(!keys.move(keyCode: 0, characters: "a") && keys.index == 2)
         print("TabSwitcherStateCheck passed")
     }
 }

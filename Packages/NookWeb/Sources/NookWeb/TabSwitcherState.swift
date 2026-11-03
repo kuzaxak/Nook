@@ -50,5 +50,18 @@ public struct TabSwitcherState: Equatable, Sendable {
         if items.indices.contains(target) { index = target }
     }
 
+    /// A key pressed with Control held: the arrows, or Cocoa's Control-F/B/N/P, which macOS does
+    /// not take for Spaces and Mission Control. False for any other key.
+    public mutating func move(keyCode: UInt16, characters: String?) -> Bool {
+        switch (keyCode, characters?.lowercased()) {
+        case (123, _), (_, "b"): advance(by: -1)
+        case (124, _), (_, "f"): advance(by: 1)
+        case (125, _), (_, "n"): moveRow(by: 1)
+        case (126, _), (_, "p"): moveRow(by: -1)
+        default: return false
+        }
+        return true
+    }
+
     public var highlighted: UUID { items[index] }
 }

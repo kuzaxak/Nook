@@ -101,14 +101,9 @@ enum TabSwitcher {
             case .keyDown where event.keyCode == 36 || event.keyCode == 76: // Return, Enter
                 commit(window, tabs: tabs)
                 return nil
-            case .keyDown where [123, 124, 125, 126].contains(event.keyCode): // arrows
-                guard var state = window.tabSwitcher else { return nil }
-                switch event.keyCode {
-                case 123: state.advance(by: -1)
-                case 124: state.advance(by: 1)
-                case 125: state.moveRow(by: 1)
-                default: state.moveRow(by: -1)
-                }
+            case .keyDown:
+                guard var state = window.tabSwitcher,
+                      state.move(keyCode: event.keyCode, characters: event.charactersIgnoringModifiers) else { break }
                 window.tabSwitcher = state
                 return nil
             default:
