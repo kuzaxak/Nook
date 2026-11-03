@@ -87,20 +87,24 @@ struct PeekOverlayView: View {
         }
     }
 
-    /// Close, split and new tab: standalone icon buttons on one floating card, readable over any page.
+    /// Close, open as a tab and open in split view, as Arc's Peek has them, on one floating card
+    /// readable over any page.
     private var actionButtons: some View {
         VStack(spacing: NookDesign.Spacing.xxs) {
             Button(action: { peek.dismissPeek() }) {
                 Image(systemName: "xmark")
             }
+            .help("Close")
+            Button(action: { peek.moveToNewTab() }) {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+            }
+            .help("Open as Tab")
             // Disabled while the window is already split.
             Button(action: { peek.moveToSplitView() }) {
                 Image(systemName: "square.split.2x1")
             }
+            .help("Open in Split View")
             .disabled(!peek.canEnterSplitView)
-            Button(action: { peek.moveToNewTab() }) {
-                Image(systemName: "plus.square.on.square")
-            }
         }
         .nookIconButtons()
         .padding(NookDesign.Spacing.xxs)

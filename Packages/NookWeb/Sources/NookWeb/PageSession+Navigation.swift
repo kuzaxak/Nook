@@ -397,6 +397,19 @@ extension PageSession: WKNavigationDelegate {
             return
         }
 
+        // Shift-click on a link shows it in Peek, as in Arc.
+        if let url = navigationAction.request.url, !isDetached,
+           navigationAction.targetFrame?.isMainFrame == true,
+           navigationAction.modifierFlags.contains(.shift), peeksNewTabLink(navigationAction)
+        {
+            decisionHandler(.cancel)
+            RunLoop.current.perform { [weak self] in
+                guard let self else { return }
+                self.controller?.sessionDelegate?.presentPeek(url: url, from: self)
+            }
+            return
+        }
+
         if navigationAction.shouldPerformDownload {
             decisionHandler(.download)
             return

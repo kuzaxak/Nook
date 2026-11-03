@@ -29,6 +29,7 @@
 - Search suggestions from Kagi when Kagi is the search engine
 - Search engine per space (Settings → Spaces → Search), e.g. Kagi in one space and Google in another
 - Settings links to Kagi's account page where the Session Link is
+- Peek like Arc: links a page opens in a new tab and Shift-clicked links open in an overlay with Close, Open as Tab and Open in Split View (Settings → General → Tabs)
 - Split view like Arc: each pane has its own toolbar (back, forward, reload, address, separate, close) above the page; the split row has one menu for the pair; drop a dragged tab anywhere on the left or right half of the page to split
 - Control-Tab shows up to 20 recent tabs in rows; arrow keys and Return work while it is open
 - The sidebar keeps the selected tab in view; denser tab rows; tab titles stay faded before the close button while it is under the pointer

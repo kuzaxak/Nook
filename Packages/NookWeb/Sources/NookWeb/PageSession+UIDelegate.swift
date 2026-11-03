@@ -32,6 +32,15 @@ extension PageSession {
 
     // MARK: - Peek Detection
 
+    /// A click on a link the page opens in a new tab (target=_blank) shows in Peek when that
+    /// setting is on, and Shift always peeks, as in Arc. Command and the middle button still
+    /// open a background tab.
+    func peeksNewTabLink(_ action: WKNavigationAction) -> Bool {
+        guard !isAgentPage, action.navigationType == .linkActivated,
+              !action.modifierFlags.contains(.command), action.buttonNumber != 2 else { return false }
+        return action.modifierFlags.contains(.shift) || controller?.settings.openNewTabLinksInPeek == true
+    }
+
     /// Option always peeks. Otherwise only a favorite or pinned tab peeks, for a link to another
     /// site, so the page it keeps in the sidebar stays put; a regular tab opens a new tab.
     func shouldRedirectToPeek(url: URL) -> Bool {
@@ -112,7 +121,7 @@ extension PageSession: WKUIDelegate {
             return nil
         }
 
-        if !isFromExtension, let url, shouldRedirectToPeek(url: url) {
+        if !isFromExtension, let url, shouldRedirectToPeek(url: url) || peeksNewTabLink(navigationAction) {
             // Trigger Peek after returning control to WebKit to avoid runloop-mode issues
             RunLoop.current.perform { [weak self] in
                 guard let self else { return }

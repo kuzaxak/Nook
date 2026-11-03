@@ -61,6 +61,7 @@ public final class NookSettingsService {
     private let autoRenamePinnedTabsKey = "settings.autoRenamePinnedTabs"
     private let newTabsAtTopLevelKey = "settings.newTabsAtTopLevel"
     private let nestLinkTabsUnderOpenerKey = "settings.nestLinkTabsUnderOpener"
+    private let openNewTabLinksInPeekKey = "settings.openNewTabLinksInPeek"
     private let archiveTabsAfterHoursKey = "settings.archiveTabsAfterHours"
     private let historyHalfLifeDaysKey = "settings.historyHalfLifeDays"
     private let paletteWordStopsKey = "settings.paletteWordStops"
@@ -485,6 +486,13 @@ public final class NookSettingsService {
         }
     }
 
+    /// A link a page opens in a new tab (target=_blank) shows in Peek over the page, as in Arc.
+    public var openNewTabLinksInPeek: Bool {
+        didSet {
+            userDefaults.set(openNewTabLinksInPeek, forKey: openNewTabLinksInPeekKey)
+        }
+    }
+
     public static let historyHalfLifeDaysRange = 3...60
 
     /// Kagi's Session Link token, read from the Keychain at launch and kept nowhere else.
@@ -670,6 +678,7 @@ public final class NookSettingsService {
             autoRenamePinnedTabsKey: true,
             newTabsAtTopLevelKey: true,
             nestLinkTabsUnderOpenerKey: true,
+            openNewTabLinksInPeekKey: true,
             archiveTabsAfterHoursKey: 72,
             historyHalfLifeDaysKey: 10,
             paletteWordStopsKey: "/.?&=#:-",
@@ -802,6 +811,7 @@ public final class NookSettingsService {
         self.autoRenamePinnedTabs = userDefaults.bool(forKey: autoRenamePinnedTabsKey)
         self.newTabsAtTopLevel = userDefaults.bool(forKey: newTabsAtTopLevelKey)
         self.nestLinkTabsUnderOpener = userDefaults.bool(forKey: nestLinkTabsUnderOpenerKey)
+        self.openNewTabLinksInPeek = userDefaults.bool(forKey: openNewTabLinksInPeekKey)
         self.historyHalfLifeDays = min(max(userDefaults.integer(forKey: historyHalfLifeDaysKey), Self.historyHalfLifeDaysRange.lowerBound), Self.historyHalfLifeDaysRange.upperBound)
         self.paletteWordStops = userDefaults.string(forKey: paletteWordStopsKey) ?? "/.?&=#:-"
         self.kagiSessionToken = KagiSession.loadToken()

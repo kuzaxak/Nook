@@ -57,6 +57,7 @@ public struct SettingsGeneralTab: View {
             Section {
                 Toggle("Open new tabs ungrouped", isOn: $settings.newTabsAtTopLevel)
                 Toggle("Nest link tabs under the page that opened them", isOn: $settings.nestLinkTabsUnderOpener)
+                Toggle("Open new-tab links in Peek", isOn: $settings.openNewTabLinksInPeek)
                 Picker("Archive tabs not seen for", selection: $settings.archiveTabsAfterHours) {
                     ForEach(NookSettingsService.archiveTabsAfterHoursChoices, id: \.self) { hours in
                         Text(hours < 24 ? "\(hours) hours" : hours == 24 ? "1 day" : "\(hours / 24) days").tag(hours)
