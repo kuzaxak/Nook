@@ -37,7 +37,7 @@ extension PageSession {
     /// still open a background tab.
     func peeksNewTabLink(_ action: WKNavigationAction) -> Bool {
         guard !isAgentPage, action.navigationType == .linkActivated,
-              !action.modifierFlags.contains(.command), action.buttonNumber != 2,
+              !action.modifierFlags.contains(.command), !action.isMiddleClick,
               let settings = controller?.settings else { return false }
         return action.modifierFlags.contains(.shift) ? settings.peekOnShiftClick : settings.openNewTabLinksInPeek
     }
@@ -324,5 +324,15 @@ extension PageSession: WKUIDelegate {
         } else {
             decisionHandler(.prompt)
         }
+    }
+}
+
+private extension WKNavigationAction {
+    var isMiddleClick: Bool {
+        #if os(macOS)
+        buttonNumber == 2
+        #else
+        false
+        #endif
     }
 }

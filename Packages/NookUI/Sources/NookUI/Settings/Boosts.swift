@@ -107,7 +107,9 @@ public struct BoostPanel: View {
             try? await Task.sleep(for: .milliseconds(400))
             if !Task.isCancelled, isDirty { save() }
         }
+        #if os(macOS)
         .onExitCommand { zapping ? cancelZap() : requestClose() }
+        #endif
         .onDisappear {
             if zapping { onCancelZap() }
             if isDirty { save() }
