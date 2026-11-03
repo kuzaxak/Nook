@@ -19,7 +19,7 @@ class KeyboardShortcutManager {
     private let userDefaults = UserDefaults.standard
     private let shortcutsKey = "keyboard.shortcuts"
     private let shortcutsVersionKey = "keyboard.shortcuts.version"
-    private let currentVersion = 13 // Increment when adding new shortcuts; 10 added Go to Space 1-9 (Ctrl+1-9) and moved Next/Previous Space to Cmd+Opt+arrows; 11 added Bookmark Tab (Cmd+D); 12 listed the command bar actions unbound; 13 moved the top bar to Cmd+Shift+D and bound Developer Mode to Ctrl+D
+    private let currentVersion = 14 // 14 added the Developer Mode bar's tools; Increment when adding new shortcuts; 10 added Go to Space 1-9 (Ctrl+1-9) and moved Next/Previous Space to Cmd+Opt+arrows; 11 added Bookmark Tab (Cmd+D); 12 listed the command bar actions unbound; 13 moved the top bar to Cmd+Shift+D and bound Developer Mode to Ctrl+D
 
     /// Defaults that changed key: a user still on the old key gets the new one.
     private let movedDefaults: [(action: ShortcutAction, from: KeyCombination, version: Int)] = [
@@ -567,6 +567,14 @@ class KeyboardShortcutManager {
                 browserManager.toggleDevPanel(.console)
             case .pickElement:
                 browserManager.startElementPicker()
+            case .openNetworkPanel:
+                browserManager.toggleDevPanel(.network)
+            case .openPerformancePanel:
+                browserManager.toggleDevPanel(.perf)
+            case .copyScreenshot:
+                if let window { browserManager.copyScreenshot(in: window) }
+            case .capturePortrait:
+                if let window { browserManager.togglePortraitCapture(in: window) }
             case .viewDownloads:
                 browserManager.showDownloads()
             case .viewHistory:

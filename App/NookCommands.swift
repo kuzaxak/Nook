@@ -295,12 +295,34 @@ struct NookCommands: Commands {
                 }
                 .modifier(dynamicShortcut(.openDevPanel))
 
+                Button("Network Panel") {
+                    browserManager.toggleDevPanel(.network)
+                }
+                .modifier(dynamicShortcut(.openNetworkPanel))
+
+                Button("Performance Panel") {
+                    browserManager.toggleDevPanel(.perf)
+                }
+                .modifier(dynamicShortcut(.openPerformancePanel))
+
                 Button("Pick Element") {
                     browserManager.startElementPicker()
                 }
                 .modifier(dynamicShortcut(.pickElement))
                 .disabled(browserManager.tabs.activeWindowSession == nil)
             }
+
+            Button("Copy Screenshot") {
+                shortcutManager.perform(.copyScreenshot)
+            }
+            .modifier(dynamicShortcut(.copyScreenshot))
+            .disabled(browserManager.tabs.activeWindowSession == nil)
+
+            Button("Capture in Portrait Mode") {
+                shortcutManager.perform(.capturePortrait)
+            }
+            .modifier(dynamicShortcut(.capturePortrait))
+            .disabled(browserManager.tabs.activeWindowSession == nil)
 
             Divider()
 

@@ -82,6 +82,10 @@ enum ShortcutAction: String, CaseIterable, Hashable, Codable {
     case openDevTools = "open_dev_tools"
     case openDevPanel = "open_dev_panel"
     case pickElement = "pick_element"
+    case openNetworkPanel = "open_network_panel"
+    case openPerformancePanel = "open_performance_panel"
+    case copyScreenshot = "copy_screenshot"
+    case capturePortrait = "capture_portrait"
     case viewDownloads = "view_downloads"
     case viewHistory = "view_history"
     case expandAllFolders = "expand_all_folders"
@@ -169,6 +173,10 @@ enum ShortcutAction: String, CaseIterable, Hashable, Codable {
         case .openDevTools: return "Developer Tools"
         case .openDevPanel: return "Developer Panel"
         case .pickElement: return "Pick Element"
+        case .openNetworkPanel: return "Network Panel"
+        case .openPerformancePanel: return "Performance Panel"
+        case .copyScreenshot: return "Copy Screenshot"
+        case .capturePortrait: return "Capture in Portrait Mode"
         case .viewDownloads: return "View Downloads"
         case .viewHistory: return "View History"
         case .expandAllFolders: return "Expand All Folders"
@@ -206,7 +214,8 @@ enum ShortcutAction: String, CaseIterable, Hashable, Codable {
             return .spaces
         case .newWindow, .closeWindow, .closeBrowser, .toggleFullScreen:
             return .window
-        case .openCommandPalette, .openDevTools, .openDevPanel, .pickElement, .viewDownloads, .viewHistory, .expandAllFolders,
+        case .openCommandPalette, .openDevTools, .openDevPanel, .pickElement, .openNetworkPanel, .openPerformancePanel,
+             .copyScreenshot, .capturePortrait, .viewDownloads, .viewHistory, .expandAllFolders,
              .translatePage, .toggleExtensionLibrary, .manageExtensions, .toggleDarkMode, .toggleDeveloperMode:
             return .tools
         case .focusAddressBar, .findInPage:
@@ -429,6 +438,10 @@ extension KeyboardShortcut {
             KeyboardShortcut(action: .openDevTools, keyCombination: KeyCombination(key: "i", modifiers: [.command, .option])),
             KeyboardShortcut(action: .openDevPanel, keyCombination: KeyCombination(key: "j", modifiers: [.command, .option])),
             KeyboardShortcut(action: .pickElement, keyCombination: KeyCombination(key: "x", modifiers: [.command, .shift])),
+            KeyboardShortcut(action: .openNetworkPanel, keyCombination: KeyCombination(key: "n", modifiers: [.command, .option])),
+            KeyboardShortcut(action: .openPerformancePanel, keyCombination: KeyCombination(key: "g", modifiers: [.command, .option])),
+            KeyboardShortcut(action: .copyScreenshot, keyCombination: KeyCombination(key: "2", modifiers: [.command, .shift])),
+            KeyboardShortcut(action: .capturePortrait, keyCombination: KeyCombination(key: "p", modifiers: [.command, .option])),
             KeyboardShortcut(action: .viewDownloads, keyCombination: KeyCombination(key: "j", modifiers: [.command, .shift])),
             KeyboardShortcut(action: .viewHistory, keyCombination: KeyCombination(key: "y", modifiers: [.command])),
             KeyboardShortcut(action: .expandAllFolders, keyCombination: KeyCombination(key: "e", modifiers: [.command, .shift])),

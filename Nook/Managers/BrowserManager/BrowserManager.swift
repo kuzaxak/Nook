@@ -700,7 +700,7 @@ class BrowserManager: ObservableObject {
 
     /// Opens the right column on a dev tab, or closes it when that tab is already showing.
     func toggleDevPanel(_ tab: DevPanelTab) {
-        guard nookSettings?.developerModeEnabled == true, let windowState = windowRegistry?.activeWindow else { return }
+        guard developerCaptureAvailable(), let windowState = windowRegistry?.activeWindow else { return }
         withAnimation(NookDesign.Motion.standard) {
             if windowState.isSidebarAIChatVisible, windowState.devPanelTab == tab {
                 windowState.isSidebarAIChatVisible = false

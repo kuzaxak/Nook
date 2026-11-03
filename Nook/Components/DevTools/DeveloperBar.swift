@@ -28,6 +28,34 @@ extension BrowserManager {
         nookSettings?.topBarAddressView == true && !showsDeveloperBar(in: windowState)
     }
 
+    /// Whether the dev panels and picker can run. On a site with Developer Mode on they work from
+    /// its bar alone, as in Arc: the first use turns on Settings > Developer > Developer Mode, which
+    /// installs page capture. Browser Control stays off until it is chosen there.
+    func developerCaptureAvailable() -> Bool {
+        guard let settings = nookSettings else { return false }
+        if settings.developerModeEnabled { return true }
+        guard let window = windowRegistry?.activeWindow, showsDeveloperBar(in: window) else { return false }
+        settings.browserControlServerEnabled = false
+        settings.developerModeEnabled = true
+        tabs.setDeveloperMode(true)
+        showWindowToast("Developer tools on. Reload to capture this page", in: window)
+        return true
+    }
+
+    func copyScreenshot(in windowState: BrowserWindowState) {
+        guard let webView = tabs.selectedSession(in: windowState)?.webView else { return }
+        webView.takeSnapshot(with: nil) { [weak self, weak windowState] image, _ in
+            guard let image, let windowState else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.writeObjects([image])
+            self?.showWindowToast("Screenshot copied", in: windowState)
+        }
+    }
+
+    func togglePortraitCapture(in windowState: BrowserWindowState) {
+        withAnimation(NookDesign.Motion.spring) { windowState.isPortraitCaptureVisible.toggle() }
+    }
+
     /// The copy toast with any message, for the developer tools.
     func showWindowToast(_ text: String, in windowState: BrowserWindowState) {
         windowState.copyToastText = text
@@ -62,7 +90,7 @@ struct DeveloperBar: View {
             Spacer(minLength: NookDesign.Spacing.lg)
 
             HStack(spacing: NookDesign.Spacing.xxs) {
-                tool(copied ? "checkmark" : "link", "Copy Link") {
+                tool(copied ? "checkmark" : "link", "Copy Link", shortcut: .copyCurrentURL) {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(session.url.absoluteString, forType: .string)
                     withAnimation(NookDesign.Motion.quick) { copied = true }
@@ -72,21 +100,16 @@ struct DeveloperBar: View {
                     }
                 }
                 separator
-                tool("photo.on.rectangle.angled", "Capture in Portrait Mode", isOn: windowState.isPortraitCaptureVisible) {
-                    withAnimation(NookDesign.Motion.spring) { windowState.isPortraitCaptureVisible.toggle() }
-                }
-                tool("camera", "Copy Screenshot", action: copyScreenshot)
+                tool("photo.on.rectangle.angled", "Capture in Portrait Mode", shortcut: .capturePortrait,
+                     isOn: windowState.isPortraitCaptureVisible) { browserManager.togglePortraitCapture(in: windowState) }
+                tool("camera", "Copy Screenshot", shortcut: .copyScreenshot) { browserManager.copyScreenshot(in: windowState) }
                 separator
-                Group {
-                    tool("terminal", "Console", isOn: devTabShowing(.console)) { browserManager.toggleDevPanel(.console) }
-                    tool("network", "Network", isOn: devTabShowing(.network)) { browserManager.toggleDevPanel(.network) }
-                    tool("scope", "Pick Element") { browserManager.startElementPicker() }
-                }
-                .disabled(!captureOn)
+                tool("terminal", "Console", shortcut: .openDevPanel, isOn: devTabShowing(.console)) { browserManager.toggleDevPanel(.console) }
+                tool("network", "Network", shortcut: .openNetworkPanel, isOn: devTabShowing(.network)) { browserManager.toggleDevPanel(.network) }
+                tool("scope", "Pick Element", shortcut: .pickElement) { browserManager.startElementPicker() }
                 separator
-                tool("hammer", "Web Inspector") { browserManager.openWebInspector() }
-                tool("gauge.with.needle", "Performance", isOn: devTabShowing(.perf)) { browserManager.toggleDevPanel(.perf) }
-                    .disabled(!captureOn)
+                tool("hammer", "Web Inspector", shortcut: .openDevTools) { browserManager.openWebInspector() }
+                tool("gauge.with.needle", "Performance", shortcut: .openPerformancePanel, isOn: devTabShowing(.perf)) { browserManager.toggleDevPanel(.perf) }
             }
         }
         .padding(.horizontal, NookDesign.Spacing.lg)
@@ -103,29 +126,18 @@ struct DeveloperBar: View {
             .padding(.horizontal, NookDesign.Spacing.xs)
     }
 
-    /// The capture scripts behind these tools run only with Settings > Developer > Developer Mode on.
-    private var captureOn: Bool { browserManager.nookSettings?.developerModeEnabled == true }
-
     private func devTabShowing(_ tab: DevPanelTab) -> Bool {
         windowState.isSidebarAIChatVisible && windowState.devPanelTab == tab
     }
 
-    private func tool(_ symbol: String, _ help: String, isOn: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(help, systemImage: symbol, action: action)
+    private func tool(_ symbol: String, _ help: String, shortcut: ShortcutAction, isOn: Bool = false, action: @escaping () -> Void) -> some View {
+        let keys = browserManager.keyboardShortcutManager?.shortcut(for: shortcut)
+            .flatMap { $0.isEnabled && !$0.keyCombination.key.isEmpty ? $0.keyCombination.displayString : nil }
+        return Button(help, systemImage: symbol, action: action)
             .labelStyle(.iconOnly)
             .contentTransition(.symbolEffect(.replace))
             .buttonStyle(NookIconButtonStyle())
             .background(isOn ? NookDesign.Surface.fillPressed : .clear, in: NookDesign.Radius.shape(NookDesign.Radius.md))
-            .help(help)
-    }
-
-    private func copyScreenshot() {
-        guard let webView = session.webView else { return }
-        webView.takeSnapshot(with: nil) { image, _ in
-            guard let image else { return }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.writeObjects([image])
-            browserManager.showWindowToast("Screenshot copied", in: windowState)
-        }
+            .help(keys.map { "\(help) (\($0))" } ?? help)
     }
 }
