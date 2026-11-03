@@ -39,7 +39,6 @@ struct PeekOverlayView: View {
                     .zIndex(1000)
             }
         }
-        .zIndex(9999) // Put it at the very top
     }
 
     /// Dims the page area only; the sidebar stays bright and takes clicks.

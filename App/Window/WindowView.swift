@@ -55,11 +55,10 @@ struct WindowView: View {
                 .environmentObject(hoverSidebarManager)
                 .environment(windowState)
 
+            // The command bar and dialogs open over a Peek, as in Arc.
+            PeekOverlayView()
             CommandPaletteView()
             DialogView()
-
-            // Peek overlay for external link previews
-            PeekOverlayView()
 
             // Find bar - always rendered (24/7), visibility controlled via opacity
             FindBarView(findManager: browserManager.findManager)
