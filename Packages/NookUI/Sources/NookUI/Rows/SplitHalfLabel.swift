@@ -65,7 +65,7 @@ public struct SplitHalfLabel: View {
             }
         }
         .contextMenu {
-            TabContextMenu(itemID: item.id, context: .split)
+            SplitContextMenu()
                 .environment(windowState)
                 .environment(tabs)
                 .environment(\.tabActions, actions)

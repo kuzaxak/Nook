@@ -365,159 +365,43 @@ private struct AgentFrame: View {
 }
 
 // MARK: - Split Preview Overlay
+/// While a tab is dragged over the page, each half of it is a drop target, as in Arc: the half
+/// under the pointer lights up and dropping there puts the tab on that side.
 private struct SplitPreviewOverlay: View {
     @EnvironmentObject var splitManager: SplitViewManager
     @EnvironmentObject var browserManager: BrowserManager
     @Environment(BrowserWindowState.self) private var windowState
-    
+
     var body: some View {
-        GeometryReader { geometry in
-            let splitState = splitManager.getSplitState(for: windowState.id)
-            let previewSide = splitState.previewSide
-            let dragLocation = splitState.dragLocation
-            let cardPadding: CGFloat = 20
-            let cardWidth: CGFloat = 315
-            let cardHeight: CGFloat = 522
-            
-            HStack(spacing: 0) {
-                // Left card - vertically centered with magnetic effect
-                VStack {
-                    Spacer()
-                    MagneticCardView(
-                        side: .left,
-                        icon: "rectangle.lefthalf.filled",
-                        text: splitState.isSplit ? "Replace left split" : "Add left split",
-                        isTabHovered: previewSide == .left,
-                        dragLocation: dragLocation,
-                        cardFrame: CGRect(
-                            x: cardPadding,
-                            y: (geometry.size.height - cardHeight) / 2,
-                            width: cardWidth,
-                            height: cardHeight
-                        ),
-                        geometry: geometry,
-                        accentColor: browserManager.gradientColorManager.accentColor
-                    )
-                    Spacer()
+        let splitState = splitManager.getSplitState(for: windowState.id)
+        HStack(spacing: NookDesign.Spacing.md) {
+            zone(.left, isSplit: splitState.isSplit, hovered: splitState.previewSide == .left)
+            zone(.right, isSplit: splitState.isSplit, hovered: splitState.previewSide == .right)
+        }
+        .padding(NookDesign.Spacing.md)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+        .animation(NookDesign.Motion.quick, value: splitState.previewSide)
+    }
+
+    private func zone(_ side: SplitViewManager.Side, isSplit: Bool, hovered: Bool) -> some View {
+        let accent = browserManager.gradientColorManager.accentColor
+        let shape = NookDesign.Radius.shape(NookDesign.Radius.page)
+        return shape
+            .fill(accent.opacity(hovered ? 0.22 : 0.05))
+            .overlay(shape.strokeBorder(accent.opacity(hovered ? 0.9 : 0.25), lineWidth: hovered ? 2 : 1))
+            .overlay {
+                VStack(spacing: NookDesign.Spacing.sm) {
+                    Image(systemName: side == .left ? "rectangle.lefthalf.filled" : "rectangle.righthalf.filled")
+                        .font(.system(size: 28, weight: .medium))
+                    Text(isSplit ? (side == .left ? "Replace left side" : "Replace right side")
+                                 : (side == .left ? "Open on the left" : "Open on the right"))
+                        .font(NookDesign.Font.label)
                 }
-                .padding(.leading, cardPadding)
-                
-                Spacer()
-                
-                // Right card - vertically centered with magnetic effect
-                VStack {
-                    Spacer()
-                    MagneticCardView(
-                        side: .right,
-                        icon: "rectangle.righthalf.filled",
-                        text: splitState.isSplit ? "Replace right split" : "Add right split",
-                        isTabHovered: previewSide == .right,
-                        dragLocation: dragLocation,
-                        cardFrame: CGRect(
-                            x: geometry.size.width - cardPadding - cardWidth,
-                            y: (geometry.size.height - cardHeight) / 2,
-                            width: cardWidth,
-                            height: cardHeight
-                        ),
-                        geometry: geometry,
-                        accentColor: browserManager.gradientColorManager.accentColor
-                    )
-                    Spacer()
-                }
-                .padding(.trailing, cardPadding)
+                .foregroundStyle(hovered ? AnyShapeStyle(accent) : AnyShapeStyle(.secondary))
+                .opacity(hovered ? 1 : 0.6)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .allowsHitTesting(false) // Don't intercept mouse events - let drag handling work
-        }
-    }
-}
-
-// MARK: - Magnetic Card View
-private struct MagneticCardView: View {
-    let side: SplitViewManager.Side
-    let icon: String
-    let text: String
-    let isTabHovered: Bool
-    let dragLocation: CGPoint?
-    let cardFrame: CGRect
-    let geometry: GeometryProxy
-    let accentColor: Color
-    
-    @EnvironmentObject var splitManager: SplitViewManager
-    @Environment(BrowserWindowState.self) private var windowState
-    
-    @State private var offset: CGSize = .zero
-    @State private var isMagneticallyActive: Bool = false
-    
-    // Computed property: card is hovered if previewSide matches OR if magnetically active
-    private var cardIsHovered: Bool {
-        let splitState = splitManager.getSplitState(for: windowState.id)
-        return splitState.previewSide == side || isMagneticallyActive
-    }
-    
-    var body: some View {
-        SplitCardView(
-            icon: icon,
-            text: text,
-            isTabHovered: cardIsHovered,
-            accentColor: accentColor
-        )
-        .offset(offset)
-        .scaleEffect(1.0) // Cards appear at full size
-        .animation(
-            NookDesign.Motion.spring,
-            value: offset
-        )
-        .transition(.asymmetric(
-            insertion: .scale(scale: 0.7, anchor: .center),
-            removal: .scale(scale: 0.5, anchor: .center).combined(with: .opacity)
-        ))
-        .onChange(of: dragLocation) { _, location in
-            guard let location = location else {
-                if isMagneticallyActive {
-                    isMagneticallyActive = false
-                    offset = .zero
-                    // Clear preview side when drag ends
-                    splitManager.updatePreviewSide(nil, for: windowState.id)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
-                }
-                return
-            }
-            
-            // dragLocation is in NSView coordinates (relative to container view, bottom-left origin)
-            // cardFrame is in GeometryReader coordinates (top-left origin)
-            // Convert NSView Y coordinate to SwiftUI coordinate space
-            let geometryHeight = geometry.size.height
-            let convertedLocation = CGPoint(x: location.x, y: geometryHeight - location.y)
-            
-            let cardCenter = CGPoint(x: cardFrame.midX, y: cardFrame.midY)
-            
-            // Check if drag is within card bounds (with some margin for magnetic effect)
-            let margin: CGFloat = 50
-            let expandedFrame = cardFrame.insetBy(dx: -margin, dy: -margin)
-            
-            if expandedFrame.contains(convertedLocation) {
-                // Calculate magnetic offset (45% of distance to center)
-                let dx = (convertedLocation.x - cardCenter.x) * 0.45
-                let dy = (convertedLocation.y - cardCenter.y) * 0.45
-                offset = CGSize(width: dx, height: dy)
-                
-                if !isMagneticallyActive {
-                    isMagneticallyActive = true
-                    // Update preview side to indicate this card is hovered
-                    splitManager.updatePreviewSide(side, for: windowState.id)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
-                }
-            } else {
-                if isMagneticallyActive {
-                    isMagneticallyActive = false
-                    offset = .zero
-                    // Clear preview side when leaving card
-                    splitManager.updatePreviewSide(nil, for: windowState.id)
-                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
-                }
-            }
-        }
     }
 }
 

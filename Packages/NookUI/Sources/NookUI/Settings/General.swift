@@ -147,6 +147,9 @@ public struct SettingsGeneralTab: View {
                                 .disabled(KagiSession.token(fromPasted: kagiSessionLink) == nil)
                             }
                         }
+                        Link("Find your Session Link in Kagi's account settings",
+                             destination: URL(string: "https://kagi.com/settings/user_details")!)
+                            .font(NookDesign.Font.caption)
                     }
                 }
 

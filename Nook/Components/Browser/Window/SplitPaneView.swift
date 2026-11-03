@@ -3,8 +3,9 @@
 //  SplitPaneView.swift
 //  Nook
 //
-//  One pane of the split view: the page, with controls floating over it. The compositor keeps
-//  panes across refreshes so a web view never leaves its superview while the pair holds.
+//  One pane of the split view: a toolbar strip (back, forward, reload, address, separate, close)
+//  above the page, as Arc draws it. The compositor keeps panes across refreshes so a web view
+//  never leaves its superview while the pair holds.
 //
 
 import AppKit
@@ -26,8 +27,9 @@ final class SplitPaneView: NSView {
 
     let side: SplitViewManager.Side
     let itemID: UUID
-    /// The page view's parent. It fills the pane; the controls float over it.
+    /// The page view's parent: the pane below the toolbar strip.
     let content = NSView()
+    static let toolbarHeight = NookDesign.Size.navRow + 2 * NookDesign.Spacing.sm
     private let maskLayer = CAShapeLayer()
     private weak var settings: NookSettingsService?
 
@@ -39,7 +41,8 @@ final class SplitPaneView: NSView {
         wantsLayer = true
         layer?.mask = maskLayer
         viewDidChangeEffectiveAppearance()
-        content.frame = bounds
+        // Fixed top margin, flexible height: the strip keeps its height as the pane resizes.
+        content.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - Self.toolbarHeight))
         content.autoresizingMask = [.width, .height]
         addSubview(content)
 
@@ -60,11 +63,15 @@ final class SplitPaneView: NSView {
             .environmentObject(browserManager)
             .environmentObject(hoverManager), textCursor: true)
         let buttons = host(SplitPaneButtons(itemID: itemID))
-        let inset = NookDesign.Spacing.md
+        let navigation = host(SplitPaneNavigation(itemID: itemID))
+        let inset = NookDesign.Spacing.sm
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         NSLayoutConstraint.activate([
+            navigation.topAnchor.constraint(equalTo: topAnchor, constant: inset),
+            navigation.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
             title.topAnchor.constraint(equalTo: topAnchor, constant: inset),
-            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            title.centerXAnchor.constraint(equalTo: centerXAnchor).withPriority(.defaultHigh),
+            title.leadingAnchor.constraint(greaterThanOrEqualTo: navigation.trailingAnchor, constant: inset),
             title.trailingAnchor.constraint(lessThanOrEqualTo: buttons.leadingAnchor, constant: -inset),
             buttons.topAnchor.constraint(equalTo: topAnchor, constant: inset),
             buttons.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
@@ -104,7 +111,26 @@ final class SplitPaneView: NSView {
     }
 }
 
-/// Separate and close, floating at the pane's top trailing corner in one group.
+/// Back, forward and reload for this pane's page, at the leading end of its strip.
+private struct SplitPaneNavigation: View {
+    let itemID: UUID
+
+    @Environment(TabsController.self) private var tabs
+
+    var body: some View {
+        let session = tabs.session(for: itemID)
+        HStack(spacing: NookDesign.Spacing.xxs) {
+            SplitPaneButton(systemImage: "chevron.left", help: "Back") { session?.goBack() }
+                .disabled(!(session?.canGoBackOrReturn ?? false))
+            SplitPaneButton(systemImage: "chevron.right", help: "Forward") { session?.goForward() }
+                .disabled(!(session?.canGoForward ?? false))
+            SplitPaneButton(systemImage: "arrow.clockwise", help: "Reload") { session?.refresh() }
+        }
+        .frame(height: NookDesign.Size.navRow)
+    }
+}
+
+/// Separate and close, at the trailing end of the pane's strip.
 private struct SplitPaneButtons: View {
     let itemID: UUID
 
@@ -121,9 +147,14 @@ private struct SplitPaneButtons: View {
                 tabs.close(itemID)
             }
         }
-        .padding(.horizontal, NookDesign.Spacing.xs)
         .frame(height: NookDesign.Size.navRow)
-        .nookFloatingSurface(in: NookDesign.Radius.shape(NookDesign.Radius.md))
+    }
+}
+
+private extension NSLayoutConstraint {
+    func withPriority(_ priority: NSLayoutConstraint.Priority) -> NSLayoutConstraint {
+        self.priority = priority
+        return self
     }
 }
 

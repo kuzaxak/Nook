@@ -136,37 +136,11 @@ final class SplitDropCaptureView: NSView {
 
     /// Check if drag location is within card bounds and return which side
     /// Card dimensions: 237x394, positioned with 20pt padding from edges
+    /// The half of the page under the pointer, as in Arc: anywhere on the left half drops on
+    /// the left, anywhere on the right half on the right.
     private func sideForDragInCard(_ sender: NSDraggingInfo) -> SplitViewManager.Side? {
-        let loc = convert(sender.draggingLocation, from: nil)
-        let cardWidth: CGFloat = 237
-        let cardHeight: CGFloat = 394
-        let cardPadding: CGFloat = 20
-        
-        // Calculate card positions (centered vertically)
-        let viewHeight = bounds.height
-        let cardTop = (viewHeight - cardHeight) / 2
-        let cardBottom = cardTop + cardHeight
-        
-        // Left card bounds
-        let leftCardLeft = cardPadding
-        let leftCardRight = leftCardLeft + cardWidth
-        
-        // Right card bounds
-        let rightCardRight = bounds.width - cardPadding
-        let rightCardLeft = rightCardRight - cardWidth
-        
-        // Check if location is within left card
-        if loc.x >= leftCardLeft && loc.x <= leftCardRight &&
-           loc.y >= cardTop && loc.y <= cardBottom {
-            return .left
-        }
-        
-        // Check if location is within right card
-        if loc.x >= rightCardLeft && loc.x <= rightCardRight &&
-           loc.y >= cardTop && loc.y <= cardBottom {
-            return .right
-        }
-        
-        return nil // Not within any card
+        let location = convert(sender.draggingLocation, from: nil)
+        guard bounds.contains(location) else { return nil }
+        return location.x < bounds.midX ? .left : .right
     }
 }

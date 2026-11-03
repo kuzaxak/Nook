@@ -28,6 +28,8 @@
 - Kagi Session Link: paste it in Settings → General and Kagi searches are signed in from every space; the token stays in the Keychain and out of history and tabs
 - Search suggestions from Kagi when Kagi is the search engine
 - Search engine per space (Settings → Spaces → Search), e.g. Kagi in one space and Google in another
+- Settings links to Kagi's account page where the Session Link is
+- Split view like Arc: each pane has its own toolbar (back, forward, reload, address, separate, close) above the page; the split row has one menu for the pair; drop a dragged tab anywhere on the left or right half of the page to split
 - Control-Tab shows up to 20 recent tabs in rows; arrow keys and Return work while it is open
 - The sidebar keeps the selected tab in view; denser tab rows; tab titles stay faded before the close button while it is under the pointer
 - Closing the command bar gives the keyboard back to the page
