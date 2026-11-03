@@ -64,6 +64,7 @@ public final class NookSettingsService {
     private let archiveTabsAfterHoursKey = "settings.archiveTabsAfterHours"
     private let historyHalfLifeDaysKey = "settings.historyHalfLifeDays"
     private let paletteWordStopsKey = "settings.paletteWordStops"
+    private let urlShortcutsKey = "settings.urlShortcuts"
     private let tidyDownloadsKey = "settings.tidyDownloads"
     private let linkPreviewsKey = "settings.linkPreviews"
     private let autoPictureInPictureKey = "settings.autoPictureInPicture"
@@ -474,6 +475,15 @@ public final class NookSettingsService {
 
     public static let historyHalfLifeDaysRange = 3...60
 
+    /// Command bar keywords that expand to an address, such as `gh owner/repo`.
+    public var urlShortcuts: [URLShortcut] {
+        didSet {
+            if let data = try? JSONEncoder().encode(urlShortcuts) {
+                userDefaults.set(data, forKey: urlShortcutsKey)
+            }
+        }
+    }
+
     /// Characters the command bar's word keys (⌥→, Ctrl+W, ⌥⌫) stop at, besides whitespace.
     public var paletteWordStops: String {
         didSet {
@@ -760,6 +770,8 @@ public final class NookSettingsService {
         self.nestLinkTabsUnderOpener = userDefaults.bool(forKey: nestLinkTabsUnderOpenerKey)
         self.historyHalfLifeDays = min(max(userDefaults.integer(forKey: historyHalfLifeDaysKey), Self.historyHalfLifeDaysRange.lowerBound), Self.historyHalfLifeDaysRange.upperBound)
         self.paletteWordStops = userDefaults.string(forKey: paletteWordStopsKey) ?? "/.?&=#:-"
+        self.urlShortcuts = userDefaults.data(forKey: urlShortcutsKey)
+            .flatMap { try? JSONDecoder().decode([URLShortcut].self, from: $0) } ?? URLShortcut.defaults
         let archiveHours = userDefaults.integer(forKey: archiveTabsAfterHoursKey)
         self.archiveTabsAfterHours = Self.archiveTabsAfterHoursChoices.contains(archiveHours) ? archiveHours : 72
         self.tidyDownloads = userDefaults.bool(forKey: tidyDownloadsKey)

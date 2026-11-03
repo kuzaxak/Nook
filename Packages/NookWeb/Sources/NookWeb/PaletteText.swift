@@ -95,6 +95,36 @@ public enum PaletteText {
         return 0
     }
 
+    private static let localHosts = ["localhost", "127.0.0.1"]
+
+    /// Typed text that asks for a local server: three or more letters of `localhost` or
+    /// `127.0.0.1`, or either with a port after the colon.
+    public static func isLocalServerQuery(_ typed: String) -> Bool {
+        let text = typed.lowercased().trimmingCharacters(in: .whitespaces)
+        return localHosts.contains { host in
+            (text.count >= 3 && host.hasPrefix(text)) || text.hasPrefix(host + ":")
+        }
+    }
+
+    /// One origin per local server among history rows (`key` is the frecency score), best first,
+    /// keeping the host family and port prefix that was typed.
+    public static func localOrigins(_ rows: [(url: String, key: Double)], typed: String) -> [String] {
+        guard isLocalServerQuery(typed) else { return [] }
+        let text = typed.lowercased().trimmingCharacters(in: .whitespaces)
+        let parts = text.split(separator: ":", maxSplits: 1).map(String.init)
+        let typedPort = parts.count == 2 ? parts[1] : ""
+        var best: [String: Double] = [:]
+        for row in rows {
+            guard let url = URL(string: row.url), let host = url.host?.lowercased(),
+                  localHosts.contains(host), host.hasPrefix(parts[0]) || parts[0].hasPrefix(host) else { continue }
+            let port = url.port.map(String.init) ?? ""
+            guard port.hasPrefix(typedPort) else { continue }
+            let origin = "\(url.scheme ?? "http")://\(host)" + (port.isEmpty ? "" : ":\(port)")
+            best[origin] = max(best[origin] ?? -.infinity, row.key)
+        }
+        return best.sorted { $0.value > $1.value }.map(\.key)
+    }
+
     private static func displayHost(_ url: URL) -> String {
         var host = url.host ?? url.absoluteString
         if host.lowercased().hasPrefix("www.") { host.removeFirst(4) }

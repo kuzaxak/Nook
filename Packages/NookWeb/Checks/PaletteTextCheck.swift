@@ -61,6 +61,17 @@ struct PaletteTextCheck {
         precondition(PaletteText.matchScore(query: "stage 4", title: "Stage 42 dashboard", detail: nil) == 2)
         precondition(PaletteText.matchScore(query: "boards x", title: "Boards", detail: nil) == nil)
         precondition(PaletteText.matchScore(query: "", title: "Boards", detail: nil) != nil, "an empty query lists everything")
+        // Local servers: one row per origin, best score first, filtered by the typed port.
+        let local: [(url: String, key: Double)] = [
+            ("http://localhost:3000/admin", 5), ("http://localhost:3000/", 9), ("http://localhost:8080/api", 7),
+            ("http://127.0.0.1:5173/", 8), ("https://localhost.example.com/", 20),
+        ]
+        precondition(PaletteText.localOrigins(local, typed: "loc") == ["http://localhost:3000", "http://localhost:8080"])
+        precondition(PaletteText.localOrigins(local, typed: "localhost:8") == ["http://localhost:8080"])
+        precondition(PaletteText.localOrigins(local, typed: "127") == ["http://127.0.0.1:5173"])
+        precondition(PaletteText.localOrigins(local, typed: "lo").isEmpty, "two letters are not enough")
+        precondition(PaletteText.localOrigins(local, typed: "github").isEmpty)
+        precondition(PaletteText.isLocalServerQuery("localh") && PaletteText.isLocalServerQuery("127.0.0.1:30") && !PaletteText.isLocalServerQuery("kagi"))
         print("PaletteTextCheck passed")
     }
 }

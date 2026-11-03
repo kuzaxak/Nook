@@ -169,6 +169,13 @@ public final class HistoryManager {
         return HistoryIndex.rank(rows, query: query, isOpen: isOpen, picks: picks).prefix(limit).map(HistoryEntry.init(indexed:))
     }
 
+    /// Index rows matching `query`, highest key first, before ranking. Nil when the index is unavailable.
+    public func indexRows(matching query: String) async -> [IndexedVisit]? {
+        guard let index else { return nil }
+        let profile = currentProfileId
+        return await index.search(query, profile: profile)
+    }
+
     /// Remembers that `url` was chosen in the palette after typing `prefix`.
     public func recordPick(prefix: String, url: URL) {
         guard let index else { return }

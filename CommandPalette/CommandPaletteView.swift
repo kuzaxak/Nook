@@ -118,6 +118,9 @@ struct CommandPaletteView: View {
     private var primarySuggestion: SearchManager.SearchSuggestion? {
         let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !typed.isEmpty, scope == nil else { return nil }
+        if activeSiteSearch == nil, let shortcut = URLShortcut.expand(typed, in: nookSettings.urlShortcuts) {
+            return SearchManager.SearchSuggestion(text: shortcut.absoluteString, type: .url)
+        }
         if let completion { return SearchManager.SearchSuggestion(text: completion, type: .url) }
         return SearchManager.SearchSuggestion(text: typed, type: activeSiteSearch == nil && isLikelyURL(typed) ? .url : .search)
     }

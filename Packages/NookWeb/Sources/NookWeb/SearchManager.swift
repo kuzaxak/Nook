@@ -32,6 +32,8 @@ public class SearchManager {
     private var historyRows: [SearchSuggestion] = []
     private var webRows: [SearchSuggestion] = []
     private var textRows: [SearchSuggestion] = []
+    /// Local servers (`localhost:3000`) when the query asks for them, one row per origin.
+    private var localRows: [SearchSuggestion] = []
     private var searchGeneration = UUID()
     private weak var tabs: TabsController?
     private weak var window: BrowserWindowState?
@@ -174,6 +176,7 @@ public class SearchManager {
             historyRows = []
             textRows = []
             webRows = []
+            localRows = []
             updateSuggestionsIfNeeded([])
             return
         }
@@ -202,6 +205,8 @@ public class SearchManager {
             guard !Task.isCancelled, self.searchGeneration == generation,
                   self.window?.spaceID == space else { return }
             self.historyRows = history
+            self.localRows = await self.searchLocalServers(for: query)
+            guard !Task.isCancelled, self.searchGeneration == generation else { return }
             self.compose(tabs: tabs)
             // Page text second, so title and URL matches paint without waiting on it.
             let text = await self.searchPageText(for: query)
@@ -235,6 +240,7 @@ public class SearchManager {
         historyRows = []
         textRows = []
         webRows = []
+        localRows = []
         switch scope {
         case .all:
             return
@@ -279,7 +285,18 @@ public class SearchManager {
             if case .history(let entry) = row.type { return !shown.contains(Self.pageKey(entry.url)) }
             return false
         }
-        updateSuggestionsIfNeeded(Array((tabs + history + Array(text.prefix(2)) + webRows).prefix(8)))
+        updateSuggestionsIfNeeded(Array((tabs + localRows + history + Array(text.prefix(2)) + webRows).prefix(8)))
+    }
+
+    /// One row per local server origin the query asks for, ranked by how often and how
+    /// recently each port was used.
+    @MainActor private func searchLocalServers(for query: String) async -> [SearchSuggestion] {
+        guard let historyManager, PaletteText.isLocalServerQuery(query) else { return [] }
+        let family = query.trimmingCharacters(in: .whitespaces).hasPrefix("1") ? "127.0.0.1" : "localhost"
+        let rows = await historyManager.indexRows(matching: family) ?? []
+        return PaletteText.localOrigins(rows.map { ($0.url, $0.key) }, typed: query).prefix(3).map {
+            SearchSuggestion(text: $0, type: .url, section: "Local Servers")
+        }
     }
 
     /// History rows found by words in the page's text, when that setting is on.
@@ -519,6 +536,7 @@ public class SearchManager {
         historyRows = []
         textRows = []
         webRows = []
+        localRows = []
         searchGeneration = UUID()
         if !suggestions.isEmpty {
             withAnimation(.easeInOut(duration: 0.2)) {

@@ -16,6 +16,8 @@ public struct SettingsGeneralTab: View {
     @Environment(NookSettingsService.self) var nookSettings
     @State private var showingAddSite = false
     @State private var showingAddEngine = false
+    @State private var newShortcutKeyword = ""
+    @State private var newShortcutTemplate = ""
 
     public init() {}
 
@@ -181,6 +183,44 @@ public struct SettingsGeneralTab: View {
                 Text("Site Search")
             } footer: {
                 Text("Type a prefix in the command palette and press Tab to search a site directly.")
+            }
+
+            Section {
+                ForEach(nookSettings.urlShortcuts) { shortcut in
+                    LabeledContent(shortcut.keyword) {
+                        HStack(spacing: NookDesign.Spacing.md) {
+                            Text(shortcut.template)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Button {
+                                nookSettings.urlShortcuts.removeAll { $0.id == shortcut.id }
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundStyle(.red)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                HStack(spacing: NookDesign.Spacing.md) {
+                    TextField("Keyword", text: $newShortcutKeyword)
+                        .frame(maxWidth: 90)
+                    TextField("https://github.com/%@", text: $newShortcutTemplate)
+                    Button("Add") {
+                        nookSettings.urlShortcuts.append(URLShortcut(
+                            keyword: newShortcutKeyword.trimmingCharacters(in: .whitespaces),
+                            template: newShortcutTemplate.trimmingCharacters(in: .whitespaces)))
+                        newShortcutKeyword = ""
+                        newShortcutTemplate = ""
+                    }
+                    .disabled(newShortcutKeyword.trimmingCharacters(in: .whitespaces).isEmpty
+                              || newShortcutKeyword.contains(" ") || !newShortcutTemplate.contains("%@"))
+                }
+            } header: {
+                Text("URL Shortcuts")
+            } footer: {
+                Text("Type a keyword, a space and the rest in the command palette, such as \"gh owner/repo\". %@ in the address stands for the rest.")
             }
         }
         .formStyle(.grouped)
