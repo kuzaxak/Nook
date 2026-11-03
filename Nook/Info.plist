@@ -47,17 +47,19 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Websites you allow can use your microphone, for example for calls.</string>
 	<key>SUAllowsAutomaticUpdates</key>
-	<false/>
+	<true/>
 	<key>SUAutomaticallyInstall</key>
-	<false/>
+	<true/>
 	<key>SUAutomaticallyUpdate</key>
-	<false/>
+	<true/>
 	<key>SUEnableAutomaticChecks</key>
-	<false/>
+	<true/>
 	<key>SUEnableDowngrade</key>
 	<false/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/kuzaxak/Nook/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>oWrc3J4HWz5PEVE5fIMKj5fEnCUwqYl0bO1li3xOYM4=</string>
+	<string>/N2VzxLtsQDeGW3FF8XwXYSnCia7qYYC3pSlmsXtp40=</string>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 	<key>SUUpdateRelaunchDelay</key>

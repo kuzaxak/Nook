@@ -10,7 +10,8 @@
 - Duplicate Tab keeps the copy next to the original, in Pinned, Favorites or the same folder
 - Tabs inside folders are bookmarks: closing one ends its page and keeps it, as a pinned tab does
 - Cmd+D bookmarks a tab (to Pinned) or turns a bookmark back into a normal tab
-- Universal build for Apple silicon and Intel; own bundle id; no upstream update checks
+- Universal build for Apple silicon and Intel; own bundle id
+- Own update stream: Sparkle reads the fork's GitHub releases, signed with the fork's key; scripts/release.sh builds, signs with Developer ID, notarizes and publishes
 
 ### Added
 
