@@ -18,6 +18,7 @@ import NookBlocker
 import NookDesign
 import NookSettings
 import NookTweaks
+import NookUI
 import NookWeb
 
 @MainActor
@@ -376,6 +377,8 @@ class BrowserManager: ObservableObject {
     private var transitionEndTask: Task<Void, Never>?
     // Tab closure undo notification
     @Published var showTabClosureToast: Bool = false
+    /// The card offering to make Nook the default browser, in the window in front.
+    @Published var showDefaultBrowserPrompt = false
     @Published var tabClosureToastCount: Int = 0
     @Published var updateAvailability: UpdateAvailability?
     /// Set on the first launch after an update; the sidebar shows a what's-new card until acted on.
@@ -1282,14 +1285,20 @@ extension BrowserManager {
 
     // MARK: - Default Browser
 
-    /// Sets Nook as the default browser for HTTP and HTTPS schemes
     func setAsDefaultBrowser() {
-        guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
-            return
-        }
+        DefaultBrowser.makeNook { [weak self] _ in self?.showDefaultBrowserPrompt = false }
+    }
 
-        LSSetDefaultHandlerForURLScheme("http" as CFString, bundleIdentifier as CFString)
-        LSSetDefaultHandlerForURLScheme("https" as CFString, bundleIdentifier as CFString)
+    func offerDefaultBrowserIfNeeded() {
+        guard let settings = nookSettings,
+              DefaultBrowserPrompt.shouldAsk(isDefault: DefaultBrowser.isNook, dismissedAt: settings.defaultBrowserPromptDismissedAt)
+        else { return }
+        showDefaultBrowserPrompt = true
+    }
+
+    func dismissDefaultBrowserPrompt() {
+        nookSettings?.defaultBrowserPromptDismissedAt = Date()
+        showDefaultBrowserPrompt = false
     }
 }
 

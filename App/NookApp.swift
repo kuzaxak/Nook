@@ -182,6 +182,9 @@ struct NookApp: App {
         browserManager.tabOrganizerManager = tabOrganizerManager
         browserManager.downloadManager.tidyDownloadsEnabled = { [settingsManager] in settingsManager.tidyDownloads }
         browserManager.downloadManager.settings = settingsManager
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak browserManager] in
+            browserManager?.offerDefaultBrowserIfNeeded()
+        }
         browserManager.tabs.onTabsPinned = { [weak browserManager, tabOrganizerManager, settingsManager] itemIDs in
             guard settingsManager.autoRenamePinnedTabs, let tabs = browserManager?.tabs else { return }
             tabOrganizerManager.autoRename(itemIDs, using: tabs)

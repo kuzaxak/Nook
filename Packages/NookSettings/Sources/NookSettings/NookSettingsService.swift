@@ -69,6 +69,7 @@ public final class NookSettingsService {
     private let paletteWordStopsKey = "settings.paletteWordStops"
     private let urlShortcutsKey = "settings.urlShortcuts"
     private let profileDownloadsKey = "settings.profileDownloads"
+    private let defaultBrowserPromptDismissedAtKey = "settings.defaultBrowserPromptDismissedAt"
     private let tidyDownloadsKey = "settings.tidyDownloads"
     private let linkPreviewsKey = "settings.linkPreviews"
     private let autoPictureInPictureKey = "settings.autoPictureInPicture"
@@ -542,6 +543,13 @@ public final class NookSettingsService {
         }
     }
 
+    /// When the person last answered Not Now to the offer to become the default browser.
+    public var defaultBrowserPromptDismissedAt: Date? {
+        didSet {
+            userDefaults.set(defaultBrowserPromptDismissedAt?.timeIntervalSince1970, forKey: defaultBrowserPromptDismissedAtKey)
+        }
+    }
+
     /// A private window or the Agent space has no profile and saves to Downloads.
     public func downloads(forProfile id: UUID?) -> ProfileDownloads {
         id.flatMap { profileDownloads[$0] } ?? ProfileDownloads()
@@ -858,6 +866,8 @@ public final class NookSettingsService {
         self.kagiSessionToken = KagiSession.loadToken()
         self.urlShortcuts = userDefaults.data(forKey: urlShortcutsKey)
             .flatMap { try? JSONDecoder().decode([URLShortcut].self, from: $0) } ?? URLShortcut.defaults
+        self.defaultBrowserPromptDismissedAt = (userDefaults.object(forKey: defaultBrowserPromptDismissedAtKey) as? Double)
+            .map { Date(timeIntervalSince1970: $0) }
         self.profileDownloads = userDefaults.data(forKey: profileDownloadsKey)
             .flatMap { try? JSONDecoder().decode([UUID: ProfileDownloads].self, from: $0) } ?? [:]
         let archiveHours = userDefaults.integer(forKey: archiveTabsAfterHoursKey)

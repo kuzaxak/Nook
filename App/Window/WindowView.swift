@@ -116,6 +116,14 @@ struct WindowView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
                 }
 
+                if browserManager.showDefaultBrowserPrompt, windowRegistry.activeWindowId == windowState.id {
+                    DefaultBrowserToast(
+                        onMakeDefault: { browserManager.setAsDefaultBrowser() },
+                        onNotNow: { browserManager.dismissDefaultBrowserPrompt() }
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
+                }
+
                 // Copy URL toast
                 if windowState.isShowingCopyURLToast {
                     CopyURLToast(title: windowState.copyToastText)
@@ -138,6 +146,7 @@ struct WindowView: View {
             // Animate toast insertions/removals
             .animation(.smooth(duration: 0.25), value: browserManager.showTabClosureToast)
             .animation(.smooth(duration: 0.25), value: windowState.isShowingCopyURLToast)
+            .animation(.smooth(duration: 0.25), value: browserManager.showDefaultBrowserPrompt)
             .animation(.smooth(duration: 0.25), value: browserManager.downloadManager.lastTidied?.id)
             .animation(.smooth(duration: 0.25), value: windowState.isShowingShortcutConflictToast)
         }

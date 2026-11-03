@@ -45,6 +45,7 @@ public struct SettingsGeneralTab: View {
             #if os(macOS)
             // Quitting and Sparkle updates are both macOS-only concepts.
             Section {
+                DefaultBrowserRow()
                 Toggle("Warn before quitting Nook", isOn: $settings.askBeforeQuit)
                 Toggle("Check for updates automatically", isOn: $checksForUpdates)
                 Toggle("Download and install updates automatically", isOn: $installsUpdates)
@@ -339,3 +340,24 @@ struct CustomSearchEngineEditor: View {
         .frame(width: NookDesign.Size.sheetSmallWidth)
     }
 }
+
+#if os(macOS)
+private struct DefaultBrowserRow: View {
+    @State private var isNook = DefaultBrowser.isNook
+
+    var body: some View {
+        LabeledContent("Default browser") {
+            if isNook {
+                Label("Nook", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            } else {
+                Button("Make Nook Default") { DefaultBrowser.makeNook { isNook = $0 } }
+            }
+        }
+        // The default can change in System Settings while Nook is in the background.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            isNook = DefaultBrowser.isNook
+        }
+    }
+}
+#endif

@@ -5,6 +5,7 @@
 ### Added
 
 - Pawl Vault one-time codes: click a verification-code field (or press ↓ in it) to pick an account with a one-time code, and Nook fills the current code, one digit per box when the site splits it; the form is never submitted and codes are never kept
+- Default browser: Settings → General shows whether Nook is your default browser and makes it one with a click; Nook offers it at launch until you agree, and asks again 30 days after Not Now
 
 ## 1.5.0
 
