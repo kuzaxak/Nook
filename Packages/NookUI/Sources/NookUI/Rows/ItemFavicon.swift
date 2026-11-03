@@ -21,6 +21,14 @@ public final class SidebarRenameState {
     public var itemID: UUID?
 }
 
+/// Selects the whole name once a rename field has focus, so typing replaces it, as in Arc.
+@MainActor
+func selectAllInRenameField() {
+    #if os(macOS)
+    DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+    #endif
+}
+
 extension TabsController {
     /// Creates a "New Folder" under `parent` after `after` and starts renaming it inline.
     public func createFolderForRename(in parent: Parent, after: UUID?) {

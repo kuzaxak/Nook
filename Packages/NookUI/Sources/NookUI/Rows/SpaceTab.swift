@@ -66,9 +66,8 @@ public struct SpaceTab: View {
     public var body: some View {
         let title = tabs.title(for: item)
         Button(action: {
-            if isCurrentTab {
-                startRename(title)
-            } else {
+            // As in Arc, a click selects and a double-click renames; clicking the current tab does nothing.
+            if !isCurrentTab {
                 if isRenaming { commitRename() }
                 tabs.select(item.id, in: windowState)
             }
@@ -113,6 +112,7 @@ public struct SpaceTab: View {
                         .onAppear {
                             if draftName.isEmpty { draftName = title }
                             isTextFieldFocused = true
+                            selectAllInRenameField()
                         }
                 } else {
                     // Hidden shrinkable copy sizes the row; the visible copy is laid out at
@@ -198,6 +198,7 @@ public struct SpaceTab: View {
             }
         }
         .buttonStyle(NookTabButtonStyle())
+        .simultaneousGesture(TapGesture(count: 2).onEnded { if !isRenaming { startRename(title) } })
         // The whole title, for one too long for the row.
         .help(isRenaming ? "" : title)
         .padding(.vertical, NookDesign.Tab.verticalInset)

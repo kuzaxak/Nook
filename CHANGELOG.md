@@ -31,7 +31,8 @@
 - The sidebar keeps the selected tab in view; denser tab rows; tab titles stay faded before the close button while it is under the pointer
 - Closing the command bar gives the keyboard back to the page
 - Favorites are shared by spaces that use the same profile, as in Arc; opening one keeps you in the current space
-- Renaming a tab gives the field the whole row; long tab and folder names fade at the end and show in full on hover
+- Rename like Arc: double-click a tab or folder (or use Rename); the name starts selected, Enter or clicking away saves, Esc cancels; the field gets the whole row
+- Long tab and folder names fade at the end and show in full on hover
 - Command bar developer shortcuts: `loc` or `127` lists local servers one row per port, ranked by use; keywords such as `gh owner/repo` open their address (Settings → General → URL Shortcuts)
 - Pawl Vault passwords and passkeys (Settings → Privacy → Passwords, off by default): pick an account under a login field, save a new password after signing in, sign in and register with passkeys; Nook checks the vault's code signature and keeps no credentials
 

@@ -65,7 +65,10 @@ public struct TabFolderView: View {
                         .focused($nameFieldFocused)
                         .onAppear {
                             draftName = item.displayTitle
-                            DispatchQueue.main.async { nameFieldFocused = true }
+                            DispatchQueue.main.async {
+                                nameFieldFocused = true
+                                selectAllInRenameField()
+                            }
                         }
                         .onSubmit { commitRename() }
                         .onEscapeKey { cancelRename() }
@@ -116,6 +119,8 @@ public struct TabFolderView: View {
             .nookTabSurface(selected: isDropTarget, hovered: isHovering)
         }
         .buttonStyle(NookTabButtonStyle())
+        // A double-click renames, as in Arc; its two clicks open and close the folder again.
+        .simultaneousGesture(TapGesture(count: 2).onEnded { if !isRenaming { startRenaming() } })
         .help(isRenaming ? "" : item.displayTitle)
         .accessibilityValue(isOpen ? "Expanded" : "Collapsed")
         .padding(.vertical, NookDesign.Tab.verticalInset)
