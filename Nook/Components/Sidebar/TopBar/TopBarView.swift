@@ -176,6 +176,14 @@ struct TopBarView: View {
                         }
                     }
 
+                if isHovering {
+                    Button("Copy URL", systemImage: "link") { browserManager.copyCurrentURL() }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(NookIconButtonStyle(size: NookDesign.Size.iconButton, radius: NookDesign.Radius.sm))
+                        .help(browserManager.help("Copy URL", shortcut: .copyCurrentURL))
+                        .transition(.opacity)
+                }
+
                 // Pinned extension buttons + library button (not covered by tap gesture)
                 if let extensionManager = browserManager.extensionManager {
                     let pinnedIDs = browserManager.nookSettings?.pinnedExtensionIDs ?? []

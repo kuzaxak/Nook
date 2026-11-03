@@ -84,6 +84,8 @@ public final class TabsController {
     #endif
     /// Called with each tab that a move brought into a pinned section from the tabs section.
     @ObservationIgnored public var onTabsPinned: (([UUID]) -> Void)?
+    /// A window is about to show another tab instead of this one, which is still on screen.
+    @ObservationIgnored public var onLeavingTab: ((UUID, BrowserWindowState) -> Void)?
 
     /// Launch argument that redirects tab state, e.g. `-NookStateDir /tmp/bench`.
     /// Read from the argument domain only, never from persisted defaults, so a stray written

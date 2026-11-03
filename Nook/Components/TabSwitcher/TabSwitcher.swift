@@ -118,6 +118,7 @@ enum TabSwitcher {
 struct TabSwitcherOverlay: View {
     @Environment(BrowserWindowState.self) private var windowState
     @Environment(TabsController.self) private var tabs
+    @Environment(\.peekedPage) private var peekedPage
 
     private let tileWidth: CGFloat = 180
     private let pictureHeight: CGFloat = 112
@@ -142,6 +143,7 @@ struct TabSwitcherOverlay: View {
 
     private func tile(_ item: Item, selected: Bool) -> some View {
         let session = tabs.session(for: item.id)
+        let peek = peekedPage(item.id)
         return VStack(alignment: .leading, spacing: NookDesign.Spacing.sm) {
             Group {
                 if let picture = session?.switcherSnapshot {
@@ -157,6 +159,31 @@ struct TabSwitcherOverlay: View {
                 }
             }
             .frame(width: tileWidth - NookDesign.Spacing.md, height: pictureHeight)
+            // The tab's Peek over it, as the window shows it and as Arc's card draws it.
+            .overlay {
+                if let peek {
+                    ZStack {
+                        NookDesign.Surface.peekWash
+                        Group {
+                            if let picture = peek.switcherSnapshot {
+                                Image(platformImage: picture)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            } else {
+                                peek.favicon
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: NookDesign.Size.essentialsFavicon, height: NookDesign.Size.essentialsFavicon)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(NookDesign.Surface.raised)
+                            }
+                        }
+                        .frame(width: (tileWidth - NookDesign.Spacing.md) * 0.82, height: pictureHeight - 2 * NookDesign.Spacing.xs)
+                        .clipShape(NookDesign.Radius.shape(NookDesign.Radius.sm))
+                        .nookElevation(.raised)
+                    }
+                }
+            }
             .clipShape(NookDesign.Radius.shape(NookDesign.Radius.md))
             .overlay(NookDesign.Radius.shape(NookDesign.Radius.md).strokeBorder(NookDesign.Surface.hairline))
 
@@ -166,6 +193,13 @@ struct TabSwitcherOverlay: View {
                 Text(tabs.title(for: item))
                     .font(NookDesign.Font.body)
                     .lineLimit(1)
+                if let peek {
+                    Spacer(minLength: NookDesign.Spacing.xs)
+                    peek.favicon
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: NookDesign.Size.favicon, height: NookDesign.Size.favicon)
+                }
             }
         }
         .padding(NookDesign.Spacing.sm)

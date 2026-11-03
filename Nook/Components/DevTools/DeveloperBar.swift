@@ -79,9 +79,20 @@ struct DeveloperBar: View {
 
     var body: some View {
         HStack(spacing: NookDesign.Spacing.md) {
-            Image(systemName: session.url.scheme == "https" ? "lock.fill" : "lock.open.fill")
-                .font(NookDesign.Font.caption)
-                .foregroundStyle(.secondary)
+            // Arc's lock opens the site's controls, as the sidebar's site controls button does.
+            Button {
+                withAnimation(.interpolatingSpring(Spring(response: 0.3, dampingRatio: 0.86))) {
+                    windowState.isExtensionLibraryVisible.toggle()
+                }
+            } label: {
+                Image(systemName: session.url.scheme == "https" ? "lock.fill" : "lock.open.fill")
+                    .font(NookDesign.Font.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: NookDesign.Size.rowButton, height: NookDesign.Size.rowButton)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Site Controls")
             Text(session.url.absoluteString)
                 .font(NookDesign.Font.mono)
                 .lineLimit(1)
@@ -131,13 +142,11 @@ struct DeveloperBar: View {
     }
 
     private func tool(_ symbol: String, _ help: String, shortcut: ShortcutAction, isOn: Bool = false, action: @escaping () -> Void) -> some View {
-        let keys = browserManager.keyboardShortcutManager?.shortcut(for: shortcut)
-            .flatMap { $0.isEnabled && !$0.keyCombination.key.isEmpty ? $0.keyCombination.displayString : nil }
-        return Button(help, systemImage: symbol, action: action)
+        Button(help, systemImage: symbol, action: action)
             .labelStyle(.iconOnly)
             .contentTransition(.symbolEffect(.replace))
             .buttonStyle(NookIconButtonStyle())
             .background(isOn ? NookDesign.Surface.fillPressed : .clear, in: NookDesign.Radius.shape(NookDesign.Radius.md))
-            .help(keys.map { "\(help) (\($0))" } ?? help)
+            .help(browserManager.help(help, shortcut: shortcut))
     }
 }

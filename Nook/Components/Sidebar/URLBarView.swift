@@ -216,9 +216,10 @@ struct URLBarView: View {
 
                 // Copy link button (show on hover when tab is selected)
                 if !isEditing, isHovering, let session {
-                    Button("Copy Link", systemImage: showCheckmark ? "checkmark" : "link") {
+                    Button("Copy URL", systemImage: showCheckmark ? "checkmark" : "link") {
                         copyURLToClipboard(session.url.absoluteString)
                     }
+                    .help(browserManager.help("Copy URL", shortcut: .copyCurrentURL))
                     .labelStyle(.iconOnly)
                     .buttonStyle(NookIconButtonStyle(size: NookDesign.Size.iconButton, radius: NookDesign.Radius.sm))
                     .foregroundStyle(Color.primary)

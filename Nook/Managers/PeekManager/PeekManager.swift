@@ -6,6 +6,7 @@
 //  Created by Jonathan Caudill on 24/09/2025.
 //
 
+import AppKit
 import Foundation
 import NookDesign
 import NookWeb
@@ -19,11 +20,23 @@ import SwiftUI
 final class PeekManager {
     /// Each tab's Peek, outside the tab tree until it moves to a tab.
     private var slots = PeekSlots<PageSession>()
+    /// Where in its window each Peek was opened from, as a fraction of the window: the card grows
+    /// out of that point, as Arc's grows out of the link.
+    @ObservationIgnored private var origins: [UUID: UnitPoint] = [:]
 
     @ObservationIgnored weak var browserManager: BrowserManager?
 
     func attach(browserManager: BrowserManager) {
         self.browserManager = browserManager
+        // A tab's Peek is still drawn as the window leaves the tab: its picture is taken for the
+        // Control-Tab card then, like the tab's own.
+        browserManager.tabs.onLeavingTab = { [weak self] itemID, window in
+            self?.slots.page(tab: itemID, window: window.id)?.captureSwitcherSnapshot()
+        }
+    }
+
+    func origin(of page: PageSession) -> UnitPoint {
+        origins[page.itemID] ?? .center
     }
 
     /// The Peek over the tab `window` shows.
@@ -49,6 +62,10 @@ final class PeekManager {
         }
 
         let page = browserManager.tabs.openDetached(url: url, profile: profile, in: window)
+        if let nsWindow = window.windowHandle as? NSWindow, let content = nsWindow.contentView, content.bounds.width > 0 {
+            let pointer = nsWindow.mouseLocationOutsideOfEventStream
+            origins[page.itemID] = UnitPoint(x: pointer.x / content.bounds.width, y: 1 - pointer.y / content.bounds.height)
+        }
         let windowID = window.id
         page.onClose = { [weak self] in self?.dismiss(tab: tab, window: windowID) }
         let replaced = withAnimation(NookDesign.Motion.spring) { slots.open(page, tab: tab, window: window.id) }
@@ -90,6 +107,7 @@ final class PeekManager {
 
     private func dismiss(tab: UUID, window: UUID) {
         guard let page = withAnimation(NookDesign.Motion.spring, { slots.close(tab: tab, window: window) }) else { return }
+        origins[page.itemID] = nil
         browserManager?.tabs.endDetached(page)
     }
 

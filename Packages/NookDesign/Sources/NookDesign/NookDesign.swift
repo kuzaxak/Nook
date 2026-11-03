@@ -212,6 +212,7 @@ public enum NookDesign {
         public static let fillPressed = Color.primary.opacity(0.08)
         public static let tintOpacity: Double = 0.18                       // accent-tinted control: chosen chip, own chat message
         public static let mediaScrim = Color.black.opacity(0.35)           // controls over video
+        public static let peekWash = Color(white: 0.5).opacity(0.45)       // the page under Peek: lighter if dark, greyer if light
         public static let hairline = Color.primary.opacity(0.08)
         public static let unloadedOpacity: Double = 0.55
         /// A selected favorite tile's fill, as Arc draws it: white, halved in an inactive window.

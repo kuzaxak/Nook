@@ -27,7 +27,7 @@ import WebKit
 extension PageSession {
     private static let switcherSnapshotWidth: CGFloat = 400
 
-    func captureSwitcherSnapshot() {
+    public func captureSwitcherSnapshot() {
         guard !SwitcherPressure.isUnderPressure, let webView, webView.window != nil, webView.bounds.width > 0 else { return }
         let configuration = WKSnapshotConfiguration()
         configuration.snapshotWidth = NSNumber(value: Double(Self.switcherSnapshotWidth))

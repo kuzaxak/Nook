@@ -82,6 +82,9 @@ struct WindowView: View {
             TabSwitcherOverlay()
                 .environment(windowState)
                 .environment(tabs)
+                .environment(\.peekedPage) { [peekManager = browserManager.peekManager, windowID = windowState.id] in
+                    peekManager.page(tab: $0, window: windowID)
+                }
                 .animation(NookDesign.Motion.quick, value: windowState.tabSwitcher == nil)
                 .zIndex(9700)
         }

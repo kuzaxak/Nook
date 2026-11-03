@@ -221,6 +221,7 @@ extension TabsController {
 
         if let session = ensureSession(for: itemID) {
             if let previous, previous !== session {
+                onLeavingTab?(previous.itemID, window)
                 previous.captureSwitcherSnapshot()
                 dropStaleSwitcherSnapshots()
             }

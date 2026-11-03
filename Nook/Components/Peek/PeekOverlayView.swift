@@ -35,7 +35,7 @@ struct PeekOverlayView: View {
                 backgroundOverlay
                     .transition(.opacity)
                 peekContent(page: page)
-                    .transition(.scale(scale: 0.001).combined(with: .opacity))
+                    .transition(.scale(scale: 0.05, anchor: peek.origin(of: page)).combined(with: .opacity))
                     .zIndex(1000)
             }
         }
@@ -46,7 +46,7 @@ struct PeekOverlayView: View {
     private var backgroundOverlay: some View {
         GeometryReader { geometry in
             let area = webArea(in: geometry.size)
-            Color.black.opacity(0.3)
+            NookDesign.Surface.peekWash
                 .frame(width: area.width, height: area.height)
                 .contentShape(Rectangle())
                 .onTapGesture { peek.dismissPeek(in: windowState) }
@@ -127,10 +127,11 @@ struct PeekOverlayView: View {
 
     private func calculateLayout(geometry: GeometryProxy) -> (frame: CGRect, cornerRadius: CGFloat) {
         let area = webArea(in: geometry.size)
-        // 80% of the page area wide and 90% of the window tall, so the page behind stays in view.
-        let width = area.width * 0.8
+        // As in Arc: most of the page area's width, leaving a margin for the buttons, and nearly its height.
+        let width = area.width * 0.82
+        let height = geometry.size.height - 2 * NookDesign.Spacing.md
         return (
-            frame: CGRect(x: area.minX + (area.width - width) / 2, y: 0, width: width, height: geometry.size.height * 0.9),
+            frame: CGRect(x: area.minX + (area.width - width) / 2, y: NookDesign.Spacing.md, width: width, height: height),
             cornerRadius: NookDesign.Radius.xl
         )
     }
@@ -141,8 +142,11 @@ struct PeekOverlayView: View {
 private struct PeekNavigationBar: View {
     let page: PageSession
     let cornerRadius: CGFloat
+    @EnvironmentObject private var browserManager: BrowserManager
     @Environment(\.colorScheme) private var colorScheme
     @State private var copied = false
+
+    private var copyURLHelp: String { browserManager.help("Copy URL", shortcut: .copyCurrentURL) }
 
     private var pageColor: NSColor? { page.topBarBackgroundColor ?? page.pageBackgroundColor }
 
@@ -169,7 +173,7 @@ private struct PeekNavigationBar: View {
                     .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
-            .help("Copy Link")
+            .help(copyURLHelp)
             .padding(.horizontal, NookDesign.Size.navRow * 3 + NookDesign.Spacing.lg)
         }
         .foregroundStyle(.primary)

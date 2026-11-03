@@ -138,6 +138,13 @@ extension BrowserManager {
         return tabs.activeWindowSession?.hasAudioContent ?? false
     }
 
+    /// A tooltip with the action's shortcut, as Arc's show it: "Copy URL (⇧⌘C)".
+    func help(_ title: String, shortcut action: ShortcutAction) -> String {
+        guard let shortcut = keyboardShortcutManager?.shortcut(for: action), shortcut.isEnabled,
+              !shortcut.keyCombination.key.isEmpty else { return title }
+        return "\(title) (\(shortcut.keyCombination.displayString))"
+    }
+
     // MARK: - URL Utilities
     func copyCurrentURL() {
         if let url = tabs.activeWindowSession?.storableURL.absoluteString {
