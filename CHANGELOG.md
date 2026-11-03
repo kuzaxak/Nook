@@ -10,10 +10,12 @@
 ### Changed
 
 - The command bar's top row says where Return opens: this tab, a new tab below the named one, or the top of Tabs
+- Word stops can be changed in Settings → General; history search splits words at the same characters as ⌥→ and Control-W, so `_` now stays inside a word
 
 ### Fixed
 
 - Deleting a profile deletes its history and its command bar entries too
+- Cmd+T opens the command bar over a Peek, as in Arc
 
 ## 1.5.0
 
