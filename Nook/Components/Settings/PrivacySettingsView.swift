@@ -54,6 +54,26 @@ struct PrivacySettingsView: View {
                 )
             }
 
+            Section("Passwords") {
+                settingToggle(
+                    "Use Pawl Vault for passwords and passkeys",
+                    detail: "Fill and save passwords and sign in with passkeys from the Pawl Vault app. Nook keeps no copy of them.",
+                    isOn: $settings.pawlVaultEnabled
+                )
+                if nookSettings.pawlVaultEnabled, let vault = browserManager.tabs.vault {
+                    LabeledContent("Status") {
+                        vaultStatus(vault.status)
+                    }
+                    // While this pane shows, follow the vault: approval and unlocking happen there.
+                    .task {
+                        while !Task.isCancelled {
+                            await vault.refresh()
+                            try? await Task.sleep(for: .seconds(3))
+                        }
+                    }
+                }
+            }
+
             Section("History") {
                 settingToggle(
                     "Search page text in history",
@@ -96,6 +116,24 @@ struct PrivacySettingsView: View {
                 await cookieManager.loadCookies()
                 await cacheManager.loadCacheData()
             }
+        }
+    }
+
+    private func vaultStatus(_ status: VaultStatus?) -> some View {
+        let (text, color): (String, Color) = switch status {
+        case nil: ("Checking…", .secondary)
+        case .connected: ("Connected", .green)
+        case .locked: ("Vault locked", .orange)
+        case .awaitingApproval: ("Waiting for approval in Pawl Vault", .orange)
+        case .notRunning: ("Pawl Vault is not running", .secondary)
+        case .notPawlVault: ("Not Pawl Vault (signature check failed)", .red)
+        }
+        return HStack(spacing: NookDesign.Spacing.xs) {
+            Circle()
+                .fill(color)
+                .frame(width: NookDesign.Size.statusDot, height: NookDesign.Size.statusDot)
+            Text(text)
+                .foregroundStyle(.secondary)
         }
     }
 

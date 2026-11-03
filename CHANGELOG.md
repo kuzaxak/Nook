@@ -28,6 +28,7 @@
 - Kagi Session Link: paste it in Settings → General and Kagi searches are signed in from every space; the token stays in the Keychain and out of history and tabs
 - Search suggestions from Kagi when Kagi is the search engine
 - Command bar developer shortcuts: `loc` or `127` lists local servers one row per port, ranked by use; keywords such as `gh owner/repo` open their address (Settings → General → URL Shortcuts)
+- Pawl Vault passwords and passkeys (Settings → Privacy → Passwords, off by default): pick an account under a login field, save a new password after signing in, sign in and register with passkeys; Nook checks the vault's code signature and keeps no credentials
 
 ## 1.4.0
 
