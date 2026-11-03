@@ -22,10 +22,8 @@ struct PeekOverlayView: View {
 
     private var peek: PeekManager { browserManager.peekManager }
 
-    /// Peek belongs to the window that opened it; the others show nothing.
-    private var page: PageSession? {
-        peek.windowId == windowState.id ? peek.page : nil
-    }
+    /// The Peek of the tab this window shows; other tabs and windows show theirs.
+    private var page: PageSession? { peek.page(in: windowState) }
 
     private var currentSpaceColor: Color {
         windowState.spaceID.flatMap { tabs.space($0)?.accentColor } ?? Color.accentColor
@@ -45,10 +43,16 @@ struct PeekOverlayView: View {
         .animation(NookDesign.Motion.spring, value: page?.itemID)
     }
 
+    /// Dims the page area only; the sidebar stays bright and takes clicks.
     private var backgroundOverlay: some View {
-        Color.black.opacity(0.3)
-            .contentShape(Rectangle()) // Ensure proper hit testing
-            .onTapGesture { peek.dismissPeek() }
+        GeometryReader { geometry in
+            let area = webArea(in: geometry.size)
+            Color.black.opacity(0.3)
+                .frame(width: area.width, height: area.height)
+                .contentShape(Rectangle())
+                .onTapGesture { peek.dismissPeek(in: windowState) }
+                .offset(x: area.minX)
+        }
     }
 
     private func peekContent(page: PageSession) -> some View {
@@ -95,10 +99,10 @@ struct PeekOverlayView: View {
     /// Close, open as a tab and open in split view: one round floating button each, as in Arc.
     private var actionButtons: some View {
         VStack(spacing: NookDesign.Spacing.sm) {
-            peekButton("Close", systemImage: "xmark") { peek.dismissPeek() }
-            peekButton("Open as Tab", systemImage: "arrow.up.left.and.arrow.down.right") { peek.moveToNewTab() }
-            peekButton("Open in Split View", systemImage: "square.split.2x1") { peek.moveToSplitView() }
-                .disabled(!peek.canEnterSplitView)
+            peekButton("Close", systemImage: "xmark") { peek.dismissPeek(in: windowState) }
+            peekButton("Open as Tab", systemImage: "arrow.up.left.and.arrow.down.right") { peek.moveToNewTab(in: windowState) }
+            peekButton("Open in Split View", systemImage: "square.split.2x1") { peek.moveToSplitView(in: windowState) }
+                .disabled(!peek.canEnterSplitView(in: windowState))
         }
     }
 
@@ -114,41 +118,21 @@ struct PeekOverlayView: View {
 
     // MARK: - Layout Calculation
 
-    private func calculateLayout(geometry: GeometryProxy) -> (frame: CGRect, cornerRadius: CGFloat) {
-        let windowSize = geometry.size
-        let sidebarPosition = nookSettings.sidebarPosition
-
-        // Compute the visible web content area by excluding the sidebar width
+    /// The window minus the sidebar, on whichever side it is.
+    private func webArea(in windowSize: CGSize) -> CGRect {
         let sidebarWidth: CGFloat = windowState.isSidebarVisible ? windowState.sidebarWidth : 0
-        let webAreaWidth = max(0, windowSize.width - sidebarWidth)
+        let width = max(0, windowSize.width - sidebarWidth)
+        let x: CGFloat = nookSettings.sidebarPosition == .left ? sidebarWidth : 0
+        return CGRect(x: x, y: 0, width: width, height: windowSize.height)
+    }
 
-        // 80% of the web area wide and 90% of the window tall, so the page behind stays in view.
-        let webViewHeight = windowSize.height * 0.9
-        let cornerRadius: CGFloat = NookDesign.Radius.xl
-
-        // Center within the web area (excluding sidebar)
-        let peekWidth = webAreaWidth * 0.8
-        let peekXWithinWebArea = (webAreaWidth - peekWidth) / 2
-
-        // Calculate peek X position based on sidebar position
-        let peekX: CGFloat
-        if sidebarPosition == .left {
-            // Sidebar on left: peek window starts after sidebar
-            peekX = sidebarWidth + peekXWithinWebArea
-        } else {
-            // Sidebar on right: peek window starts from left edge
-            peekX = peekXWithinWebArea
-        }
-
-
+    private func calculateLayout(geometry: GeometryProxy) -> (frame: CGRect, cornerRadius: CGFloat) {
+        let area = webArea(in: geometry.size)
+        // 80% of the page area wide and 90% of the window tall, so the page behind stays in view.
+        let width = area.width * 0.8
         return (
-            frame: CGRect(
-                x: peekX,
-                y: 0,
-                width: peekWidth,
-                height: webViewHeight
-            ),
-            cornerRadius: cornerRadius
+            frame: CGRect(x: area.minX + (area.width - width) / 2, y: 0, width: width, height: geometry.size.height * 0.9),
+            cornerRadius: NookDesign.Radius.xl
         )
     }
 }

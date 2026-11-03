@@ -52,7 +52,8 @@ private final class DetachedPageContainer: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         // A page moved to a tab before the card reached the window stays in the tab.
-        guard window != nil, let page = pendingPage, page.superview == nil else { return }
+        // Back on its tab, a Peek may still sit in the card that is fading out; a tab keeps it.
+        guard window != nil, let page = pendingPage, page.superview == nil || page.superview is DetachedPageContainer else { return }
         pendingPage = nil
         page.frame = bounds
         addSubview(page)

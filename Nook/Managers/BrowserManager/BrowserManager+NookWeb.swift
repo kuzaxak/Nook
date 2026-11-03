@@ -144,6 +144,7 @@ extension BrowserManager: TabEventObserver {
     func tabClosed(itemID: UUID) {
         ExtensionManager.shared.notifyTabClosed(itemID: itemID)
         exitSidebarPiP(showing: itemID)
+        peekManager.tabClosed(itemID)
     }
 
     func tabMoved(itemID: UUID, from oldIndex: Int?, in oldWindow: BrowserWindowState?, pinnedChanged: Bool) {
