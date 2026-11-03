@@ -83,10 +83,18 @@ struct PrivacySettingsView: View {
                 .onChange(of: nookSettings.searchPageTextInHistory) { _, enabled in
                     if !enabled { browserManager.historyManager.erasePageText() }
                 }
-                Stepper(value: $settings.historyHalfLifeDays, in: NookSettingsService.historyHalfLifeDaysRange) {
-                    LabeledContent("Ranking half-life", value: "\(nookSettings.historyHalfLifeDays) days")
+                Picker(selection: $settings.historyHalfLifeDays) {
+                    ForEach(Set(NookSettingsService.historyHalfLifeDaysChoices + [nookSettings.historyHalfLifeDays]).sorted(), id: \.self) { days in
+                        Text(days == 7 ? "1 week" : days == 14 ? "2 weeks" : days == 30 ? "1 month" : days == 60 ? "2 months" : "\(days) days").tag(days)
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: NookDesign.Spacing.xxs) {
+                        Text("Rank recent visits higher")
+                        Text("A visit counts half as much in command bar results after this long.")
+                            .font(NookDesign.Font.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .help("How quickly old visits count for less when the command bar ranks history.")
                 .onChange(of: nookSettings.historyHalfLifeDays) { _, days in
                     browserManager.historyManager.setHalfLife(days: days)
                 }

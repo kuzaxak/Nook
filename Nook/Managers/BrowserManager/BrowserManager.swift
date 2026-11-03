@@ -765,6 +765,8 @@ class BrowserManager: ObservableObject {
 
     func showQuitDialog() {
         if self.nookSettings?.askBeforeQuit == true {
+            // The dialog draws inside browser windows, so one must be in front of Settings.
+            windowRegistry?.activeWindow?.windowHandle?.bringToFront()
             dialogManager.showQuitDialog(
                 onAlwaysQuit: {
                     self.nookSettings?.askBeforeQuit = false

@@ -39,6 +39,7 @@ public struct SpacesSettingsView: View {
                 Text("Profiles")
             } footer: {
                 Text("A profile keeps its own logins, cookies and history. Spaces in the same profile share them. Extensions and settings are shared by all profiles.")
+                    .settingsFooter()
             }
 
             Section {
@@ -50,6 +51,7 @@ public struct SpacesSettingsView: View {
                 Text("Spaces")
             } footer: {
                 Text("Each space belongs to a profile. Moving a space to another profile signs it in as that profile.")
+                    .settingsFooter()
             }
 
             Section {

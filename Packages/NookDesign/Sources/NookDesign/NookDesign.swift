@@ -121,6 +121,7 @@ public enum NookDesign {
         public static let settingsIcon: CGFloat = 32           // icon tile in a settings list row
         public static let statusDot: CGFloat = 8               // inline state dot in a settings row
         public static let fieldNarrow: CGFloat = 100           // numeric field, inline progress bar
+        public static let fieldWide: CGFloat = 240             // pasted link or address in a row
         public static let textEditorHeight: CGFloat = 200      // multi-line editor, scrolling value box
 
         // Sheet scale, smallest to largest

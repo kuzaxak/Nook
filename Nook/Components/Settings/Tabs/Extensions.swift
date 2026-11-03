@@ -43,6 +43,10 @@ struct ExtensionsSettingsView: View {
                 }
             } else {
                 Section("Installed Extensions") {
+                    if extensionManager.installedExtensions.isEmpty {
+                        Text("None yet. Install a Chrome extension with Install Extension… above, or a Safari extension found on this Mac below.")
+                            .foregroundStyle(.secondary)
+                    }
                     ForEach(extensionManager.installedExtensions, id: \.id) { ext in
                         ExtensionRowView(extension: ext)
                             .environmentObject(browserManager)

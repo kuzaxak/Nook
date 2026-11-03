@@ -24,6 +24,7 @@ struct TopBarView: View {
     @Environment(BrowserWindowState.self) private var windowState
     @Environment(CommandPalette.self) private var commandPalette
     @Environment(\.nookSettings) var nookSettings
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isHovering: Bool = false
     @State private var previousTabId: UUID? = nil
 
@@ -43,12 +44,14 @@ struct TopBarView: View {
                     if browserManager.nookSettings?.showAIAssistant ?? false
                         && !windowState.isSidebarAIChatVisible
                     {
-                        ChatButton(navButtonColor: navButtonColor)
+                        ChatButton()
                     }
 
                 }
 
             }
+            // Text and symbols follow the page colour behind them, not the app's appearance.
+            .environment(\.colorScheme, pageColor.map { $0.isPerceivedDark ? .dark : .light } ?? colorScheme)
             .padding(.horizontal, TopBarMetrics.horizontalPadding)
             .padding(.vertical, TopBarMetrics.verticalPadding)
             .frame(maxWidth: .infinity)
@@ -106,11 +109,6 @@ struct TopBarView: View {
             Button("Go Back", systemImage: "chevron.backward", action: goBack)
                 .labelStyle(.iconOnly)
                 .buttonStyle(NookIconButtonStyle())
-                .foregroundStyle(navButtonColor)
-                .animation(
-                    shouldAnimateColorChange ? NookDesign.Motion.standard : nil,
-                    value: navButtonColor
-                )
                 .disabled(!(session?.canGoBackOrReturn ?? false))
                 .opacity((session?.canGoBackOrReturn ?? false) ? 1.0 : 0.4)
                 .contextMenu {
@@ -127,11 +125,6 @@ struct TopBarView: View {
             )
             .labelStyle(.iconOnly)
             .buttonStyle(NookIconButtonStyle())
-            .foregroundStyle(navButtonColor)
-            .animation(
-                shouldAnimateColorChange ? NookDesign.Motion.standard : nil,
-                value: navButtonColor
-            )
             .disabled(!(session?.canGoForward ?? false))
             .opacity((session?.canGoForward ?? false) ? 1.0 : 0.4)
             .contextMenu {
@@ -153,11 +146,6 @@ struct TopBarView: View {
             }
             .labelStyle(.iconOnly)
             .buttonStyle(NookIconButtonStyle())
-            .foregroundStyle(navButtonColor)
-            .animation(
-                shouldAnimateColorChange ? NookDesign.Motion.standard : nil,
-                value: navButtonColor
-            )
         }
     }
 
@@ -175,7 +163,7 @@ struct TopBarView: View {
                         .truncationMode(.tail)
                 }
                     .font(NookDesign.Font.body)
-                    .foregroundStyle(urlBarTextColor)
+                    .foregroundStyle(.primary)
                     .tracking(-0.1)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -254,42 +242,14 @@ struct TopBarView: View {
         return selectedItemID == previousTabId
     }
 
-    // Top bar background color - matches top-right pixel of webview
-    private var topBarBackgroundColor: Color {
-        if let currentTab = browserManager.tabs.selectedSession(in: windowState),
-            let topBarColor = currentTab.topBarBackgroundColor
-        {
-            return Color(nsColor: topBarColor)
-        }
-        // Fallback to page background color if top bar color not available yet
-        if let currentTab = browserManager.tabs.selectedSession(in: windowState),
-            let pageColor = currentTab.pageBackgroundColor
-        {
-            return Color(nsColor: pageColor)
-        }
-        // Fallback to system theme colors when no tab or color available
-        // This ensures the top bar has a proper background even before page loads
-        return Color(nsColor: .windowBackgroundColor)
+    /// The colour the page reports for its top edge, else its background; nil before it loads.
+    private var pageColor: NSColor? {
+        let session = browserManager.tabs.selectedSession(in: windowState)
+        return session?.topBarBackgroundColor ?? session?.pageBackgroundColor
     }
 
-    // Nav button color - light on dark backgrounds, dark on light backgrounds
-    private var navButtonColor: Color {
-        if let currentTab = browserManager.tabs.selectedSession(in: windowState),
-            let topBarColor = currentTab.topBarBackgroundColor
-        {
-            return topBarColor.isPerceivedDark
-                ? Color.white.opacity(0.9) : Color.black.opacity(0.8)
-        }
-        // Fallback to page background color
-        if let currentTab = browserManager.tabs.selectedSession(in: windowState),
-            let pageColor = currentTab.pageBackgroundColor
-        {
-            return pageColor.isPerceivedDark
-                ? Color.white.opacity(0.9) : Color.black.opacity(0.8)
-        }
-
-        // Fallback
-        return .primary
+    private var topBarBackgroundColor: Color {
+        pageColor.map { Color(nsColor: $0) } ?? Color(nsColor: .windowBackgroundColor)
     }
 
     // URL bar background color - slightly adjusted for visual distinction
@@ -331,25 +291,6 @@ struct TopBarView: View {
         }
         // Fallback to a surface token when no webview color available
         return isHovering ? NookDesign.Surface.fillPressed : NookDesign.Surface.fill
-    }
-
-    // Text color for URL bar - ensures proper contrast
-    private var urlBarTextColor: Color {
-        if let currentTab = browserManager.tabs.selectedSession(in: windowState),
-            let topBarColor = currentTab.topBarBackgroundColor
-        {
-            return topBarColor.isPerceivedDark
-                ? Color.white.opacity(0.55) : Color.black.opacity(0.8)
-        }
-        // Fallback to page background color
-        if let currentTab = browserManager.tabs.selectedSession(in: windowState),
-            let pageColor = currentTab.pageBackgroundColor
-        {
-            return pageColor.isPerceivedDark
-                ? Color.white.opacity(0.55) : Color.black.opacity(0.8)
-        }
-        // Fallback to original text color logic
-        return .primary
     }
 
     // Bottom border color - lighter when dark, darker when light
@@ -441,7 +382,7 @@ struct TopBarView: View {
                 pathString += AttributedString("?" + query)
             }
 
-            pathString.foregroundColor = urlBarTextColor.opacity(0.35)
+            pathString.foregroundColor = .secondary
 
             return (hostString, pathString)
         }
@@ -458,7 +399,7 @@ struct TopBarView: View {
         } else {
             let displayTitle = title ?? cleanHost
             var titlePart = AttributedString(" / " + displayTitle)
-            titlePart.foregroundColor = urlBarTextColor.opacity(0.35)
+            titlePart.foregroundColor = .secondary
             return (AttributedString(cleanHost), titlePart)
         }
     }
@@ -469,11 +410,6 @@ struct ChatButton: View {
     @Environment(BrowserWindowState.self) private var windowState
     @State private var isHovered: Bool = false
 
-    var navButtonColor: Color
-    
-    
-
-
     var body: some View {
         Button {
             browserManager.toggleAISidebar(for: windowState)
@@ -483,7 +419,7 @@ struct ChatButton: View {
                 Text("Chat")
             }
             .font(NookDesign.Font.body)
-            .foregroundStyle(navButtonColor)
+            .foregroundStyle(.primary)
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
             .background(backgroundColor)

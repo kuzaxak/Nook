@@ -510,6 +510,7 @@ public final class NookSettingsService {
     }
 
     public static let historyHalfLifeDaysRange = 3...60
+    public static let historyHalfLifeDaysChoices = [3, 7, 10, 14, 30, 60]
 
     /// Kagi's Session Link token, read from the Keychain at launch and kept nowhere else.
     public private(set) var kagiSessionToken: String?

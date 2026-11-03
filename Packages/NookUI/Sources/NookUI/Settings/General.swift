@@ -19,6 +19,9 @@ public struct SettingsGeneralTab: View {
     @State private var kagiSessionLink = ""
     @State private var newShortcutKeyword = ""
     @State private var newShortcutTemplate = ""
+    // Sparkle reads its update preferences from these keys in the app's defaults.
+    @AppStorage("SUEnableAutomaticChecks") private var checksForUpdates = true
+    @AppStorage("SUAutomaticallyUpdate") private var installsUpdates = true
 
     public init() {}
 
@@ -43,14 +46,16 @@ public struct SettingsGeneralTab: View {
             // Quitting and Sparkle updates are both macOS-only concepts.
             Section {
                 Toggle("Warn before quitting Nook", isOn: $settings.askBeforeQuit)
-                Toggle("Automatically update Nook", isOn: .constant(true))
-                    .disabled(true)
+                Toggle("Check for updates automatically", isOn: $checksForUpdates)
+                Toggle("Download and install updates automatically", isOn: $installsUpdates)
+                    .disabled(!checksForUpdates)
             }
 
             Section {
                 Toggle("Keep videos playing in the sidebar", isOn: $settings.autoPictureInPicture)
             } footer: {
                 Text("Leaving a tab with a playing video moves it into a small window above the sidebar media controls.")
+                    .settingsFooter()
             }
             #endif
 
@@ -66,6 +71,7 @@ public struct SettingsGeneralTab: View {
                 Text("Tabs")
             } footer: {
                 Text("Ungrouped tabs land below the selected tab's folder instead of inside it. Tabs opened from a pinned tab, a favorite or a folder always land in Tabs. Archived tabs can be reopened with Reopen Closed Tab; pinned tabs, favorites and tabs in folders are never archived.")
+                    .settingsFooter()
             }
 
             Section {
@@ -81,6 +87,7 @@ public struct SettingsGeneralTab: View {
                 Text("Peek")
             } footer: {
                 Text("Peek previews a link over the page without opening a new tab, for a quick look at a link from an email, an article or a post. Option-click always opens Peek.")
+                    .settingsFooter()
             }
 
             Section {
@@ -115,6 +122,7 @@ public struct SettingsGeneralTab: View {
                     )
                     Label(nookSettings.startupLoadMode.description, systemImage: "power")
                 }
+                .settingsFooter()
             }
 
             Section {
@@ -156,6 +164,8 @@ public struct SettingsGeneralTab: View {
                             HStack(spacing: NookDesign.Spacing.md) {
                                 SecureField("https://kagi.com/search?token=…", text: $kagiSessionLink)
                                     .labelsHidden()
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(minWidth: NookDesign.Size.fieldWide)
                                 Button("Save") {
                                     nookSettings.setKagiSession(kagiSessionLink)
                                     kagiSessionLink = ""
@@ -226,7 +236,8 @@ public struct SettingsGeneralTab: View {
             } header: {
                 Text("Site Search")
             } footer: {
-                Text("Type a prefix in the command palette and press Tab to search a site directly.")
+                Text("In the command palette, type the start of a site's name or domain, such as \u{201C}you\u{201D} for YouTube, and press Tab to search that site.")
+                    .settingsFooter()
             }
 
             Section {
@@ -250,9 +261,11 @@ public struct SettingsGeneralTab: View {
                 HStack(spacing: NookDesign.Spacing.md) {
                     TextField("Keyword", text: $newShortcutKeyword)
                         .labelsHidden()
-                        .frame(maxWidth: 90)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: NookDesign.Size.fieldNarrow)
                     TextField("https://github.com/%@", text: $newShortcutTemplate)
                         .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
                     Button("Add") {
                         nookSettings.urlShortcuts.append(URLShortcut(
                             keyword: newShortcutKeyword.trimmingCharacters(in: .whitespaces),
@@ -267,6 +280,7 @@ public struct SettingsGeneralTab: View {
                 Text("URL Shortcuts")
             } footer: {
                 Text("Type a keyword, a space and the rest in the command palette, such as \"gh owner/repo\". %@ in the address stands for the rest.")
+                    .settingsFooter()
             }
         }
         .formStyle(.grouped)

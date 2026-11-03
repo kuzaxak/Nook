@@ -75,10 +75,11 @@ struct PeekOverlayView: View {
                 }
             }
             .frame(width: frame.width, height: frame.height)
-            // The buttons sit in the margin left of the card, level with its top.
-            .overlay(alignment: .topLeading) {
+            // Arc keeps the buttons in the margin right of the card, just below its top edge.
+            .overlay(alignment: .topTrailing) {
                 actionButtons
-                    .alignmentGuide(.leading) { $0[.trailing] + NookDesign.Spacing.lg }
+                    .alignmentGuide(.trailing) { $0[.leading] - NookDesign.Spacing.md }
+                    .padding(.top, NookDesign.Spacing.sm)
             }
             .position(
                 x: frame.minX + (frame.width / 2),
@@ -87,30 +88,25 @@ struct PeekOverlayView: View {
         }
     }
 
-    /// Close, open as a tab and open in split view, as Arc's Peek has them, on one floating card
-    /// readable over any page.
+    /// Close, open as a tab and open in split view: one round floating button each, as in Arc.
     private var actionButtons: some View {
-        VStack(spacing: NookDesign.Spacing.xxs) {
-            Button(action: { peek.dismissPeek() }) {
-                Image(systemName: "xmark")
-            }
-            .help("Close")
-            Button(action: { peek.moveToNewTab() }) {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-            }
-            .help("Open as Tab")
-            // Disabled while the window is already split.
-            Button(action: { peek.moveToSplitView() }) {
-                Image(systemName: "square.split.2x1")
-            }
-            .help("Open in Split View")
-            .disabled(!peek.canEnterSplitView)
+        VStack(spacing: NookDesign.Spacing.sm) {
+            peekButton("Close", systemImage: "xmark") { peek.dismissPeek() }
+            peekButton("Open as Tab", systemImage: "arrow.up.left.and.arrow.down.right") { peek.moveToNewTab() }
+            peekButton("Open in Split View", systemImage: "square.split.2x1") { peek.moveToSplitView() }
+                .disabled(!peek.canEnterSplitView)
         }
-        .nookIconButtons()
-        .padding(NookDesign.Spacing.xxs)
-        .nookFloatingSurface(in: NookDesign.Radius.shape(NookDesign.Radius.md))
     }
 
+    private func peekButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(title, systemImage: systemImage, action: action)
+            .labelStyle(.iconOnly)
+            .font(.system(size: NookDesign.Size.rowGlyph, weight: .semibold))
+            .buttonStyle(NookIconButtonStyle(size: NookDesign.Size.iconButton, radius: NookDesign.Size.iconButton / 2))
+            .foregroundStyle(.secondary)
+            .nookFloatingSurface(in: Circle())
+            .help(title)
+    }
 
     // MARK: - Layout Calculation
 

@@ -29,6 +29,7 @@ public struct SettingsAdBlockerTab: View {
                     }
             } footer: {
                 Text("Filter lists update automatically every 24 hours.")
+                    .settingsFooter()
             }
 
             if nookSettings.adBlockerEnabled {

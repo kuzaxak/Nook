@@ -27,6 +27,7 @@ struct SettingsDeveloperTab: View {
                 Text("Shows developer tools and lets you turn on Browser Control.")
                     .font(NookDesign.Font.caption)
                     .foregroundStyle(.secondary)
+                    .settingsFooter()
             }
 
             Section {
@@ -51,6 +52,7 @@ struct SettingsDeveloperTab: View {
                 Text("A client must send the token from Application Support/ee.qdo.nook/dev-mcp-token. Any program on this Mac can read that file, and with it run JavaScript in your tabs and read pages you are signed in to. Leave this off unless you are driving Nook from an agent.")
                     .font(NookDesign.Font.caption)
                     .foregroundStyle(.secondary)
+                    .settingsFooter()
             }
         }
         .formStyle(.grouped)

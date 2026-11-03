@@ -36,6 +36,7 @@ public struct AirTrafficControlSettingsView: View {
                 Text("Rules")
             } footer: {
                 Text("Automatically route websites to specific spaces. When you navigate to a matching domain, a new tab opens in the designated space.")
+                    .settingsFooter()
             }
 
             Section {

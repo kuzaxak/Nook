@@ -31,6 +31,7 @@ struct ShortcutsSettingsView: View {
                 ))
             } footer: {
                 Text("When a website uses the same shortcut, press once for the website, twice for Nook.")
+                    .settingsFooter()
             }
 
             ForEach(ShortcutCategory.allCases, id: \.self) { category in
@@ -67,7 +68,9 @@ private struct ShortcutRowView: View {
     }
 
     var body: some View {
-        LabeledContent(shortcut.action.displayName) {
+        HStack {
+            Text(shortcut.action.displayName)
+            Spacer()
             if shortcut.isCustomizable {
                 ShortcutRecorderView(
                     keyCombination: keys,

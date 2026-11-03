@@ -46,17 +46,17 @@ enum TabOrganizationModel {
     /// Why the feature is hidden, for Settings; nil when the model is usable.
     static var unavailableNote: String? {
         guard #available(macOS 26, *) else {
-            return "Tab Organizer requires macOS 26 or later and Apple Intelligence."
+            return "Requires macOS 26 or later and Apple Intelligence."
         }
         switch model.availability {
         case .available:
             return nil
         case .unavailable(.modelNotReady):
-            return "Tab Organizer will be available once Apple Intelligence finishes setting up."
+            return "Available once Apple Intelligence finishes setting up."
         case .unavailable(.deviceNotEligible):
-            return "Tab Organizer needs a Mac that supports Apple Intelligence."
+            return "Requires a Mac that supports Apple Intelligence."
         case .unavailable:
-            return "Tab Organizer needs Apple Intelligence. Turn it on in System Settings > Apple Intelligence & Siri."
+            return "Requires Apple Intelligence. Turn it on in System Settings > Apple Intelligence & Siri."
         }
     }
 

@@ -70,11 +70,14 @@ struct SettingsAITab: View {
             } header: {
                 Text("Tab Organizer")
             } footer: {
-                if nookSettings.tabOrganizerEnabled, TabOrganizationModel.unavailableNote == nil {
-                    Text("Right-click a space or press \u{2318}\u{21E7}\u{2325}O to organize tabs")
-                        .font(NookDesign.Font.caption)
-                        .foregroundStyle(.tertiary)
+                Group {
+                    if nookSettings.tabOrganizerEnabled, TabOrganizationModel.unavailableNote == nil {
+                        Text("Right-click a space or press \u{2318}\u{21E7}\u{2325}O to organize tabs")
+                            .font(NookDesign.Font.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
+                .settingsFooter()
             }
 
             // MARK: - Downloads
@@ -283,18 +286,18 @@ struct SettingsAITab: View {
                 }
 
                 // Max tokens
-                HStack {
-                    Text("Max Output Tokens")
-                    Spacer()
-                    TextField("4096", value: Binding(
+                LabeledContent("Max Output Tokens") {
+                    TextField("Max Output Tokens", value: Binding(
                         get: { configService.generationConfig.maxTokens },
                         set: {
                             var config = configService.generationConfig
                             config.maxTokens = $0
                             configService.generationConfig = config
                         }
-                    ), format: .number)
+                    ), format: .number.grouping(.never))
+                    .labelsHidden()
                     .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
                     .frame(width: NookDesign.Size.fieldNarrow)
                 }
 
@@ -321,8 +324,11 @@ struct SettingsAITab: View {
                         }
                     ))
                     .font(NookDesign.Font.secondary)
+                    .scrollContentBackground(.hidden)
+                    .padding(NookDesign.Spacing.xs)
                     .frame(height: NookDesign.Size.textEditorHeight)
-                    .border(.quaternary)
+                    .background(NookDesign.Radius.shape(NookDesign.Radius.sm).fill(Color(nsColor: .textBackgroundColor)))
+                    .overlay(NookDesign.Radius.shape(NookDesign.Radius.sm).strokeBorder(NookDesign.Surface.hairline))
                 }
 
                 // Streaming

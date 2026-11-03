@@ -36,6 +36,7 @@ public struct YouTubeSettingsSections: View {
                 Text("YouTube")
             } footer: {
                 Text("Videos per row applies to Home, Subscriptions, and channel pages. Frame thumbnails show a still from the video instead of the uploader's thumbnail.")
+                    .settingsFooter()
             }
 
             Section("Hide on YouTube") {
@@ -55,6 +56,7 @@ public struct YouTubeSettingsSections: View {
                 Toggle("SponsorBlock", isOn: $settings.sponsorBlockEnabled)
             } footer: {
                 Text("Skip sponsored segments, intros, and other non-content on YouTube using community data from SponsorBlock.")
+                    .settingsFooter()
             }
 
             if nookSettings.sponsorBlockEnabled {
