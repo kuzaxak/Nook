@@ -556,8 +556,18 @@ class BrowserManager: ObservableObject {
 
     private var startupWaitedForContentBlocker = false
     private var startupWarmTasks: [UUID: Task<Void, Never>] = [:]
-    /// Runs once the next regular window `createNewWindow(then:)` opened is set up.
+    /// Runs once the next regular window is set up: one `createNewWindow(then:)` opened, or the
+    /// window restored at launch for a link that arrived before it.
     private var nextWindowSetup: ((BrowserWindowState) -> Void)?
+
+    /// Adds `setup` after any setup already waiting for the next regular window.
+    private func whenNextWindowIsSetUp(_ setup: @escaping (BrowserWindowState) -> Void) {
+        let earlier = nextWindowSetup
+        nextWindowSetup = { window in
+            earlier?(window)
+            setup(window)
+        }
+    }
 
     /// Loads a newly registered window's selected page. With "Last Tab, Favorites & Space" the
     /// space's other tabs-section pages then warm one at a time; pinned tabs and favorites load
@@ -980,9 +990,51 @@ class BrowserManager: ObservableObject {
         extensionManager?.uninstallExtension(extensionId)
     }
 
-    /// Presents an external URL in a mini window popup (for URL events)
+    /// A link from another app: the mini window, or a new tab in the current space of a regular
+    /// window, as Settings → Air Traffic Control says.
     func presentExternalURL(_ url: URL) {
-        externalMiniWindowManager.present(url: url)
+        guard nookSettings?.externalLinkDestination == .currentSpace else {
+            externalMiniWindowManager.present(url: url)
+            return
+        }
+        openLinkFromOtherApp(url) { [tabs] window in
+            window.spaceID.flatMap {
+                ExternalLinkDestination.space(showing: $0, spaces: tabs.orderedSpaces.map(\.id), agentSpace: tabs.agentSpaceID)
+            }
+        }
+    }
+
+    /// Opens a link from another app as a selected tab in the frontmost regular window, the one
+    /// that is opening, or a new one, in the space `space` names for that window, and brings
+    /// the window to front.
+    func openLinkFromOtherApp(_ url: URL, space: @escaping (BrowserWindowState) -> UUID?) {
+        let open: (BrowserWindowState) -> Void = { [weak self] window in
+            guard let self else { return }
+            guard let spaceID = space(window) else {
+                externalMiniWindowManager.present(url: url)
+                return
+            }
+            tabs.open(url: url, in: window, placement: .newTab, parent: .tabs(spaceID: spaceID))
+            NSApp.activate()
+            window.bringToFront()
+        }
+        let zOrder = NSApp.orderedWindows
+        func depth(_ window: BrowserWindowState) -> Int { window.window.flatMap(zOrder.firstIndex(of:)) ?? .max }
+        let regular = tabs.regularWindows
+            .filter { !$0.isIncognito && $0.spaceID != nil }
+            .sorted { depth($0) < depth($1) }
+        switch ExternalLinkWindow(
+            activeWindow: windowRegistry?.activeWindowId,
+            regularWindows: regular.map(\.id),
+            windowOpening: !didRestoreSavedWindows || nextWindowSetup != nil
+        ) {
+        case .existing(let id):
+            if let window = regular.first(where: { $0.id == id }) { open(window) }
+        case .opening:
+            whenNextWindowIsSetUp(open)
+        case .new:
+            createNewWindow(then: open)
+        }
     }
 
     // MARK: - Window State Management
@@ -1057,7 +1109,7 @@ class BrowserManager: ObservableObject {
             return
         }
 
-        if let setup { nextWindowSetup = setup }
+        if let setup { whenNextWindowIsSetUp(setup) }
         let newWindow = makeBrowserNSWindow(title: "Nook")
         let contentView = windowContent(ContentView(), windowRegistry: windowRegistry, webViewCoordinator: webViewCoordinator)
         newWindow.contentView = NSHostingView(rootView: contentView)

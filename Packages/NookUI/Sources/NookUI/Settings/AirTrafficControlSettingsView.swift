@@ -22,7 +22,19 @@ public struct AirTrafficControlSettingsView: View {
     public init() {}
 
     public var body: some View {
+        @Bindable var settings = nookSettings
         Form {
+            Section {
+                Picker("Open links from other apps in", selection: $settings.externalLinkDestination) {
+                    ForEach(ExternalLinkDestination.allCases) { destination in
+                        Text(destination.displayName).tag(destination)
+                    }
+                }
+            } footer: {
+                Text("Rules below apply first.")
+                    .settingsFooter()
+            }
+
             Section {
                 if nookSettings.siteRoutingRules.isEmpty {
                     Text("No routing rules configured.")

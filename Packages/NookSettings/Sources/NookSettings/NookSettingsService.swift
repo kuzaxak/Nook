@@ -29,6 +29,7 @@ public final class NookSettingsService {
     private let lastSeenVersionKey = "settings.lastSeenVersion"
     private let askBeforeQuitKey = "settings.askBeforeQuit"
     private let sidebarPositionKey = "settings.sidebarPosition"
+    private let externalLinkDestinationKey = "settings.externalLinkDestination"
     private let topBarAddressViewKey = "settings.topBarAddressView"
 
     private let geminiApiKeyKey = "settings.geminiApiKey"
@@ -304,6 +305,12 @@ public final class NookSettingsService {
         }
     }
     
+    public var externalLinkDestination: ExternalLinkDestination {
+        didSet {
+            userDefaults.set(externalLinkDestination.rawValue, forKey: externalLinkDestinationKey)
+        }
+    }
+
     public var topBarAddressView: Bool {
         didSet {
             userDefaults.set(topBarAddressView, forKey: topBarAddressViewKey)
@@ -705,6 +712,7 @@ public final class NookSettingsService {
             debugToggleUpdateNotificationKey: false,
             askBeforeQuitKey: true,
             sidebarPositionKey: SidebarPosition.left.rawValue,
+            externalLinkDestinationKey: ExternalLinkDestination.miniWindow.rawValue,
             topBarAddressViewKey: false,
 
             geminiModelKey: GeminiModel.flash.rawValue,
@@ -834,6 +842,7 @@ public final class NookSettingsService {
         self.lastSeenVersion = userDefaults.string(forKey: lastSeenVersionKey)
         self.askBeforeQuit = userDefaults.bool(forKey: askBeforeQuitKey)
         self.sidebarPosition = SidebarPosition(rawValue: userDefaults.string(forKey: sidebarPositionKey) ?? "left") ?? SidebarPosition.left
+        self.externalLinkDestination = ExternalLinkDestination(stored: userDefaults.string(forKey: externalLinkDestinationKey))
         self.topBarAddressView = userDefaults.bool(forKey: topBarAddressViewKey)
         self.geminiApiKey = ""  // In-memory only; persistent storage via AIKeychainStorage
         self.geminiModel = GeminiModel(rawValue: userDefaults.string(forKey: geminiModelKey) ?? GeminiModel.flash.rawValue) ?? .flash

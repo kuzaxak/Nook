@@ -128,11 +128,28 @@ public class BrowserWindowState {
 
     /// The platform window, set by the app once it exists.
     @ObservationIgnored public weak var windowHandle: WindowHandle? {
-        didSet { applyPendingFrame() }
+        didSet {
+            applyPendingFrame()
+            if pendingBringToFront, let windowHandle {
+                pendingBringToFront = false
+                windowHandle.bringToFront()
+            }
+        }
     }
 
     /// Saved frame to apply once the platform window exists.
     @ObservationIgnored var pendingFrame: String?
+
+    @ObservationIgnored var pendingBringToFront = false
+
+    /// Brings the platform window to front and makes it key, now or once it exists.
+    public func bringToFront() {
+        guard let windowHandle else {
+            pendingBringToFront = true
+            return
+        }
+        windowHandle.bringToFront()
+    }
 
     /// Applies `pendingFrame` after the window's own setup, which restores the autosaved frame
     /// asynchronously and would otherwise overwrite the saved one.

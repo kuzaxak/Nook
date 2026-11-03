@@ -26,8 +26,8 @@ public final class SiteRoutingManager {
         SiteRoutingRule.best(for: url, in: settings.siteRoutingRules)
     }
 
-    /// Opens `url` as a new tab in the rule's target space, in the window showing `page`
-    /// (or the active window for external URLs). Private windows never route.
+    /// Opens `url` as a new tab in the rule's target space, in the window showing `page`, or
+    /// for a link from another app in the window such links open in. Private windows never route.
     public func applyRoute(url: URL, from page: AnyObject?) -> Bool {
         // A sign-in started by a page has to finish in that page's space, where the login belongs.
         if page != nil, OAuthDetector.isLikelyOAuthURL(url) { return false }

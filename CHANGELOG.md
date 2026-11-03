@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Links from other apps can open in the current space instead of a mini window: Settings → Air Traffic Control, as in Arc
+
 ### Fixed
 
 - ClickUp lists scroll smoothly: Nook rewrites one ClickUp chat style that made WebKit restyle the whole page for every new row

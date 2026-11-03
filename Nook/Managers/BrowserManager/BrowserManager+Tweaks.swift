@@ -20,20 +20,21 @@ private let tweaksLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Nook"
 
 extension BrowserManager: SiteRoutingHost {
     func route(url: URL, toSpace spaceID: UUID, from page: AnyObject?) -> Bool {
-        let session = page as? PageSession
-        // An agent page stays in the Agent space: routing would show the person a new tab.
-        guard session?.isPrivate != true, session?.isAgentPage != true else { return false }
-        guard let window = session.flatMap({ tabs.window(for: $0) }) ?? windowRegistry?.activeWindow,
-              !window.isIncognito
-        else { return false }
-
         guard tabs.space(spaceID) != nil else {
             tweaksLog.debug("Route skipped: target space \(spaceID) no longer exists")
             return false
         }
-        // A page already in the target space loads in place. A link from another app has no
-        // page, and still opens as a tab there.
-        guard session == nil || window.spaceID != spaceID else { return false }
+        guard let session = page as? PageSession else {
+            openLinkFromOtherApp(url) { _ in spaceID }
+            return true
+        }
+        // An agent page stays in the Agent space: routing would show the person a new tab.
+        guard !session.isPrivate, !session.isAgentPage else { return false }
+        guard let window = tabs.window(for: session) ?? windowRegistry?.activeWindow,
+              !window.isIncognito
+        else { return false }
+        // A page already in the target space loads in place.
+        guard window.spaceID != spaceID else { return false }
 
         // Deferred: callers are WebKit policy callbacks. Selecting the new tab shows its space.
         Task { @MainActor [tabs] in
