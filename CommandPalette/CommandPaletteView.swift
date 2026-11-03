@@ -634,6 +634,10 @@ struct CommandPaletteView: View {
                 leaveScopeOneStep(current)
                 return .handled
             }
+            if modifiers.isEmpty, ghostSuffix != nil, caretIsAtEnd {
+                completionSuppressed = true
+                return .handled
+            }
             return .ignored
         }
         switch press.key {
@@ -980,8 +984,8 @@ struct CommandPaletteView: View {
         return isLikelyURL(text) || completion != nil ? "globe" : "magnifyingglass"
     }
 
-    /// What the typed text completes to: the best page whose address starts with it, a host
-    /// worth autofilling first. Off after a deletion, so backspacing does not bring it back.
+    /// What the typed text completes to: the rest of the host or path segment being typed, from
+    /// a host worth autofilling and the pages listed. Off after a deletion until more is typed.
     private var completion: String? {
         guard activeSiteSearch == nil, !completionSuppressed else { return nil }
         let pages = searchManager.suggestions.compactMap { row -> String? in

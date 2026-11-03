@@ -80,23 +80,45 @@ public enum PaletteText {
         return ([displayHost(url), "…"] + segments.suffix(2)).joined(separator: "/")
     }
 
-    /// The ghost for `typed`: the first candidate address (best first) that starts with it once
-    /// scheme, `www.` and a trailing slash are dropped, spelled with the typed part as typed.
+    /// What the typed text completes to: the rest of the segment being typed (the host, else one
+    /// path segment, up to the next `/`, `?` or `#`) in the address of a matching candidate. The
+    /// completion most candidates share wins, the earlier one on a tie. Nil when the typed text
+    /// already ends a segment, so Return opens exactly what was typed or taken.
     public static func completion(for typed: String, candidates: [String]) -> String? {
         guard !typed.isEmpty, !typed.contains(where: \.isWhitespace) else { return nil }
         let lowered = typed.lowercased()
+        var tallies: [(key: String, completion: String, count: Int)] = []
         for candidate in candidates {
-            var address = candidate
-            for scheme in ["https://", "http://"] where address.lowercased().hasPrefix(scheme) {
-                address.removeFirst(scheme.count)
-            }
-            if !lowered.hasPrefix("www."), address.lowercased().hasPrefix("www.") { address.removeFirst(4) }
-            if address.hasSuffix("/") { address.removeLast() }
-            if address.count > typed.count, address.lowercased().hasPrefix(lowered) {
-                return typed + address.dropFirst(typed.count)
+            guard let completion = segmentCompletion(of: typed, lowered: lowered, in: address(of: candidate, typed: lowered))
+            else { continue }
+            let key = completion.lowercased()
+            if let index = tallies.firstIndex(where: { $0.key == key }) {
+                tallies[index].count += 1
+            } else {
+                tallies.append((key, completion, 1))
             }
         }
-        return nil
+        return tallies.max { $0.count < $1.count }?.completion
+    }
+
+    private static let segmentEnds: Set<Character> = ["/", "?", "#"]
+
+    /// `candidate` as the field shows addresses: no scheme, no trailing `/`, and no `www.` unless typed.
+    private static func address(of candidate: String, typed lowered: String) -> String {
+        var address = candidate
+        for scheme in ["https://", "http://"] where address.lowercased().hasPrefix(scheme) {
+            address.removeFirst(scheme.count)
+        }
+        if !lowered.hasPrefix("www."), address.lowercased().hasPrefix("www.") { address.removeFirst(4) }
+        if address.hasSuffix("/") { address.removeLast() }
+        return address
+    }
+
+    private static func segmentCompletion(of typed: String, lowered: String, in address: String) -> String? {
+        guard address.count > typed.count, address.lowercased().hasPrefix(lowered) else { return nil }
+        let rest = address.dropFirst(typed.count)
+        guard let next = rest.first, !segmentEnds.contains(next) else { return nil }
+        return typed + rest.prefix { !segmentEnds.contains($0) }
     }
 
     /// How well a tab or folder matches `query`: nil unless every word appears in `title` or

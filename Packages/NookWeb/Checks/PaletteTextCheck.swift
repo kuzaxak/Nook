@@ -61,13 +61,30 @@ struct PaletteTextCheck {
         precondition(PaletteText.shortURL(URL(string: "https://kagi.com/")!) == "kagi.com")
         precondition(PaletteText.shortURL(URL(string: "http://localhost:3000/admin")!) == "localhost:3000/admin")
 
-        // The ghost: the best page whose address starts with what was typed, in the typed case.
+        // The ghost finishes only the segment being typed, in the typed case: the host, then one
+        // path segment, the one most matching pages go through (the earlier page wins a tie).
         let candidates = ["https://www.github.com/glia/infra", "https://gitlab.com/", "github.com"]
-        precondition(PaletteText.completion(for: "GitH", candidates: candidates) == "GitHub.com/glia/infra")
+        precondition(PaletteText.completion(for: "GitH", candidates: candidates) == "GitHub.com")
         precondition(PaletteText.completion(for: "gitl", candidates: candidates) == "gitlab.com")
+        precondition(PaletteText.completion(for: "github.com", candidates: candidates) == nil, "a finished host is not extended")
+        precondition(PaletteText.completion(for: "github.com/", candidates: candidates) == "github.com/glia")
         precondition(PaletteText.completion(for: "github.com/glia/infra", candidates: candidates) == nil, "nothing left to complete")
         precondition(PaletteText.completion(for: "git hub", candidates: candidates) == nil)
         precondition(PaletteText.completion(for: "", candidates: candidates) == nil)
+        let insly = [
+            "https://github.com/Insly/invoker/blob/d4ae1/internal/devsession/tiltfile.go",
+            "https://github.com/Insly/spaces",
+            "https://github.com/insly/invoker",
+            "https://github.com/Insly/aws-configuration/edit/master/additional_subnet.tf",
+        ]
+        precondition(PaletteText.completion(for: "github.com/Insly/invo", candidates: insly) == "github.com/Insly/invoker")
+        precondition(PaletteText.completion(for: "github.com/Insly/invoker", candidates: insly) == nil, "Return opens what was taken")
+        precondition(PaletteText.completion(for: "github.com/Insly/invoker/", candidates: insly) == "github.com/Insly/invoker/blob")
+        precondition(PaletteText.completion(for: "github.com/", candidates: insly) == "github.com/Insly", "the segment most pages share")
+        precondition(PaletteText.completion(for: "github.com/Insly/", candidates: insly) == "github.com/Insly/invoker")
+        // A query or fragment ends a segment; a port belongs to the host.
+        precondition(PaletteText.completion(for: "kagi.com/sea", candidates: ["https://kagi.com/search?q=swift"]) == "kagi.com/search")
+        precondition(PaletteText.completion(for: "localhost:30", candidates: ["http://localhost:3000/admin"]) == "localhost:3000")
         // Tabs and folders: every word must appear; word-prefix matches in the title rank first.
         precondition(PaletteText.matchScore(query: "team boa", title: "My Team Boards", detail: nil) == 2)
         precondition(PaletteText.matchScore(query: "glia", title: "Infra", detail: "https://github.com/glia/infra") == 1)
