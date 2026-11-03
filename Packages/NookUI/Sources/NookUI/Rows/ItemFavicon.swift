@@ -16,9 +16,9 @@ import NookWeb
 /// The row being renamed inline. Shared so a context menu can start a rename on its row.
 @MainActor
 @Observable
-final class SidebarRenameState {
-    static let shared = SidebarRenameState()
-    var itemID: UUID?
+public final class SidebarRenameState {
+    public static let shared = SidebarRenameState()
+    public var itemID: UUID?
 }
 
 extension TabsController {

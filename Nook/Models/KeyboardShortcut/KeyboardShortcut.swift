@@ -105,6 +105,18 @@ enum ShortcutAction: String, CaseIterable, Hashable, Codable {
     case customizeSpaceGradient = "customize_space_gradient"   // Cmd+Shift+G
     case organizeTabs = "organize_tabs"                        // Cmd+Shift+Option+O
 
+    // Tab menu and app menu commands the command bar runs; unbound until the person binds them
+    case pinToSpace = "pin_to_space"
+    case addToFavorites = "add_to_favorites"
+    case addToFolder = "add_to_folder"
+    case moveToSpace = "move_to_space"
+    case renameTab = "rename_tab"
+    case translatePage = "translate_page"
+    case toggleExtensionLibrary = "toggle_extension_library"
+    case manageExtensions = "manage_extensions"
+    case toggleDarkMode = "toggle_dark_mode"
+    case toggleDeveloperMode = "toggle_developer_mode"
+
     var displayName: String {
         switch self {
         case .goBack: return "Go Back"
@@ -126,6 +138,16 @@ enum ShortcutAction: String, CaseIterable, Hashable, Codable {
         case .goToTab8: return "Go to Tab 8"
         case .goToLastTab: return "Go to Last Tab"
         case .duplicateTab: return "Duplicate Tab"
+        case .pinToSpace: return "Pin to Space"
+        case .addToFavorites: return "Add to Favorites"
+        case .addToFolder: return "Add to Folder…"
+        case .moveToSpace: return "Move to Space…"
+        case .renameTab: return "Rename Tab"
+        case .translatePage: return "Translate Page"
+        case .toggleExtensionLibrary: return "Toggle Extension Library"
+        case .manageExtensions: return "Manage Extensions"
+        case .toggleDarkMode: return "Toggle Dark Mode"
+        case .toggleDeveloperMode: return "Toggle Developer Mode for Site"
         case .toggleBookmark: return "Bookmark Tab"
         case .toggleTopBarAddressView: return "Toggle Top Bar Address View"
         case .nextSpace: return "Next Space"
@@ -177,13 +199,15 @@ enum ShortcutAction: String, CaseIterable, Hashable, Codable {
         switch self {
         case .goBack, .goForward, .refresh, .clearCookiesAndRefresh:
             return .navigation
-        case .newTab, .closeTab, .undoCloseTab, .nextTab, .previousTab, .goToTab1, .goToTab2, .goToTab3, .goToTab4, .goToTab5, .goToTab6, .goToTab7, .goToTab8, .goToLastTab, .duplicateTab, .toggleBookmark, .toggleTopBarAddressView:
+        case .newTab, .closeTab, .undoCloseTab, .nextTab, .previousTab, .goToTab1, .goToTab2, .goToTab3, .goToTab4, .goToTab5, .goToTab6, .goToTab7, .goToTab8, .goToLastTab, .duplicateTab, .toggleBookmark, .toggleTopBarAddressView,
+             .pinToSpace, .addToFavorites, .addToFolder, .moveToSpace, .renameTab:
             return .tabs
         case .nextSpace, .previousSpace, .goToSpace1, .goToSpace2, .goToSpace3, .goToSpace4, .goToSpace5, .goToSpace6, .goToSpace7, .goToSpace8, .goToSpace9:
             return .spaces
         case .newWindow, .closeWindow, .closeBrowser, .toggleFullScreen:
             return .window
-        case .openCommandPalette, .openDevTools, .openDevPanel, .pickElement, .viewDownloads, .viewHistory, .expandAllFolders:
+        case .openCommandPalette, .openDevTools, .openDevPanel, .pickElement, .viewDownloads, .viewHistory, .expandAllFolders,
+             .translatePage, .toggleExtensionLibrary, .manageExtensions, .toggleDarkMode, .toggleDeveloperMode:
             return .tools
         case .focusAddressBar, .findInPage:
             return .navigation
@@ -367,6 +391,17 @@ extension KeyboardShortcut {
             KeyboardShortcut(action: .goToLastTab, keyCombination: KeyCombination(key: "9", modifiers: [.command])),
             KeyboardShortcut(action: .duplicateTab, keyCombination: KeyCombination(key: "d", modifiers: [.option])),
             KeyboardShortcut(action: .toggleBookmark, keyCombination: KeyCombination(key: "d", modifiers: [.command])),
+            // Listed unbound so Settings offers them for binding.
+            KeyboardShortcut(action: .pinToSpace, keyCombination: KeyCombination(key: "")),
+            KeyboardShortcut(action: .addToFavorites, keyCombination: KeyCombination(key: "")),
+            KeyboardShortcut(action: .addToFolder, keyCombination: KeyCombination(key: "")),
+            KeyboardShortcut(action: .moveToSpace, keyCombination: KeyCombination(key: "")),
+            KeyboardShortcut(action: .renameTab, keyCombination: KeyCombination(key: "")),
+            KeyboardShortcut(action: .translatePage, keyCombination: KeyCombination(key: "")),
+            KeyboardShortcut(action: .toggleExtensionLibrary, keyCombination: KeyCombination(key: "")),
+            KeyboardShortcut(action: .manageExtensions, keyCombination: KeyCombination(key: "")),
+            KeyboardShortcut(action: .toggleDarkMode, keyCombination: KeyCombination(key: "")),
+            KeyboardShortcut(action: .toggleDeveloperMode, keyCombination: KeyCombination(key: "")),
             KeyboardShortcut(action: .toggleTopBarAddressView, keyCombination: KeyCombination(key: "t", modifiers: [.command, .option])),
 
             // Space Management

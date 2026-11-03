@@ -79,6 +79,26 @@ public class SearchManager {
         public let detail: String
     }
 
+    /// A command the bar runs on the tab that was selected when it opened.
+    public struct ActionMatch {
+        /// What the bar runs: an action's name, then a colon and the choice's id for a choice.
+        public let id: String
+        public let title: String
+        /// Its shortcut, e.g. "⇧⌘C".
+        public let detail: String?
+        public let icon: String
+        /// Tab or Return lists its choices (a folder, a space) instead of running it.
+        public let takesChoice: Bool
+
+        public init(id: String, title: String, detail: String?, icon: String, takesChoice: Bool) {
+            self.id = id
+            self.title = title
+            self.detail = detail
+            self.icon = icon
+            self.takesChoice = takesChoice
+        }
+    }
+
     public struct SearchSuggestion: Identifiable, Equatable {
         public let id = UUID()
         public let text: String
@@ -97,6 +117,7 @@ public class SearchManager {
             case url
             case tab(TabMatch)
             case folder(FolderMatch)
+            case action(ActionMatch)
             case history(HistoryEntry)
         }
 
@@ -109,6 +130,8 @@ public class SearchManager {
                 return lhs.text == rhs.text && lhsTab.itemID == rhsTab.itemID
             case (.folder(let lhsFolder), .folder(let rhsFolder)):
                 return lhsFolder.itemID == rhsFolder.itemID
+            case (.action(let lhsAction), .action(let rhsAction)):
+                return lhsAction.id == rhsAction.id
             case (.history(let lhsHistory), .history(let rhsHistory)):
                 return lhs.text == rhs.text && lhsHistory.id == rhsHistory.id
             default:

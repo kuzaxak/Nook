@@ -11,6 +11,7 @@ import AppKit
 import SwiftUI
 import WebKit
 import NookWeb
+import NookUI
 
 @MainActor
 @Observable
@@ -18,7 +19,7 @@ class KeyboardShortcutManager {
     private let userDefaults = UserDefaults.standard
     private let shortcutsKey = "keyboard.shortcuts"
     private let shortcutsVersionKey = "keyboard.shortcuts.version"
-    private let currentVersion = 11 // Increment when adding new shortcuts; 10 added Go to Space 1-9 (Ctrl+1-9) and moved Next/Previous Space to Cmd+Opt+arrows; 11 added Bookmark Tab (Cmd+D)
+    private let currentVersion = 12 // Increment when adding new shortcuts; 10 added Go to Space 1-9 (Ctrl+1-9) and moved Next/Previous Space to Cmd+Opt+arrows; 11 added Bookmark Tab (Cmd+D); 12 listed the command bar actions unbound
 
     /// Defaults that changed key: a user still on the old key gets the new one.
     private let movedDefaults: [(action: ShortcutAction, from: KeyCombination, version: Int)] = [
@@ -461,6 +462,12 @@ class KeyboardShortcutManager {
         return event.modifierFlags.contains(.control) && !event.modifierFlags.contains(.command)
     }
 
+    /// Runs `action` on the active window, as its shortcut would. The command bar runs its
+    /// actions through here too.
+    func perform(_ action: ShortcutAction) {
+        executeAction(action)
+    }
+
     private func executeAction(_ action: ShortcutAction) {
         guard let browserManager = browserManager else { return }
 
@@ -597,6 +604,33 @@ class KeyboardShortcutManager {
                 browserManager.showSpaceSettings()
             case .organizeTabs:
                 NotificationCenter.default.post(name: .organizeTabsRequested, object: nil)
+
+            case .pinToSpace, .addToFavorites:
+                guard let window, let selected = window.selectedItemID,
+                      let spaceID = tabs.spaceID(of: selected) ?? window.spaceID else { break }
+                tabs.pin(selected, to: action == .pinToSpace ? .pinned(spaceID: spaceID) : .favorites(spaceID: spaceID))
+            case .addToFolder, .moveToSpace:
+                // Both need a choice, which the command bar lists.
+                window?.commandPalette?.open(prefill: "> " + action.displayName)
+            case .renameTab:
+                guard let window, let selected = window.selectedItemID else { break }
+                tabs.reveal(selected, in: window)
+                SidebarRenameState.shared.itemID = selected
+            case .translatePage:
+                tabs.activeWindowSession?.toggleTranslation()
+            case .toggleExtensionLibrary:
+                browserManager.toggleExtensionLibrary()
+            case .manageExtensions:
+                SettingsNavigation.shared.currentSettingsTab = .extensions
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            case .toggleDarkMode:
+                guard let settings = browserManager.nookSettings else { break }
+                let isDark = settings.appearanceMode == .dark
+                    || (settings.appearanceMode == .system && NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+                settings.appearanceMode = isDark ? .light : .dark
+            case .toggleDeveloperMode:
+                guard let settings = browserManager.nookSettings, let host = tabs.activeWindowSession?.url.host else { break }
+                settings.setDeveloperSite(host, on: !settings.isDeveloperSite(host))
             }
 
         }

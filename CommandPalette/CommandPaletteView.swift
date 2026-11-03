@@ -39,12 +39,18 @@ struct CommandPaletteView: View {
         case tabs
         case history
         case folder([FolderCrumb])
+        /// `> `: commands only.
+        case actions
+        /// The folders or spaces an action like Move to Space can take.
+        case choices(ShortcutAction)
 
-        var searchScope: SearchManager.Scope {
+        /// What SearchManager searches; nil for the scopes the bar lists itself.
+        var searchScope: SearchManager.Scope? {
             switch self {
             case .tabs: return .tabs
             case .history: return .history
-            case .folder(let path): return path.last.map { .folder($0.id) } ?? .all
+            case .folder(let path): return path.last.map { .folder($0.id) }
+            case .actions, .choices: return nil
             }
         }
 
@@ -53,6 +59,8 @@ struct CommandPaletteView: View {
             case .tabs: return "Tabs"
             case .history: return "History"
             case .folder(let path): return path.map(\.title).joined(separator: " › ")
+            case .actions: return "Actions"
+            case .choices(let action): return action.displayName.replacingOccurrences(of: "…", with: "")
             }
         }
     }
@@ -83,7 +91,12 @@ struct CommandPaletteView: View {
     /// first row in a scope, which has no Return row.
     private var visibleSuggestions: [SearchManager.SearchSuggestion] {
         var found = searchManager.suggestions
-        if scope != nil { return Array(found.prefix(SearchManager.scopedLimit)) }
+        switch scope {
+        case .actions: return actionRows(matching: text, wordPrefixOnly: false)
+        case .choices(let action): return choiceRows(for: action, matching: text)
+        case .some: return Array(found.prefix(SearchManager.scopedLimit))
+        case nil: break
+        }
         if activeSiteSearch != nil {
             found = found.filter {
                 if case .search = $0.type { return true }
@@ -93,11 +106,12 @@ struct CommandPaletteView: View {
         guard let primary = primarySuggestion else { return found }
         let rest = found.filter { row in
             switch row.type {
-            case .tab, .folder, .history: return true
+            case .tab, .folder, .action, .history: return true
             case .url, .search: return row.text.caseInsensitiveCompare(primary.text) != .orderedSame
             }
         }
-        return [primary] + rest.prefix(8)
+        let actions = activeSiteSearch == nil && text.count >= 2 ? Array(actionRows(matching: text, wordPrefixOnly: true).prefix(2)) : []
+        return [primary] + actions + rest.prefix(8 - actions.count)
     }
 
     /// What Return does with what was typed: the completed address, the address, or a search.
@@ -122,7 +136,15 @@ struct CommandPaletteView: View {
     }
 
     private func search(_ query: String) {
-        searchManager.searchSuggestions(for: query, scope: scope?.searchScope ?? .all)
+        guard let scope else {
+            searchManager.searchSuggestions(for: query)
+            return
+        }
+        if let searchScope = scope.searchScope {
+            searchManager.searchSuggestions(for: query, scope: searchScope)
+        } else {
+            searchManager.clearSuggestions()
+        }
     }
 
     private func setScope(_ newScope: PaletteScope?) {
@@ -241,6 +263,11 @@ struct CommandPaletteView: View {
                                            let prefixScope = Self.prefixScopes[newValue] {
                                             withAnimation(NookDesign.Motion.spring) { scope = prefixScope }
                                             text = ""
+                                            return
+                                        }
+                                        if scope == nil, activeSiteSearch == nil, newValue.hasPrefix(Self.actionsPrefix) {
+                                            withAnimation(NookDesign.Motion.spring) { scope = .actions }
+                                            text = String(newValue.dropFirst(Self.actionsPrefix.count))
                                             return
                                         }
                                         search(newValue)
@@ -447,6 +474,8 @@ struct CommandPaletteView: View {
                 TabSuggestionItem(tab: tab, showsFullURL: showsFullURL)
             case .folder(let folder):
                 FolderSuggestionItem(folder: folder)
+            case .action(let action):
+                ActionSuggestionItem(action: action)
             case .history(let entry):
                 HistorySuggestionItem(entry: entry, showsFullURL: showsFullURL)
             case .url:
@@ -496,7 +525,13 @@ struct CommandPaletteView: View {
 
     private func selectSuggestion(_ suggestion: SearchManager.SearchSuggestion)
     {
+        if case .action(let action) = suggestion.type {
+            runAction(action)
+            return
+        }
         switch suggestion.type {
+        case .action:
+            break
         case .tab(let match):
             browserManager.tabs.select(match.itemID, in: windowState)
         case .folder(let folder):
@@ -636,16 +671,22 @@ struct CommandPaletteView: View {
             return .handled
         }
         // A folder row, or a folder that is the top match, becomes the chip.
-        let topMatch = selectedSuggestionIndex < 0 && scope == nil && visibleSuggestions.count > 1 ? visibleSuggestions[1] : nil
+        let topMatch = selectedSuggestionIndex < 0 && scope == nil
+            ? visibleSuggestions.dropFirst().first { if case .action = $0.type { return false } else { return true } }
+            : nil
         if case .folder(let folder) = (highlightedRow ?? topMatch)?.type {
             enterFolder(folder)
+            return .handled
+        }
+        if case .action(let action) = highlightedRow?.type {
+            if action.takesChoice { runAction(action) }
             return .handled
         }
         if scope != nil { return .handled }
         if selectedSuggestionIndex >= 0, selectedSuggestionIndex < visibleSuggestions.count {
             let row = visibleSuggestions[selectedSuggestionIndex]
             switch row.type {
-            case .folder: break
+            case .folder, .action: break
             case .tab(let match): text = PaletteText.refineText(for: match.url)
             case .history(let entry): text = PaletteText.refineText(for: entry.url)
             case .url: text = URL(string: row.text).flatMap { $0.host == nil ? nil : PaletteText.refineText(for: $0) } ?? row.text
@@ -664,6 +705,90 @@ struct CommandPaletteView: View {
 
     /// Text that turns into a scope chip as it is typed.
     private static let prefixScopes: [String: PaletteScope] = ["t ": .tabs, "h ": .history]
+    /// Typed first, lists commands only, as in VS Code.
+    private static let actionsPrefix = "> "
+
+    // MARK: - Actions
+
+    /// Shortcut actions that only make sense outside the bar stay out of it.
+    private static let barActions: [ShortcutAction] = {
+        let excluded = Set<ShortcutAction>([
+            .newTab, .openCommandPalette, .focusAddressBar, .nextTab, .previousTab, .goToLastTab, .nextSpace, .previousSpace,
+            .goToTab1, .goToTab2, .goToTab3, .goToTab4, .goToTab5, .goToTab6, .goToTab7, .goToTab8,
+        ]).union(ShortcutAction.goToSpaceActions)
+        return ShortcutAction.allCases.filter { !excluded.contains($0) }
+    }()
+
+    /// Actions whose names match `query`, with their current shortcuts. Mixed into results only
+    /// when each word starts a word of the name; the `> ` scope lists substring matches too.
+    private func actionRows(matching query: String, wordPrefixOnly: Bool) -> [SearchManager.SearchSuggestion] {
+        let manager = browserManager.keyboardShortcutManager
+        let scored = Self.barActions.compactMap { action -> (row: SearchManager.SearchSuggestion, score: Int)? in
+            guard let score = PaletteText.matchScore(query: query, title: action.displayName, detail: nil),
+                  !wordPrefixOnly || score == 2 else { return nil }
+            let shortcut = manager?.shortcut(for: action).flatMap { $0.isEnabled && !$0.keyCombination.key.isEmpty ? $0.keyCombination.displayString : nil }
+            let match = SearchManager.ActionMatch(id: action.rawValue, title: action.displayName, detail: shortcut,
+                                                  icon: action.category.icon, takesChoice: action == .addToFolder || action == .moveToSpace)
+            return (SearchManager.SearchSuggestion(text: action.displayName, type: .action(match), section: "Actions"), score)
+        }
+        return scored.sorted { $0.score != $1.score ? $0.score > $1.score : $0.row.text < $1.row.text }.map(\.row)
+    }
+
+    /// The folders of this space (Add to Folder) or the other spaces (Move to Space).
+    private func choiceRows(for action: ShortcutAction, matching query: String) -> [SearchManager.SearchSuggestion] {
+        let tabs = browserManager.tabs
+        guard let spaceID = windowState.selectedItemID.flatMap(tabs.spaceID(of:)) ?? windowState.spaceID else { return [] }
+        var choices: [(id: UUID, title: String, icon: String)] = []
+        switch action {
+        case .addToFolder:
+            var path: [String] = []
+            for folder in tabs.folders(inSpace: spaceID) {
+                path = Array(path.prefix(folder.depth)) + [folder.item.displayTitle]
+                choices.append((folder.item.id, path.joined(separator: " › "), "folder"))
+            }
+        case .moveToSpace:
+            choices = tabs.spaces(visibleIn: windowState).filter { $0.id != spaceID }.map { ($0.id, $0.name, "square.stack") }
+        default:
+            break
+        }
+        return choices.filter { PaletteText.matchScore(query: query, title: $0.title, detail: nil) != nil }.map { choice in
+            let match = SearchManager.ActionMatch(id: "\(action.rawValue):\(choice.id.uuidString)", title: choice.title,
+                                                  detail: nil, icon: choice.icon, takesChoice: false)
+            return SearchManager.SearchSuggestion(text: choice.title, type: .action(match))
+        }
+    }
+
+    /// Runs an action row on the tab selected when the bar opened, through the same handler as
+    /// its shortcut. An action that needs a choice lists the choices instead.
+    private func runAction(_ match: SearchManager.ActionMatch) {
+        let parts = match.id.split(separator: ":", maxSplits: 1).map(String.init)
+        guard let action = ShortcutAction(rawValue: parts[0]) else { return }
+        if match.takesChoice {
+            activeSiteSearch = nil
+            text = ""
+            setScope(.choices(action))
+            return
+        }
+        if let url = URL(string: "nook-action:\(action.rawValue)") {
+            browserManager.historyManager.recordPick(prefix: text, url: url)
+        }
+        let tabs = browserManager.tabs
+        let selected = windowState.selectedItemID
+        commandPalette.close()
+        if parts.count == 2, let choice = UUID(uuidString: parts[1]) {
+            guard let selected else { return }
+            switch action {
+            case .addToFolder:
+                tabs.move(selected, to: .folder(itemID: choice), after: tabs.children(of: .folder(itemID: choice)).last?.id)
+            case .moveToSpace:
+                tabs.move(selected, to: .tabs(spaceID: choice), after: nil)
+            default:
+                break
+            }
+            return
+        }
+        browserManager.keyboardShortcutManager?.perform(action)
+    }
 
     /// Tab on a folder: the chip becomes that folder, one level deeper inside a folder scope.
     private func enterFolder(_ folder: SearchManager.FolderMatch) {
@@ -680,6 +805,10 @@ struct CommandPaletteView: View {
     private func leaveScopeOneStep(_ current: PaletteScope) {
         if case .folder(let path) = current, path.count > 1 {
             setScope(.folder(Array(path.dropLast())))
+            return
+        }
+        if case .choices = current {
+            setScope(.actions)
             return
         }
         let restored = Self.prefixScopes.first { $0.value == current }?.key
@@ -774,7 +903,7 @@ struct CommandPaletteView: View {
     /// The page a row stands for; nil for an open tab, which is switched to instead.
     private func url(for row: SearchManager.SearchSuggestion) -> URL? {
         switch row.type {
-        case .tab, .folder: return nil
+        case .tab, .folder, .action: return nil
         case .history(let entry): return entry.url
         case .url, .search:
             if activeSiteSearch != nil, case .search = row.type { return activeSiteSearch?.searchURL(for: row.text) }
@@ -814,7 +943,7 @@ struct CommandPaletteView: View {
             switch row.type {
             case .history(let entry): return entry.url.absoluteString
             case .tab(let match): return match.url.absoluteString
-            case .url, .search, .folder: return nil
+            case .url, .search, .folder, .action: return nil
             }
         }
         return PaletteText.completion(for: text, candidates: (searchManager.autofillHost.map { [$0] } ?? []) + pages)

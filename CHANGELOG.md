@@ -21,6 +21,8 @@
 - Command bar rows show the title over a short address; hold ⌘ for the full one
 - Command bar finds sidebar folders and renamed pinned links by word; Tab on a folder searches inside it (sub-folders too), Return shows it in the sidebar
 - Command bar scopes: `t ` lists tabs by space, `h ` or Ctrl+R lists history; sections with headers and up to 8 rows
+- Command bar actions: commands such as Copy Current URL, Pin to Space or Move to Space run from the bar with their shortcuts shown; `> ` lists only actions
+- New bindable actions: Pin to Space, Add to Favorites, Add to Folder, Move to Space, Rename Tab, Translate Page, Toggle Extension Library, Manage Extensions, Toggle Dark Mode, Toggle Developer Mode for Site
 
 ## 1.4.0
 
