@@ -176,13 +176,12 @@ struct TopBarView: View {
                         }
                     }
 
-                if isHovering {
-                    Button("Copy URL", systemImage: "link") { browserManager.copyCurrentURL() }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(NookIconButtonStyle(size: NookDesign.Size.iconButton, radius: NookDesign.Radius.sm))
-                        .help(browserManager.help("Copy URL", shortcut: .copyCurrentURL))
-                        .transition(.opacity)
-                }
+                Button("Copy URL", systemImage: "link") { browserManager.copyCurrentURL() }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(NookIconButtonStyle(size: NookDesign.Size.iconButton, radius: NookDesign.Radius.sm))
+                    .help(browserManager.help("Copy URL", shortcut: .copyCurrentURL))
+                    .opacity(isHovering ? 1 : 0)
+                    .allowsHitTesting(isHovering)
 
                 // Pinned extension buttons + library button (not covered by tap gesture)
                 if let extensionManager = browserManager.extensionManager {
@@ -215,7 +214,9 @@ struct TopBarView: View {
             value: urlBarBackgroundColor
         )
         .clipShape(NookDesign.Radius.shape(NookDesign.Radius.md))
-        .onHoverTracking { hovering in
+        // SwiftUI's hover, not the tracking-area one: the bar lies under the window's unified
+        // toolbar, where an NSTrackingArea loses the pointer partway across.
+        .onHover { hovering in
             withAnimation(NookDesign.Motion.quick) {
                 isHovering = hovering
             }
