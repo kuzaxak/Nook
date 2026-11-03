@@ -717,6 +717,22 @@ extension TabsController {
         perform(owner, "updateSpace") { try $0.updateSpace(spaceID, name: name, icon: icon, accentHex: accentHex) }
     }
 
+    /// The engine a space searches with; nil follows the app's default.
+    public func setSearchEngine(_ engineId: String?, forSpace spaceID: UUID) {
+        guard let owner = owner(ofSpace: spaceID), spaceID != agentSpaceID else { return }
+        perform(owner, "setSearchEngine") { try $0.setSearchEngine(spaceID, engineId: engineId) }
+    }
+
+    /// The engine id a space searches with: its own choice, else the app's default.
+    public func searchEngineId(forSpace spaceID: UUID?) -> String {
+        spaceID.flatMap { space($0)?.searchEngineId } ?? settings.searchEngineId
+    }
+
+    /// The query template searches from a space use.
+    public func searchTemplate(forSpace spaceID: UUID?) -> String {
+        settings.searchTemplate(for: searchEngineId(forSpace: spaceID))
+    }
+
     /// Not undoable: the editor writes on every drag step, and each would be an undo entry.
     public func setTheme(_ theme: SpaceTheme, forSpace spaceID: UUID) {
         guard let owner = owner(ofSpace: spaceID), spaceID != agentSpaceID else { return }

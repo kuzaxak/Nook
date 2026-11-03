@@ -476,7 +476,7 @@ public class SearchManager {
         // Every keystroke goes to the endpoint, so a private window sends none, and an engine
         // only hears from people who chose it. Unknown window or settings: send nothing. Kagi's
         // endpoint answers without the session token, so the token never leaves for it.
-        guard let window, !window.isIncognito, let engine = tabs?.settings.searchEngineId else { return [] }
+        guard let window, !window.isIncognito, let engine = tabs?.searchEngineId(forSpace: window.spaceID) else { return [] }
         var components: URLComponents
         switch engine {
         case SearchProvider.google.rawValue:

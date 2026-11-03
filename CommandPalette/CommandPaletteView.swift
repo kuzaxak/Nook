@@ -570,7 +570,7 @@ struct CommandPaletteView: View {
             } else {
                 // Normalize the URL/search query first, then create the tab with
                 // the correct URL so the webview loads it directly without a race.
-                let template = browserManager.nookSettings?.resolvedSearchEngineTemplate ?? SearchProvider.google.queryTemplate
+                let template = browserManager.tabs.searchTemplate(forSpace: windowState.spaceID)
                 let resolved = normalizeURL(suggestion.text, queryTemplate: template)
                 if let url = URL(string: resolved) {
                     let id = browserManager.tabs.open(url: url, in: windowState, placement: .newTab)
@@ -933,7 +933,7 @@ struct CommandPaletteView: View {
         case .history(let entry): return entry.url
         case .url, .search:
             if activeSiteSearch != nil, case .search = row.type { return activeSiteSearch?.searchURL(for: row.text) }
-            let template = browserManager.nookSettings?.resolvedSearchEngineTemplate ?? SearchProvider.google.queryTemplate
+            let template = browserManager.tabs.searchTemplate(forSpace: windowState.spaceID)
             return URL(string: normalizeURL(row.text, queryTemplate: template))
         }
     }

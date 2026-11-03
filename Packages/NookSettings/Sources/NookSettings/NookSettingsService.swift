@@ -164,16 +164,26 @@ public final class NookSettingsService {
     }
 
     /// Resolves the current `searchEngineId` to a query template string.
-    /// Checks built-in `SearchProvider` cases first, then custom engines.
-    public var resolvedSearchEngineTemplate: String {
-        if let provider = SearchProvider(rawValue: searchEngineId) {
+    public var resolvedSearchEngineTemplate: String { searchTemplate(for: searchEngineId) }
+
+    /// The query template of an engine id: a built-in `SearchProvider` (Kagi with the Session
+    /// Link token when one is saved), else a custom engine, else Google.
+    public func searchTemplate(for engineId: String) -> String {
+        if let provider = SearchProvider(rawValue: engineId) {
             if provider == .kagi, let kagiSessionToken { return KagiSession.searchTemplate(token: kagiSessionToken) }
             return provider.queryTemplate
         }
-        if let custom = customSearchEngines.first(where: { $0.id.uuidString == searchEngineId }) {
+        if let custom = customSearchEngines.first(where: { $0.id.uuidString == engineId }) {
             return custom.urlTemplate
         }
         return SearchProvider.google.queryTemplate
+    }
+
+    /// The name shown for an engine id.
+    public func searchEngineName(for engineId: String) -> String {
+        SearchProvider(rawValue: engineId)?.displayName
+            ?? customSearchEngines.first { $0.id.uuidString == engineId }?.name
+            ?? SearchProvider.google.displayName
     }
     
     public var tabManagementMode: TabManagementMode {

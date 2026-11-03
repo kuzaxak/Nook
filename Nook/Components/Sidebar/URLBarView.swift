@@ -474,7 +474,7 @@ struct URLBarView: View {
         case .history(let entry): url = entry.url
         case .tab(let match): url = match.url
         case .url, .search:
-            let template = browserManager.nookSettings?.resolvedSearchEngineTemplate ?? SearchProvider.google.queryTemplate
+            let template = browserManager.tabs.searchTemplate(forSpace: windowState.spaceID)
             url = URL(string: normalizeURL(suggestion.text, queryTemplate: template))
         }
         guard let url else { return }

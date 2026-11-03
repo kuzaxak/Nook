@@ -7,6 +7,7 @@
 //  history), so its data is inspected and cleared here too.
 //
 
+import NookSettings
 import NookTabsCore
 import SwiftUI
 import NookDesign
@@ -14,6 +15,7 @@ import NookWeb
 
 public struct SpacesSettingsView: View {
     @Environment(TabsController.self) private var tabs
+    @Environment(NookSettingsService.self) private var nookSettings
     @Environment(\.tabActions) private var actions
 
     /// Data size per profile, filled in as each store answers.
@@ -96,6 +98,28 @@ public struct SpacesSettingsView: View {
         }
     }
 
+    /// Which engine searches from this space use; "Default" follows Settings → General.
+    private func searchEngineMenu(_ space: SpaceRecord) -> some View {
+        let current = tabs.space(space.id)?.searchEngineId
+        let defaultName = nookSettings.searchEngineName(for: nookSettings.searchEngineId)
+        return Menu {
+            Button("Default (\(defaultName))") { tabs.setSearchEngine(nil, forSpace: space.id) }
+            Divider()
+            ForEach(SearchProvider.allCases) { provider in
+                Button(provider.displayName) { tabs.setSearchEngine(provider.rawValue, forSpace: space.id) }
+            }
+            ForEach(nookSettings.customSearchEngines) { engine in
+                Button(engine.name) { tabs.setSearchEngine(engine.id.uuidString, forSpace: space.id) }
+            }
+        } label: {
+            Text("Search: " + (current.map(nookSettings.searchEngineName(for:)) ?? "Default (\(defaultName))"))
+                .font(NookDesign.Font.caption)
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
     private func profilePicker(_ space: SpaceRecord) -> some View {
         let current = tabs.profiles.first { $0.spaceIDs.contains(space.id) }
         // A nil selection is "New Profile"; every space is always in some profile.
@@ -167,6 +191,7 @@ public struct SpacesSettingsView: View {
                     set: { tabs.updateSpace(space.id, name: $0, icon: nil, accentHex: nil) }
                 ))
                 .textFieldStyle(.plain)
+                searchEngineMenu(space)
             }
             .frame(minWidth: 140, alignment: .leading)
             .layoutPriority(1)

@@ -27,6 +27,7 @@
 - New bindable actions: Pin to Space, Add to Favorites, Add to Folder, Move to Space, Rename Tab, Translate Page, Toggle Extension Library, Manage Extensions, Toggle Dark Mode, Toggle Developer Mode for Site
 - Kagi Session Link: paste it in Settings → General and Kagi searches are signed in from every space; the token stays in the Keychain and out of history and tabs
 - Search suggestions from Kagi when Kagi is the search engine
+- Search engine per space (Settings → Spaces → Search), e.g. Kagi in one space and Google in another
 - Control-Tab shows up to 20 recent tabs in rows; arrow keys and Return work while it is open
 - The sidebar keeps the selected tab in view; denser tab rows; tab titles stay faded before the close button while it is under the pointer
 - Closing the command bar gives the keyboard back to the page

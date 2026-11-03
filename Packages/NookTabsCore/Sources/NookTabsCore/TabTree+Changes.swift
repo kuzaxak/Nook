@@ -186,6 +186,18 @@ extension TabTree {
         return change
     }
 
+    /// Sets the engine a space searches with; nil goes back to the app's default.
+    @discardableResult
+    public mutating func setSearchEngine(_ id: UUID, engineId: String?, now: Date = Date()) throws -> Change {
+        guard var target = space(id) else { throw TreeError.missingSpace }
+        target.searchEngineId = engineId
+        guard target != spaces[id] else { return Change() }
+        target.modifiedAt = now
+        var change = Change()
+        record(&change, space: target)
+        return change
+    }
+
     /// Reorders a space, placing it directly after `after` (nil = first).
     @discardableResult
     public mutating func moveSpace(_ id: UUID, after: UUID?, now: Date = Date()) throws -> Change {

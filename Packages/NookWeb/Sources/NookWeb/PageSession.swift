@@ -579,7 +579,7 @@ public final class PageSession: NSObject, Identifiable {
 
     /// Navigates to typed input with search engine normalization.
     public func navigate(to input: String) {
-        let template = controller?.settings.resolvedSearchEngineTemplate ?? SearchProvider.google.queryTemplate
+        let template = controller.map { $0.searchTemplate(forSpace: $0.spaceID(of: itemID)) } ?? SearchProvider.google.queryTemplate
         guard let validURL = URL(string: normalizeURL(input, queryTemplate: template)) else { return }
         load(validURL)
     }

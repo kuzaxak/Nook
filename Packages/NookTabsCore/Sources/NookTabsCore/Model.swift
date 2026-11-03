@@ -19,6 +19,9 @@ public struct SpaceRecord: Identifiable, Codable, Hashable, Sendable {
     /// The chrome theme from Edit Theme Color; nil draws the plain `accentHex` gradient.
     /// An older build drops it on save and the space falls back to that gradient.
     public var theme: SpaceTheme?
+    /// The search engine this space searches with (a provider's raw value or a custom engine's
+    /// id); nil follows the app's default.
+    public var searchEngineId: String?
 
     public init(id: UUID = UUID(), name: String, icon: String, accentHex: String, order: OrderKey, modifiedAt: Date = Date(), deletedAt: Date? = nil, dataStoreID: UUID? = nil, profileName: String? = nil, theme: SpaceTheme? = nil) {
         self.theme = theme
