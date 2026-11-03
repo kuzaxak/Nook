@@ -28,18 +28,27 @@ extension BrowserManager {
         nookSettings?.topBarAddressView == true && !showsDeveloperBar(in: windowState)
     }
 
-    /// Whether the dev panels and picker can run. On a site with Developer Mode on they work from
-    /// its bar alone, as in Arc: the first use turns on Settings > Developer > Developer Mode, which
-    /// installs page capture. Browser Control stays off until it is chosen there.
-    func developerCaptureAvailable() -> Bool {
-        guard let settings = nookSettings else { return false }
-        if settings.developerModeEnabled { return true }
-        guard let window = windowRegistry?.activeWindow, showsDeveloperBar(in: window) else { return false }
-        settings.browserControlServerEnabled = false
-        settings.developerModeEnabled = true
-        tabs.setDeveloperMode(true)
-        showWindowToast("Developer tools on. Reload to capture this page", in: window)
-        return true
+    /// Runs a tool that needs page capture (Settings > Developer > Developer Mode). On a site with
+    /// Developer Mode on, the bar's tools ask to turn it on rather than sit greyed out; turning it
+    /// on here does what the Settings toggle does, Browser Control included.
+    func withDeveloperCapture(_ action: @escaping () -> Void) {
+        guard let settings = nookSettings else { return }
+        if settings.developerModeEnabled { action(); return }
+        guard let windowState = windowRegistry?.activeWindow, showsDeveloperBar(in: windowState),
+              let window = windowState.windowHandle as? NSWindow else { return }
+        let alert = NSAlert()
+        alert.messageText = "Turn on Developer Mode?"
+        alert.informativeText = "Console, Network, Performance and Pick Element record what pages do. While Developer Mode is on, that happens on every site, not only this one. You can turn it off in Settings → Developer."
+        alert.addButton(withTitle: "Turn On")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self, weak windowState] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            settings.developerModeEnabled = true
+            self.tabs.setDeveloperMode(true)
+            DevMCPServer.shared.applyEnabledSetting(settings.browserControlServerEnabled)
+            if let windowState { self.showWindowToast("Developer Mode on. Reload to capture this page", in: windowState) }
+            action()
+        }
     }
 
     func copyScreenshot(in windowState: BrowserWindowState) {

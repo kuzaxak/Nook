@@ -17,8 +17,7 @@ extension BrowserManager {
 
     /// Cmd+Shift+X: the picker on the active window's page.
     func startElementPicker() {
-        guard developerCaptureAvailable() else { return }
-        tabs.activeWindowSession?.startDevPicker()
+        withDeveloperCapture { [weak self] in self?.tabs.activeWindowSession?.startDevPicker() }
     }
 
     func installDevPickHandler() {

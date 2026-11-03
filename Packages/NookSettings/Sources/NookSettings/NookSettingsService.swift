@@ -246,7 +246,8 @@ public final class NookSettingsService {
     }
 
     /// Hosts with Arc-style Developer Mode on: the page gets the developer bar and its tab a
-    /// dashed outline. Per host: it never turns the global Developer Mode (and its capture scripts) on.
+    /// dashed outline. Per host: the global Developer Mode (and its capture scripts) turns on only
+    /// in Settings or when the person agrees to it from the bar's tools.
     public var developerSites: [String] = [] {
         didSet {
             if let data = try? JSONEncoder().encode(developerSites) {
