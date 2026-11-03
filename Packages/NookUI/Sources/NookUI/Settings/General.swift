@@ -150,7 +150,7 @@ public struct SettingsGeneralTab: View {
                 #endif
 
                 if nookSettings.searchEngineId == SearchProvider.kagi.rawValue
-                    || tabs.orderedSpaces.contains(where: { $0.searchEngineId == SearchProvider.kagi.rawValue }) {
+                    || tabs.profiles.contains(where: { $0.searchEngineId == SearchProvider.kagi.rawValue }) {
                     if nookSettings.kagiSessionToken != nil {
                         LabeledContent("Kagi Session Link") {
                             HStack(spacing: NookDesign.Spacing.md) {

@@ -3,11 +3,9 @@
 //  Spaces.swift
 //  Nook
 //
-//  Spaces and profiles. A profile is the spaces sharing one login context (cookies, site data,
-//  history), so its data is inspected and cleared here too.
+//  Spaces: name, look and the profile each one uses. Profiles have their own pane.
 //
 
-import NookSettings
 import NookTabsCore
 import SwiftUI
 import NookDesign
@@ -15,11 +13,8 @@ import NookWeb
 
 public struct SpacesSettingsView: View {
     @Environment(TabsController.self) private var tabs
-    @Environment(NookSettingsService.self) private var nookSettings
     @Environment(\.tabActions) private var actions
 
-    /// Data size per profile, filled in as each store answers.
-    @State private var stats: [UUID: String] = [:]
     @State private var showAccentPickerFor: UUID?
     @State private var showIconPickerFor: UUID?
     /// A move that would leave its profile empty, waiting on confirmation.
@@ -32,17 +27,6 @@ public struct SpacesSettingsView: View {
     public var body: some View {
         Form {
             Section {
-                ForEach(tabs.profiles) { profile in
-                    profileRow(profile)
-                }
-            } header: {
-                Text("Profiles")
-            } footer: {
-                Text("A profile keeps its own logins, cookies and history. Spaces in the same profile share them. Extensions and settings are shared by all profiles.")
-                    .settingsFooter()
-            }
-
-            Section {
                 // The Agent space keeps its look and borrows another space's data, so it has no row.
                 ForEach(spaces) { space in
                     row(space)
@@ -50,7 +34,7 @@ public struct SpacesSettingsView: View {
             } header: {
                 Text("Spaces")
             } footer: {
-                Text("Each space belongs to a profile. Moving a space to another profile signs it in as that profile.")
+                Text("Each space uses one profile's logins, cookies and history. Moving a space to another profile signs it in as that profile. Set up profiles in the Profiles pane.")
                     .settingsFooter()
             }
 
@@ -59,7 +43,6 @@ public struct SpacesSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .task(id: tabs.profiles.map(\.id)) { await refreshStats() }
         .alert(
             "Delete the \u{201C}\(pendingMove?.profile ?? "")\u{201D} profile?",
             isPresented: Binding(get: { pendingMove != nil }, set: { if !$0 { pendingMove = nil } })
@@ -71,56 +54,6 @@ public struct SpacesSettingsView: View {
         } message: {
             Text("No other space uses it. Its logins, cookies and history will be deleted.")
         }
-    }
-
-    @ViewBuilder
-    private func profileRow(_ profile: ProfileSummary) -> some View {
-        HStack(spacing: NookDesign.Spacing.md) {
-            VStack(alignment: .leading, spacing: NookDesign.Spacing.xxs) {
-                TextField("Profile name", text: Binding(
-                    get: { profile.name },
-                    set: { tabs.renameProfile(profile.id, to: $0) }
-                ))
-                .textFieldStyle(.plain)
-                .labelsHidden()
-                Text(([profile.spaceIDs.compactMap { tabs.space($0)?.name }.joined(separator: ", ")]
-                      + [stats[profile.id] ?? "Checking…"]).joined(separator: " · "))
-                    .font(NookDesign.Font.secondary)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Menu {
-                Button("Clear Website Data", systemImage: "trash") {
-                    Task { await clearData(profile) }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-        }
-    }
-
-    /// Which engine searches from this space use; "Default" follows Settings → General.
-    private func searchEngineMenu(_ space: SpaceRecord) -> some View {
-        let current = tabs.space(space.id)?.searchEngineId
-        let defaultName = nookSettings.searchEngineName(for: nookSettings.searchEngineId)
-        return Menu {
-            Button("Default (\(defaultName))") { tabs.setSearchEngine(nil, forSpace: space.id) }
-            Divider()
-            ForEach(SearchProvider.allCases) { provider in
-                Button(provider.displayName) { tabs.setSearchEngine(provider.rawValue, forSpace: space.id) }
-            }
-            ForEach(nookSettings.customSearchEngines) { engine in
-                Button(engine.name) { tabs.setSearchEngine(engine.id.uuidString, forSpace: space.id) }
-            }
-        } label: {
-            Text("Search: " + (current.map(nookSettings.searchEngineName(for:)) ?? "Default (\(defaultName))"))
-                .font(NookDesign.Font.caption)
-                .foregroundStyle(.secondary)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
     }
 
     private func profilePicker(_ space: SpaceRecord) -> some View {
@@ -189,16 +122,12 @@ public struct SpacesSettingsView: View {
                 ), onSelect: { showIconPickerFor = nil })
             }
 
-            VStack(alignment: .leading, spacing: NookDesign.Spacing.xxs) {
-                TextField("Space name", text: Binding(
-                    get: { space.name },
-                    set: { tabs.updateSpace(space.id, name: $0, icon: nil, accentHex: nil) }
-                ))
-                .textFieldStyle(.plain)
-                .labelsHidden()
-                searchEngineMenu(space)
-            }
-            .frame(minWidth: 120, alignment: .leading)
+            TextField("Space name", text: Binding(
+                get: { space.name },
+                set: { tabs.updateSpace(space.id, name: $0, icon: nil, accentHex: nil) }
+            ))
+            .textFieldStyle(.plain)
+            .labelsHidden()
             .layoutPriority(1)
             Spacer()
             profilePicker(space)
@@ -214,22 +143,6 @@ public struct SpacesSettingsView: View {
                 .fixedSize()
             }
         }
-    }
-
-    // MARK: - Data
-
-    private func refreshStats() async {
-        for summary in tabs.profiles {
-            guard let space = summary.spaceIDs.first, let profile = tabs.profile(forSpace: space) else { continue }
-            await profile.refreshDataStoreStats()
-            stats[summary.id] = profile.estimatedDataSize
-        }
-    }
-
-    private func clearData(_ summary: ProfileSummary) async {
-        guard let space = summary.spaceIDs.first, let profile = tabs.profile(forSpace: space) else { return }
-        await profile.clearAllData()
-        stats[summary.id] = profile.estimatedDataSize
     }
 
     // MARK: - Dialogs

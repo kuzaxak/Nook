@@ -16,6 +16,7 @@ enum SettingsRoute: String, Hashable, Identifiable {
     case general
     case appearance
     case spaces
+    case profiles
     case adBlocker
     case airTrafficControl
     case tweaks
@@ -27,6 +28,7 @@ enum SettingsRoute: String, Hashable, Identifiable {
         case .general: "General"
         case .appearance: "Appearance"
         case .spaces: "Spaces"
+        case .profiles: "Profiles"
         case .adBlocker: "Ad Blocker"
         case .airTrafficControl: "Air Traffic Control"
         case .tweaks: "Tweaks"

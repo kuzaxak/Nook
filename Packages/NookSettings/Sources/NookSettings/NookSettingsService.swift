@@ -68,6 +68,7 @@ public final class NookSettingsService {
     private let historyHalfLifeDaysKey = "settings.historyHalfLifeDays"
     private let paletteWordStopsKey = "settings.paletteWordStops"
     private let urlShortcutsKey = "settings.urlShortcuts"
+    private let profileDownloadsKey = "settings.profileDownloads"
     private let tidyDownloadsKey = "settings.tidyDownloads"
     private let linkPreviewsKey = "settings.linkPreviews"
     private let autoPictureInPictureKey = "settings.autoPictureInPicture"
@@ -531,6 +532,24 @@ public final class NookSettingsService {
         }
     }
 
+    /// Where each profile's downloads go, by data store id.
+    public private(set) var profileDownloads: [UUID: ProfileDownloads] {
+        didSet {
+            if let data = try? JSONEncoder().encode(profileDownloads) {
+                userDefaults.set(data, forKey: profileDownloadsKey)
+            }
+        }
+    }
+
+    /// A private window or the Agent space has no profile and saves to Downloads.
+    public func downloads(forProfile id: UUID?) -> ProfileDownloads {
+        id.flatMap { profileDownloads[$0] } ?? ProfileDownloads()
+    }
+
+    public func setDownloads(_ downloads: ProfileDownloads, forProfile id: UUID) {
+        profileDownloads[id] = downloads
+    }
+
     /// Characters the command bar's word keys (⌥→, Ctrl+W, ⌥⌫) stop at, besides whitespace.
     public var paletteWordStops: String {
         didSet {
@@ -838,6 +857,8 @@ public final class NookSettingsService {
         self.kagiSessionToken = KagiSession.loadToken()
         self.urlShortcuts = userDefaults.data(forKey: urlShortcutsKey)
             .flatMap { try? JSONDecoder().decode([URLShortcut].self, from: $0) } ?? URLShortcut.defaults
+        self.profileDownloads = userDefaults.data(forKey: profileDownloadsKey)
+            .flatMap { try? JSONDecoder().decode([UUID: ProfileDownloads].self, from: $0) } ?? [:]
         let archiveHours = userDefaults.integer(forKey: archiveTabsAfterHoursKey)
         self.archiveTabsAfterHours = Self.archiveTabsAfterHoursChoices.contains(archiveHours) ? archiveHours : 72
         self.tidyDownloads = userDefaults.bool(forKey: tidyDownloadsKey)

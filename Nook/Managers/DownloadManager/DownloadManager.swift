@@ -14,6 +14,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
 import NookDesign
+import NookSettings
 import NookWeb
 
 // MARK: - Download Origin
@@ -308,6 +309,8 @@ public class DownloadManager: NSObject {
 
     /// Whether Tidy Downloads is on; set by the app from settings.
     @ObservationIgnored var tidyDownloadsEnabled: () -> Bool = { false }
+    /// Each profile's download location; set by the app.
+    @ObservationIgnored weak var settings: NookSettingsService?
     /// The download open in the in-window preview, if any.
     var previewing: Download?
 
@@ -532,8 +535,12 @@ public class DownloadManager: NSObject {
         origin: DownloadOrigin
     ) -> Download? {
         let name = Self.sanitizedFilename(suggestedFilename)
-        guard let downloadsDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return nil }
-        let destination = Self.uniqueDestination(for: name, in: downloadsDirectory)
+        // The bytes are already here, so Ask Every Time saves where the last panel did.
+        let folder: URL
+        switch destination(for: origin) {
+        case .folder(let url), .ask(startingIn: let url): folder = url
+        }
+        let destination = Self.uniqueDestination(for: name, in: folder)
         do {
             try data.write(to: destination, options: .withoutOverwriting)
         } catch {
@@ -555,6 +562,30 @@ public class DownloadManager: NSObject {
         Self.announceFinished(destination)
         persist()
         return saved
+    }
+
+    // MARK: - Location
+
+    private static var downloadsFolder: URL {
+        FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
+    }
+
+    /// The origin profile's choice in Settings > Profiles. Private pages always use Downloads.
+    func destination(for origin: DownloadOrigin) -> DownloadDestination {
+        let downloads = settings?.downloads(forProfile: origin.isPrivate ? nil : origin.profileID) ?? ProfileDownloads()
+        return downloads.destination(downloads: Self.downloadsFolder) { url in
+            var isFolder: ObjCBool = false
+            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder) && isFolder.boolValue
+        }
+    }
+
+    /// The next save panel for the profile opens where this file went.
+    func rememberSaveFolder(of file: URL, for origin: DownloadOrigin) {
+        guard !origin.isPrivate, let id = origin.profileID, let settings else { return }
+        var downloads = settings.downloads(forProfile: id)
+        downloads.remember(savedFile: file)
+        settings.setDownloads(downloads, forProfile: id)
     }
 
     // MARK: - Tidy Downloads
@@ -710,20 +741,16 @@ private class DownloadDelegate: NSObject, WKDownloadDelegate {
             }
         }
 
-        switch download.destinationPreference {
-        case .automaticDownloadsFolder:
-            resolveAutomaticDestination(response: response, cleanName: cleanName, completion: completion)
-        case .askUser:
-            presentSavePanel(response: response, cleanName: cleanName, completion: completion)
+        guard let downloadManager else { completion(.cancel); return }
+        switch (download.destinationPreference, downloadManager.destination(for: download.origin)) {
+        case (.automaticDownloadsFolder, .folder(let folder)):
+            resolveAutomaticDestination(in: folder, response: response, cleanName: cleanName, completion: completion)
+        case (_, .folder(let folder)), (_, .ask(startingIn: let folder)):
+            presentSavePanel(startingIn: folder, response: response, cleanName: cleanName, completion: completion)
         }
     }
 
-    private func resolveAutomaticDestination(response: URLResponse, cleanName: String, completion: @escaping (DestinationDecision) -> Void) {
-        guard let downloadsDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
-            presentSavePanel(response: response, cleanName: cleanName, completion: completion)
-            return
-        }
-
+    private func resolveAutomaticDestination(in folder: URL, response: URLResponse, cleanName: String, completion: @escaping (DestinationDecision) -> Void) {
         // Named before the first byte is written, so the file never exists under the old name.
         // Holds self: WebKit's completion must be called even if the row is removed meanwhile.
         Task { @MainActor in
@@ -738,21 +765,19 @@ private class DownloadDelegate: NSObject, WKDownloadDelegate {
             // Cancelled while the model was thinking.
             guard self.download.state == .pending else { completion(.cancel); return }
             if name != cleanName { self.download.renamedFrom = cleanName }
-            let destination = DownloadManager.uniqueDestination(for: name, in: downloadsDirectory)
+            let destination = DownloadManager.uniqueDestination(for: name, in: folder)
             self.configureDownload(for: destination, response: response)
             completion(.proceed(destination))
         }
     }
 
-    private func presentSavePanel(response: URLResponse, cleanName: String, completion: @escaping (DestinationDecision) -> Void) {
+    private func presentSavePanel(startingIn folder: URL, response: URLResponse, cleanName: String, completion: @escaping (DestinationDecision) -> Void) {
         let savePanel = NSSavePanel()
         savePanel.nameFieldStringValue = cleanName
         savePanel.allowedContentTypes = download.allowedContentTypes ?? [.data]
         savePanel.canCreateDirectories = true
         savePanel.isExtensionHidden = false
-        if let downloadsDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
-            savePanel.directoryURL = downloadsDirectory
-        }
+        savePanel.directoryURL = folder
 
         DispatchQueue.main.async {
             savePanel.begin { result in
@@ -761,6 +786,7 @@ private class DownloadDelegate: NSObject, WKDownloadDelegate {
                     return
                 }
                 if result == .OK, let url = savePanel.url {
+                    self.downloadManager?.rememberSaveFolder(of: url, for: self.download.origin)
                     self.configureDownload(for: url, response: response)
                     completion(.proceed(url))
                 } else {

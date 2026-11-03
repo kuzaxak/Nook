@@ -23,6 +23,7 @@ struct SettingsSheet: View {
                     row(.general)
                     row(.appearance)
                     row(.spaces)
+                    row(.profiles)
                 }
                 Section {
                     row(.adBlocker)
@@ -57,6 +58,7 @@ struct SettingsSheet: View {
         case .general: SettingsGeneralTab()
         case .appearance: SettingsAppearanceTab()
         case .spaces: SpacesSettingsView()
+        case .profiles: ProfilesSettingsView()
         case .adBlocker: SettingsAdBlockerTab()
         case .airTrafficControl: AirTrafficControlSettingsView()
         case .tweaks: SettingsTweaksTab()

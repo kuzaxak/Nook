@@ -286,6 +286,8 @@ private struct SettingsDetailPane: View {
             AirTrafficControlSettingsView()
         case .spaces:
             SpacesSettingsView()
+        case .profiles:
+            ProfilesSettingsView()
         case .shortcuts:
             ShortcutsSettingsView()
         case .extensions:

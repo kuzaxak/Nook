@@ -4,7 +4,8 @@
 //  NookTabsCore
 //
 //  A profile is the spaces that share one website data store: logins, cookies and history.
-//  It has no record of its own. Its id is the store id and its name rides on its spaces.
+//  It has no record of its own. Its id is the store id; its name and search engine ride on
+//  its spaces.
 //
 
 import Foundation
@@ -14,6 +15,8 @@ public struct ProfileSummary: Identifiable, Equatable, Sendable {
     public let id: UUID
     public let name: String
     public let spaceIDs: [UUID]
+    /// Nil searches with the app's default engine.
+    public let searchEngineId: String?
 }
 
 extension TabTree {
@@ -30,7 +33,8 @@ extension TabTree {
             let spaces = members[store] ?? []
             // ponytail: each space carries the name; the first set one wins if two disagree after a sync.
             let name = spaces.lazy.compactMap(\.profileName).first ?? spaces.first?.name ?? ""
-            return ProfileSummary(id: store, name: name, spaceIDs: spaces.map(\.id))
+            return ProfileSummary(id: store, name: name, spaceIDs: spaces.map(\.id),
+                                  searchEngineId: spaces.lazy.compactMap(\.searchEngineId).first)
         }
     }
 
@@ -42,12 +46,27 @@ extension TabTree {
     @discardableResult
     public mutating func setProfile(_ spaceID: UUID, to storeID: UUID?, name: String? = nil, now: Date = Date()) throws -> Change {
         guard var target = space(spaceID), !target.isAgent else { throw TreeError.missingSpace }
+        target.searchEngineId = storeID.flatMap { store in profiles.first { $0.id == store }?.searchEngineId }
         // Never back to nil: the space's own id may still be the store of spaces it left behind.
         target.dataStoreID = storeID ?? UUID()
         target.profileName = storeID == nil ? name : nil
         target.modifiedAt = now
         var change = Change()
         record(&change, space: target)
+        return change
+    }
+
+    /// Sets the engine every space of the profile searches with; nil goes back to the app's default.
+    @discardableResult
+    public mutating func setSearchEngine(profile storeID: UUID, engineId: String?, now: Date = Date()) throws -> Change {
+        guard let profile = profiles.first(where: { $0.id == storeID }) else { throw TreeError.missingSpace }
+        var change = Change()
+        for id in profile.spaceIDs {
+            guard var space = space(id), space.searchEngineId != engineId else { continue }
+            space.searchEngineId = engineId
+            space.modifiedAt = now
+            record(&change, space: space)
+        }
         return change
     }
 

@@ -717,15 +717,11 @@ extension TabsController {
         perform(owner, "updateSpace") { try $0.updateSpace(spaceID, name: name, icon: icon, accentHex: accentHex) }
     }
 
-    /// The engine a space searches with; nil follows the app's default.
-    public func setSearchEngine(_ engineId: String?, forSpace spaceID: UUID) {
-        guard let owner = owner(ofSpace: spaceID), spaceID != agentSpaceID else { return }
-        perform(owner, "setSearchEngine") { try $0.setSearchEngine(spaceID, engineId: engineId) }
-    }
-
-    /// The engine id a space searches with: its own choice, else the app's default.
+    /// The engine id a space searches with: its profile's choice, else the app's default. The
+    /// Agent space searches like the profile it borrows logins from.
     public func searchEngineId(forSpace spaceID: UUID?) -> String {
-        spaceID.flatMap { space($0)?.searchEngineId } ?? settings.searchEngineId
+        let store = spaceID.flatMap { tree.dataStoreID(for: $0) }
+        return tree.profiles.first { $0.id == store }?.searchEngineId ?? settings.searchEngineId
     }
 
     /// The query template searches from a space use.
@@ -765,6 +761,11 @@ extension TabsController {
 
     public func renameProfile(_ storeID: UUID, to name: String) {
         perform(.main, "renameProfile") { try $0.renameProfile(storeID, to: name) }
+    }
+
+    /// The engine the profile's spaces search with; nil follows the app's default.
+    public func setSearchEngine(_ engineId: String?, forProfile storeID: UUID) {
+        perform(.main, "setSearchEngine") { try $0.setSearchEngine(profile: storeID, engineId: engineId) }
     }
 
     /// Pages whose item now belongs to another space reload on that space's data store.
