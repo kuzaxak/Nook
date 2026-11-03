@@ -140,6 +140,7 @@ public struct SettingsGeneralTab: View {
                         LabeledContent("Kagi Session Link") {
                             HStack(spacing: NookDesign.Spacing.md) {
                                 SecureField("https://kagi.com/search?token=…", text: $kagiSessionLink)
+                                    .labelsHidden()
                                 Button("Save") {
                                     nookSettings.setKagiSession(kagiSessionLink)
                                     kagiSessionLink = ""
@@ -233,8 +234,10 @@ public struct SettingsGeneralTab: View {
                 }
                 HStack(spacing: NookDesign.Spacing.md) {
                     TextField("Keyword", text: $newShortcutKeyword)
+                        .labelsHidden()
                         .frame(maxWidth: 90)
                     TextField("https://github.com/%@", text: $newShortcutTemplate)
+                        .labelsHidden()
                     Button("Add") {
                         nookSettings.urlShortcuts.append(URLShortcut(
                             keyword: newShortcutKeyword.trimmingCharacters(in: .whitespaces),

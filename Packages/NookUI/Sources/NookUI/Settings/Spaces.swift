@@ -80,6 +80,7 @@ public struct SpacesSettingsView: View {
                     set: { tabs.renameProfile(profile.id, to: $0) }
                 ))
                 .textFieldStyle(.plain)
+                .labelsHidden()
                 Text(([profile.spaceIDs.compactMap { tabs.space($0)?.name }.joined(separator: ", ")]
                       + [stats[profile.id] ?? "Checking…"]).joined(separator: " · "))
                     .font(NookDesign.Font.secondary)
@@ -133,6 +134,7 @@ public struct SpacesSettingsView: View {
             Divider()
             Text("New Profile").tag(UUID?.none)
         }
+        .labelsHidden()
         .fixedSize()
     }
 
@@ -191,9 +193,10 @@ public struct SpacesSettingsView: View {
                     set: { tabs.updateSpace(space.id, name: $0, icon: nil, accentHex: nil) }
                 ))
                 .textFieldStyle(.plain)
+                .labelsHidden()
                 searchEngineMenu(space)
             }
-            .frame(minWidth: 140, alignment: .leading)
+            .frame(minWidth: 120, alignment: .leading)
             .layoutPriority(1)
             Spacer()
             profilePicker(space)
