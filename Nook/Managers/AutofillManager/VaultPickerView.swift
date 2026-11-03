@@ -3,8 +3,8 @@
 //  VaultPickerView.swift
 //  Nook
 //
-//  The popover listing Pawl Vault's passkeys and accounts for a site. Choosing one is the
-//  user's consent in Nook; the vault asks for Touch ID before it hands anything over.
+//  The popover listing Pawl Vault's passkeys, accounts or one-time codes for a site. Choosing
+//  one is the user's consent in Nook; the vault asks for Touch ID before it hands anything over.
 //
 
 import SwiftUI
@@ -45,15 +45,21 @@ struct VaultPickerView: View {
     }
 
     private func row(_ item: VaultPickerItem) -> some View {
-        HStack(spacing: NookDesign.Spacing.md) {
-            Image(systemName: item.isPasskey ? "person.badge.key.fill" : "key.fill")
+        let name = item.account.isEmpty ? item.title : item.account
+        let (icon, label, detail) = switch item.kind {
+        case .login: ("key.fill", name, item.title)
+        case .passkey: ("person.badge.key.fill", name, "Passkey · \(item.title)")
+        case .code: ("timer", "\(name) · one-time code", item.title)
+        }
+        return HStack(spacing: NookDesign.Spacing.md) {
+            Image(systemName: icon)
                 .foregroundStyle(.secondary)
                 .frame(width: NookDesign.Size.favicon)
             VStack(alignment: .leading, spacing: NookDesign.Spacing.xxs) {
-                Text(item.account.isEmpty ? item.title : item.account)
+                Text(label)
                     .font(NookDesign.Font.body)
                     .lineLimit(1)
-                Text(item.isPasskey ? "Passkey · \(item.title)" : item.title)
+                Text(detail)
                     .font(NookDesign.Font.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

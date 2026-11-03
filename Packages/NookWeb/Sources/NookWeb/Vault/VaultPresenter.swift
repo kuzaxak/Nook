@@ -4,7 +4,7 @@
 //  Nook
 //
 //  The native UI the Pawl Vault bridge needs from the app. Nothing reaches the vault for a
-//  password or a signature without one of these answering first.
+//  password, a one-time code or a signature without one of these answering first.
 //
 
 #if os(macOS)
@@ -15,6 +15,8 @@ public struct VaultPickerItem: Identifiable, Sendable {
     public enum Kind: Sendable {
         case login(id: String)
         case passkey(credentialId: String)
+        /// The entry's one-time code, for a code field.
+        case code(id: String)
     }
 
     public let id: String
@@ -31,6 +33,13 @@ public struct VaultPickerItem: Identifiable, Sendable {
     init(_ login: VaultLogin) {
         id = "login:" + login.id
         kind = .login(id: login.id)
+        title = VaultPrompt.displayText(login.title)
+        account = VaultPrompt.displayText(login.username)
+    }
+
+    init(code login: VaultLogin) {
+        id = "code:" + login.id
+        kind = .code(id: login.id)
         title = VaultPrompt.displayText(login.title)
         account = VaultPrompt.displayText(login.username)
     }

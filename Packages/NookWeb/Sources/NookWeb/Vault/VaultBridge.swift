@@ -3,12 +3,13 @@
 //  VaultBridge.swift
 //  Nook
 //
-//  One web view's link to Pawl Vault. Passwords: the form script and its handler live in the
-//  isolated NookAutofill world; Nook shows the accounts for the frame's origin and fills through
-//  that world after the user picks one. Passkeys: while the vault is connected, a page-world
-//  shim replaces the suppression script and posts to the reply handler `nookPasskey`. The
-//  origin always comes from WebKit's frame info, and nothing is signed or filled without
-//  Nook's own picker or confirmation first.
+//  One web view's link to Pawl Vault. Passwords and one-time codes: the form script and its
+//  handler live in the isolated NookAutofill world; Nook shows the accounts for the frame's
+//  origin (for a code field, those with a code) and fills through that world after the user
+//  picks one. Passkeys: while the vault is connected, a page-world shim replaces the
+//  suppression script and posts to the reply handler `nookPasskey`. The origin always comes
+//  from WebKit's frame info, and nothing is signed or filled without Nook's own picker or
+//  confirmation first.
 //
 
 #if os(macOS)
@@ -179,7 +180,7 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
         switch type {
         case "open":
             showAccounts(frame: message.frameInfo, origin: origin, rect: body["rect"] as? [String: Any],
-                         webauthn: body["webauthn"] as? Bool ?? false, in: webView)
+                         webauthn: body["webauthn"] as? Bool ?? false, code: body["kind"] as? String == "code", in: webView)
         case "blur":
             closePicker()
         case "submit":
@@ -193,11 +194,12 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
         }
     }
 
-    private func showAccounts(frame: WKFrameInfo, origin: String, rect: [String: Any]?, webauthn: Bool, in webView: WKWebView) {
+    private func showAccounts(frame: WKFrameInfo, origin: String, rect: [String: Any]?, webauthn: Bool, code: Bool,
+                              in webView: WKWebView) {
         focusGeneration += 1
         let generation = focusGeneration
         let anchor = Self.anchor(for: rect, in: webView)
-        let conditional = webauthn ? conditionalGets.values.filter { $0.origin == origin }.max { $0.id < $1.id } : nil
+        let conditional = webauthn && !code ? conditionalGets.values.filter { $0.origin == origin }.max { $0.id < $1.id } : nil
         let profile = profile
         Task {
             guard let service else { return }
@@ -207,7 +209,9 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
                 let call = VaultPasskeys(rpId: conditional.rpId, allowCredentials: conditional.allowCredentials, profile: profile)
                 passkeys = (try? await service.send(call))?.passkeys ?? []
             }
-            let items = passkeys.map(VaultPickerItem.init) + logins.map(VaultPickerItem.init)
+            let items = code
+                ? logins.filter(\.hasCode).map(VaultPickerItem.init(code:))
+                : passkeys.map(VaultPickerItem.init) + logins.map(VaultPickerItem.init(_:))
             guard generation == focusGeneration, !items.isEmpty, let presenter = service.presenter else { return }
             let token = pickerOpened()
             presenter.presentPicker(host: frame.securityOrigin.host, items: items, anchor: anchor, in: webView) { [weak self] item in
@@ -228,6 +232,15 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
                 _ = try? await webView.callAsyncJavaScript(
                     "return window.__nookVaultFill && window.__nookVaultFill(origin, username, password);",
                     arguments: ["origin": origin, "username": reply.username, "password": reply.password],
+                    in: frame, contentWorld: Self.autofillWorld)
+            }
+        case .code(let id):
+            let call = VaultCode(id: id, origin: origin, profile: profile)
+            Task {
+                guard let reply = try? await service.send(call) else { return }
+                _ = try? await webView.callAsyncJavaScript(
+                    "return window.__nookVaultFillCode && window.__nookVaultFillCode(origin, code);",
+                    arguments: ["origin": origin, "code": reply.code],
                     in: frame, contentWorld: Self.autofillWorld)
             }
         case .passkey(let credentialId):

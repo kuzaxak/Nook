@@ -3,9 +3,10 @@
 //
 // Runs in the isolated NookAutofill world of every http(s) frame; its handler exists only in
 // that world, so a page can neither post to it nor call __nookVaultFill. Asks Nook for its
-// account popover only after a real click or ArrowDown in a login field (never on focus, never
-// for an event the page made), offers a save after a sign-in with a typed password, and fills
-// the fields Nook passes back once the user picked an account in that popover.
+// account popover only after a real click or ArrowDown in a login or one-time-code field (never
+// on focus, never for an event the page made), offers a save after a sign-in with a typed
+// password, and fills the fields or code Nook passes back once the user picked an account in
+// that popover. A split code field (4–8 adjacent one-character boxes) gets one digit per box.
 (() => {
   if (window.__nookVaultAutofill) return;
   window.__nookVaultAutofill = true;
@@ -16,6 +17,8 @@
 
   const textTypes = new Set(['text', 'email', 'tel', 'url', '']);
   const userHint = /user|login|email|e-mail|account|identifier|phone/i;
+  const codeTypes = new Set(['text', 'tel', 'number']);
+  const codeHint = /otp|totp|2fa|mfa|one.?time|verification.?code|security.?code|auth(entication)?.?code|2-?step/i;
   const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
   let field = null;
   let lastSubmit = 0;
@@ -35,9 +38,33 @@
     return before || inputs.find(i => userHint.test(`${i.name} ${i.id} ${autocompleteOf(i)}`)) || null;
   }
 
+  const isCodeBox = input =>
+    input instanceof HTMLInputElement && codeTypes.has(input.type) && input.maxLength === 1 && isUsable(input);
+
+  function codeBoxes(input) {
+    if (!isCodeBox(input)) return null;
+    const inputs = [...scopeOf(input).querySelectorAll('input')];
+    let start = inputs.indexOf(input), end = start + 1;
+    while (start > 0 && isCodeBox(inputs[start - 1])) start--;
+    while (end < inputs.length && isCodeBox(inputs[end])) end++;
+    return end - start >= 4 && end - start <= 8 ? inputs.slice(start, end) : null;
+  }
+
+  function isCodeField(input) {
+    if (/\bone-time-code\b/.test(autocompleteOf(input))) return true;
+    if (!codeTypes.has(input.type)) return false;
+    if (codeBoxes(input)) return true;
+    const labels = [...(input.labels || [])].map(label => label.textContent).join(' ');
+    const hint = `${input.name} ${input.id} ${input.getAttribute('placeholder') || ''} ${input.getAttribute('aria-label') || ''} ${labels}`;
+    const numeric = (input.maxLength >= 4 && input.maxLength <= 8)
+      || (input.getAttribute('inputmode') || '').toLowerCase() === 'numeric';
+    return numeric && codeHint.test(hint);
+  }
+
   function kindOf(input) {
     if (!(input instanceof HTMLInputElement) || !isUsable(input)) return null;
     if (input.type === 'password') return 'password';
+    if (isCodeField(input)) return 'code';
     if (!textTypes.has(input.type)) return null;
     const autocomplete = autocompleteOf(input);
     if (/\b(username|email|webauthn)\b/.test(autocomplete)) return 'username';
@@ -113,6 +140,15 @@
     const userField = field.type === 'password' ? usernameFor(scope, field) : field;
     if (userField && username) setValue(userField, username);
     if (passwordField) setValue(passwordField, password);
+    return true;
+  };
+
+  // Called by Nook in this world only, with the code for the field its picker opened for.
+  window.__nookVaultFillCode = (origin, code) => {
+    if (location.origin !== origin || !field || !field.isConnected || kindOf(field) !== 'code') return false;
+    const boxes = codeBoxes(field);
+    if (boxes) boxes.forEach((box, i) => setValue(box, code[i] || ''));
+    else setValue(field, code);
     return true;
   };
 })();

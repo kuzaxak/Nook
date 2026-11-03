@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Pawl Vault one-time codes: click a verification-code field (or press ↓ in it) to pick an account with a one-time code, and Nook fills the current code, one digit per box when the site splits it; the form is never submitted and codes are never kept
+
 ## 1.5.0
 
 The first release of this fork: it builds for Intel and Apple silicon, updates from its own releases, and works more like Arc.

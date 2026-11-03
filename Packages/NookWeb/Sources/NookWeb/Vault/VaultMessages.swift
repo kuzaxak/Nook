@@ -41,10 +41,23 @@ public struct VaultLogin: Decodable, Equatable, Sendable {
     public let id: String
     public let username: String
     public let title: String
-    public init(id: String, username: String, title: String) {
+    /// The entry has a TOTP the `code` method can fill. Vaults before one-time codes leave it out.
+    public let hasCode: Bool
+    public init(id: String, username: String, title: String, hasCode: Bool = false) {
         self.id = id
         self.username = username
         self.title = title
+        self.hasCode = hasCode
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, username, title, hasCode }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        username = try container.decode(String.self, forKey: .username)
+        title = try container.decode(String.self, forKey: .title)
+        hasCode = try container.decodeIfPresent(Bool.self, forKey: .hasCode) ?? false
     }
 }
 
@@ -76,6 +89,25 @@ public struct VaultPassword: VaultCall {
     public struct Reply: Decodable, Sendable {
         public let username: String
         public let password: String
+    }
+}
+
+public struct VaultCode: VaultCall {
+    public static let method = "code"
+    public static let timeout = userPresenceTimeout
+    public var id: String
+    public var origin: String
+    public var profile: String?
+    public init(id: String, origin: String, profile: String?) {
+        self.id = id
+        self.origin = origin
+        self.profile = profile
+    }
+
+    public struct Reply: Decodable, Sendable {
+        public let code: String
+        /// Whole seconds left in the code's period.
+        public let remaining: Int
     }
 }
 

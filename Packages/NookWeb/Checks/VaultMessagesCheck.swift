@@ -4,7 +4,8 @@
 //  Nook
 //
 //  Bridge protocol v1 messages: each request against the protocol's examples, each reply and
-//  error envelope, per-method timeouts, the status line, and vault errors as DOMException names:
+//  error envelope, per-method timeouts, the status line, and vault errors as DOMException names.
+//  Amendment 4 adds `hasCode` on logins (absent from older vaults) and the `code` method:
 //
 //    swiftc -parse-as-library Packages/NookWeb/Sources/NookWeb/Vault/VaultMessages.swift \
 //           Packages/NookWeb/Sources/NookWeb/Vault/WebAuthnError.swift \
@@ -40,6 +41,8 @@ struct VaultMessagesCheck {
                    #"{"id":7,"method":"logins","params":{"origin":"https://accounts.example.com","profile":""}}"#)
         try expect(VaultPassword(id: "E1", origin: "https://accounts.example.com", profile: profile), id: 8,
                    #"{"id":8,"method":"password","params":{"id":"E1","origin":"https://accounts.example.com","profile":"6F9619FF-8B86-D011-B42D-00C04FC964FF"}}"#)
+        try expect(VaultCode(id: "E1", origin: "https://accounts.example.com", profile: nil), id: 14,
+                   #"{"id":14,"method":"code","params":{"id":"E1","origin":"https://accounts.example.com"}}"#)
         try expect(VaultSave(origin: "https://a.com", username: "me", password: "p\"w", profile: nil), id: 9,
                    #"{"id":9,"method":"save","params":{"origin":"https://a.com","username":"me","password":"p\"w"}}"#)
         try expect(VaultPasskeys(rpId: "example.com", allowCredentials: ["AAEC", "-_8"], profile: nil), id: 10,
@@ -57,7 +60,7 @@ struct VaultMessagesCheck {
 
         // Timeouts: 5 s for lookups, 120 s for anything that waits for Touch ID.
         precondition(VaultHello.timeout == 5 && VaultLogins.timeout == 5 && VaultPasskeys.timeout == 5)
-        precondition(VaultPassword.timeout == 120 && VaultSave.timeout == 120)
+        precondition(VaultPassword.timeout == 120 && VaultCode.timeout == 120 && VaultSave.timeout == 120)
         precondition(VaultAssert.timeout == 120 && VaultRegister.timeout == 120)
 
         // Replies.
@@ -67,8 +70,15 @@ struct VaultMessagesCheck {
         precondition(hello.vault == "Pawl Vault" && hello.version == 1 && hello.paired && !hello.unlocked)
         let logins = try reply(VaultLogins.self, #"{"id":7,"result":{"logins":[{"id":"E1","username":"me","title":"Example"}]}}"#)
         precondition(logins.logins == [VaultLogin(id: "E1", username: "me", title: "Example")])
+        precondition(!logins.logins[0].hasCode, "a vault without one-time codes leaves hasCode out")
+        let coded = try reply(VaultLogins.self, #"{"id":7,"result":{"logins":[{"id":"E1","username":"me","title":"Example","hasCode":true},{"id":"E2","username":"you","title":"Example","hasCode":false}]}}"#)
+        precondition(coded.logins == [VaultLogin(id: "E1", username: "me", title: "Example", hasCode: true),
+                                      VaultLogin(id: "E2", username: "you", title: "Example", hasCode: false)])
+        precondition(coded.logins.map(\.hasCode) == [true, false])
         let password = try reply(VaultPassword.self, #"{"id":8,"result":{"username":"me","password":"secret"}}"#)
         precondition(password.username == "me" && password.password == "secret")
+        let code = try reply(VaultCode.self, #"{"id":14,"result":{"code":"012345","remaining":17}}"#)
+        precondition(code.code == "012345" && code.remaining == 17)
         let saved = try reply(VaultSave.self, #"{"id":9,"result":{"saved":true,"id":"E2"}}"#)
         precondition(saved.saved && saved.id == "E2")
         let passkeys = try reply(VaultPasskeys.self, #"{"id":10,"result":{"passkeys":[{"credentialId":"AAEC","userName":"me","title":"Example"}]}}"#)
@@ -90,6 +100,22 @@ struct VaultMessagesCheck {
                 preconditionFailure("error envelope decoded as a result")
             } catch let error as VaultClientError {
                 precondition(error == .server(code, "human readable"), raw)
+            }
+        }
+        for (raw, code) in [("locked", VaultErrorCode.locked), ("denied", .denied), ("notFound", .notFound)] {
+            do {
+                _ = try reply(VaultCode.self, #"{"id":14,"error":{"code":"\#(raw)","message":"human readable"}}"#)
+                preconditionFailure("code error envelope decoded as a result")
+            } catch let error as VaultClientError {
+                precondition(error == .server(code, "human readable"), raw)
+            }
+        }
+        for broken in [#"{"id":14,"result":{"code":"012345"}}"#, #"{"id":14,"result":{"code":12345,"remaining":17}}"#] {
+            do {
+                _ = try reply(VaultCode.self, broken)
+                preconditionFailure("malformed code reply accepted: \(broken)")
+            } catch let error as VaultClientError {
+                precondition(error == .malformedResponse, broken)
             }
         }
         for broken in [#"{"id":7}"#, #"{"id":7,"result":{"logins":"x"}}"#, "[]", "{"] {
