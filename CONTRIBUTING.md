@@ -39,7 +39,7 @@ You need an Apple Silicon Mac and Xcode 26 or later.
 
    To check that your change compiles without a signing team:
    ```bash
-   xcodebuild -scheme Nook -configuration Debug -arch arm64 -derivedDataPath build \
+   xcodebuild -scheme Nook -configuration Debug -arch "$(uname -m)" -derivedDataPath build \
      CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
    ```
 
