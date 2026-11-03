@@ -80,7 +80,7 @@ public struct TabContextMenu: View {
 
         if case .pinned = section {
             Button {
-                tabs.unpin(itemID)
+                tabs.unpin(itemID, in: windowState)
             } label: {
                 Label("Unpin from Space", systemImage: "pin.slash")
             }
@@ -88,7 +88,7 @@ public struct TabContextMenu: View {
 
         if case .favorites = section {
             Button {
-                tabs.unpin(itemID)
+                tabs.unpin(itemID, in: windowState)
             } label: {
                 Label("Remove from Favorites", systemImage: "star.slash")
             }

@@ -40,10 +40,12 @@ extension TabsController {
         }
     }
 
-    /// Drops into a space's favorites grid at tile `index` of the displayed favorites.
+    /// Drops into a space's favorites grid at tile `index` of the displayed favorites. Shared
+    /// favorites are stored per space, so the tile joins the section of the tile it lands after.
     func dropOnFavorites(_ itemID: UUID, spaceID: UUID, index: Int) {
-        let favorites = favorites(of: spaceID)
-        let after = favorites.prefix(index).last(where: { $0.id != itemID })?.id
-        move(itemID, to: .favorites(spaceID: spaceID), after: after)
+        let favorites = favorites(of: spaceID).filter { $0.id != itemID }
+        let after = favorites.prefix(index).last
+        let parent = after?.parent ?? favorites.first?.parent ?? .favorites(spaceID: spaceID)
+        move(itemID, to: parent, after: after?.id)
     }
 }

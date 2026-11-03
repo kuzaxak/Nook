@@ -285,8 +285,9 @@ public final class TabsController {
         treeHolding(parent).children(of: parent)
     }
 
+    /// The favorites a space shows, shared with every space that uses its data store.
     public func favorites(of spaceID: UUID) -> [Item] {
-        children(of: .favorites(spaceID: spaceID))
+        owner(ofSpace: spaceID).map { tree($0).favorites(of: spaceID) } ?? []
     }
 
     public func rows(space spaceID: UUID) -> [Row] {

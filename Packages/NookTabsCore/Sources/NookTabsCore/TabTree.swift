@@ -38,10 +38,6 @@ public struct TabTree: Codable, Equatable, Sendable {
         items.values.filter { $0.deletedAt == nil && $0.parent == parent }.sorted(by: Self.sortKey)
     }
 
-    public func favorites(of spaceID: UUID) -> [Item] {
-        children(of: .favorites(spaceID: spaceID))
-    }
-
     /// Live items grouped by parent, each group in display order. One pass for whole-tree reads.
     public func childrenByParent() -> [Parent: [Item]] {
         var groups: [Parent: [Item]] = [:]

@@ -532,7 +532,7 @@ class KeyboardShortcutManager {
             case .duplicateTab:
                 if let window, let selected = window.selectedItemID { tabs.duplicate(selected, in: window) }
             case .toggleBookmark:
-                if let selected = window?.selectedItemID { tabs.toggleBookmark(selected) }
+                if let selected = window?.selectedItemID { tabs.toggleBookmark(selected, in: window) }
             case .toggleTopBarAddressView:
                 browserManager.toggleTopBarAddressView()
 

@@ -197,9 +197,15 @@ extension TabsController {
             guard window.spaceID == agentSpaceID else { return selectForAgent(itemID) }
             agentItemID = itemID
         }
-        let movedSpace = source.spaceID(of: itemID).map { $0 != window.spaceID } ?? false
-        if let spaceID = source.spaceID(of: itemID) {
-            window.spaceID = spaceID
+        // A favorite shared with the window's space opens there, without switching spaces.
+        let itemSpace = source.spaceID(of: itemID).map { home in
+            if case .favorites = source.section(of: itemID), let current = window.spaceID,
+               source.sharesFavorites(home, current) { return current }
+            return home
+        }
+        let movedSpace = itemSpace.map { $0 != window.spaceID } ?? false
+        if let itemSpace {
+            window.spaceID = itemSpace
         }
         guard let spaceID = window.spaceID else { return }
         if movedSpace { sessionDelegate?.windowSpaceChanged(window) }
@@ -552,11 +558,25 @@ extension TabsController {
     }
 
     /// Cmd+D: a normal tab becomes a bookmark at the end of Pinned; a bookmark (pinned, a
-    /// favorite or inside a folder) becomes a normal tab at the top of Tabs.
-    public func toggleBookmark(_ itemID: UUID) {
+    /// favorite or inside a folder) becomes a normal tab at the top of Tabs. A shared favorite
+    /// goes to the Tabs of the window's space.
+    public func toggleBookmark(_ itemID: UUID, in window: BrowserWindowState? = nil) {
         guard let owner = owner(ofItem: itemID),
               let target = tree(owner).bookmarkTogglePosition(of: itemID) else { return }
+        if case .tabs = target.0, let spaceID = sharedFavoriteSpace(of: itemID, in: window) {
+            move(itemID, to: .tabs(spaceID: spaceID), after: nil)
+            return
+        }
         move(itemID, to: target.0, after: target.1)
+    }
+
+    /// The window's space when `itemID` is a favorite stored under another space it shares with.
+    private func sharedFavoriteSpace(of itemID: UUID, in window: BrowserWindowState?) -> UUID? {
+        guard let window, let current = window.spaceID, let owner = owner(ofItem: itemID) else { return nil }
+        let source = tree(owner)
+        guard case .favorites(let home) = source.section(of: itemID), home != current,
+              source.sharesFavorites(home, current) else { return nil }
+        return current
     }
 
     /// A tab the person chose to keep: pinned, a favorite, or inside a folder.
@@ -564,9 +584,11 @@ extension TabsController {
         owner(ofItem: itemID).map { tree($0).isBookmark(itemID) } ?? false
     }
 
-    /// Moves a pinned tab or favorite to the top of its space's tabs section.
-    public func unpin(_ itemID: UUID) {
-        let spaceID = self.spaceID(of: itemID)
+    /// Moves a pinned tab or favorite to the top of its space's tabs section; a shared favorite
+    /// to the top of the tabs of `window`'s space.
+    public func unpin(_ itemID: UUID, in window: BrowserWindowState? = nil) {
+        let spaceID = sharedFavoriteSpace(of: itemID, in: window)
+            ?? self.spaceID(of: itemID)
             ?? allWindows.first(where: { $0.selectedItemID == itemID })?.spaceID
         guard let spaceID else { return }
         move(itemID, to: .tabs(spaceID: spaceID), after: nil)
@@ -743,6 +765,12 @@ extension TabsController {
     /// Windows showing it move to another space.
     public func deleteSpace(_ spaceID: UUID) {
         guard let owner = owner(ofSpace: spaceID) else { return }
+        // Favorites other spaces still show move to one of them instead of closing.
+        if let heir = tree(owner).favoriteSpaces(sharedWith: spaceID).first(where: { $0 != spaceID }) {
+            for favorite in tree(owner).children(of: .favorites(spaceID: spaceID)) {
+                move(favorite.id, to: .favorites(spaceID: heir), after: tree(owner).children(of: .favorites(spaceID: heir)).last?.id)
+            }
+        }
         let source = tree(owner)
         let ids = (source.children(of: .favorites(spaceID: spaceID))
                    + source.children(of: .pinned(spaceID: spaceID))

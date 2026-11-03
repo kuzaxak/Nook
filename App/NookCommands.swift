@@ -169,7 +169,7 @@ struct NookCommands: Commands {
 
             let selectedItem = windowRegistry.activeWindow?.selectedItemID
             Button(selectedItem.map(browserManager.tabs.isBookmark) == true ? "Remove Bookmark" : "Bookmark Tab") {
-                if let selectedItem { browserManager.tabs.toggleBookmark(selectedItem) }
+                if let selectedItem { browserManager.tabs.toggleBookmark(selectedItem, in: windowRegistry.activeWindow) }
             }
             .modifier(dynamicShortcut(.toggleBookmark))
             .disabled(selectedItem == nil)
