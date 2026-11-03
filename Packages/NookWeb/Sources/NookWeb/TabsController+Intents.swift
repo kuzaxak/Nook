@@ -47,6 +47,14 @@ extension TabsController {
         return tree(owner(of: window)).newTabPosition(in: spaceID, after: anchor, climbingFolders: settings.newTabsAtTopLevel)
     }
 
+    /// The item a Cmd+T tab goes after, for the command bar to say where it lands; nil when it
+    /// goes to the top of Tabs.
+    public func newTabAnchorTitle(in window: BrowserWindowState) -> String? {
+        guard let (_, after) = newTabPosition(in: window, after: window.selectedItemID),
+              let after, let item = item(after) else { return nil }
+        return title(for: item)
+    }
+
     /// Where a tab opened from `opener`'s page goes (`TabTree.linkTabPosition`): a child of a
     /// normal tab while nesting is on, else after the tabs already opened from it in the Tabs section.
     func childTabPosition(in window: BrowserWindowState, opener: UUID) -> (Parent, UUID?)? {

@@ -321,6 +321,7 @@ struct CommandPaletteView: View {
                                     suggestions: visibleSuggestions,
                                     selectedIndex: max(selectedSuggestionIndex, 0),
                                     revealsFullURL: commandHeld,
+                                    returnPlacement: returnPlacement,
                                     hoveredIndex: $hoveredSuggestionIndex,
                                     onSelect: { suggestion in
                                         selectSuggestion(suggestion)
@@ -437,6 +438,8 @@ struct CommandPaletteView: View {
         let suggestions: [SearchManager.SearchSuggestion]
         let selectedIndex: Int
         let revealsFullURL: Bool
+        /// Where Enter on the Return row goes, said under it: "this tab" or a new tab's place.
+        let returnPlacement: String
         @Binding var hoveredIndex: Int?
         let onSelect: (SearchManager.SearchSuggestion) -> Void
         /// A scroll view takes all the height it is offered, so it is sized to its rows.
@@ -457,7 +460,7 @@ struct CommandPaletteView: View {
                             .padding(.top, index == 0 ? 0 : 4)
                     }
                     // Rows keep the text roles on a neutral fill, so the chosen row reads on any accent.
-                    row(for: suggestion, showsFullURL: revealsFullURL && selectedIndex == index)
+                    row(for: suggestion, showsFullURL: revealsFullURL && selectedIndex == index, isReturnRow: index == 0)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(
@@ -498,7 +501,8 @@ struct CommandPaletteView: View {
         @ViewBuilder
         private func row(
             for suggestion: SearchManager.SearchSuggestion,
-            showsFullURL: Bool
+            showsFullURL: Bool,
+            isReturnRow: Bool
         ) -> some View {
             switch suggestion.type {
             case .tab(let tab):
@@ -513,16 +517,24 @@ struct CommandPaletteView: View {
                 GenericSuggestionItem(
                     icon: Image(systemName: "link"),
                     text: suggestion.text,
-                    isSelected: false
+                    detail: isReturnRow ? "Opens in \(returnPlacement)" : nil
                 )
             case .search:
                 GenericSuggestionItem(
                     icon: Image(systemName: "magnifyingglass"),
                     text: suggestion.text,
-                    isSelected: false
+                    detail: isReturnRow ? "Searches in \(returnPlacement)" : nil
                 )
             }
         }
+    }
+
+    private var returnPlacement: String {
+        if commandPalette.shouldNavigateCurrentTab, browserManager.tabs.controllableSession(in: windowState) != nil {
+            return "this tab"
+        }
+        return browserManager.tabs.newTabAnchorTitle(in: windowState).map { "a new tab below \u{201C}\($0)\u{201D}" }
+            ?? "a new tab at the top of Tabs"
     }
 
     private func handleReturn() {

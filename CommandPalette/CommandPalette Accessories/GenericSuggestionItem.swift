@@ -13,6 +13,7 @@ import NookWeb
 struct GenericSuggestionItem: View {
     let icon: Image
     let text: String
+    var detail: String? = nil
     var isSelected: Bool = false
 
     var body: some View {
@@ -27,11 +28,20 @@ struct GenericSuggestionItem: View {
             .frame(width: 24, height: 24)
             .clipShape(NookDesign.Radius.shape(NookDesign.Radius.xs))
 
-            Text(text)
-                .font(NookDesign.Font.label)
-                .foregroundStyle(isSelected ? .white : .primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(text)
+                    .font(NookDesign.Font.label)
+                    .foregroundStyle(isSelected ? .white : .primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if let detail {
+                    Text(detail)
+                        .font(NookDesign.Font.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity)
