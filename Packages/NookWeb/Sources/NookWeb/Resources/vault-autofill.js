@@ -2,9 +2,10 @@
 // Licensed under GPL-3.0. See LICENSE.
 //
 // Runs in the isolated NookAutofill world of every http(s) frame; its handler exists only in
-// that world, so a page can neither post to it nor call __nookVaultFill. Reports which login
-// field has focus and where, offers a save after a sign-in with a typed password, and fills
-// the fields Nook passes back once the user picked an account in Nook's own popover.
+// that world, so a page can neither post to it nor call __nookVaultFill. Asks Nook for its
+// account popover only after a real click or ArrowDown in a login field (never on focus, never
+// for an event the page made), offers a save after a sign-in with a typed password, and fills
+// the fields Nook passes back once the user picked an account in that popover.
 (() => {
   if (window.__nookVaultAutofill) return;
   window.__nookVaultAutofill = true;
@@ -62,15 +63,13 @@
     return { x, y, width: rect.width, height: rect.height };
   }
 
-  function report(input) {
+  function open(event) {
+    if (!event.isTrusted) return;
+    const input = event.composedPath()[0];
     const kind = kindOf(input);
-    if (!kind) {
-      if (field) post({ type: 'blur' });
-      field = null;
-      return;
-    }
+    if (!kind) return;
     field = input;
-    post({ type: 'focus', kind, rect: viewportRect(input), webauthn: /\bwebauthn\b/.test(autocompleteOf(input)) });
+    post({ type: 'open', kind, rect: viewportRect(input), webauthn: /\bwebauthn\b/.test(autocompleteOf(input)) });
   }
 
   function offerSave(scope) {
@@ -82,11 +81,13 @@
     post({ type: 'submit', username: user.value, password: password.value });
   }
 
-  document.addEventListener('focusin', event => report(event.composedPath()[0]), true);
-  // A click in the field that already has focus brings the popover back.
-  document.addEventListener('mousedown', event => {
-    const target = event.composedPath()[0];
-    if (target === field && target.getRootNode().activeElement === target) report(target);
+  document.addEventListener('mousedown', open, true);
+  document.addEventListener('keydown', event => { if (event.key === 'ArrowDown') open(event); }, true);
+  // Focus moving to anything else closes the popover; focus never opens it.
+  document.addEventListener('focusin', event => {
+    if (!field || event.composedPath()[0] === field) return;
+    field = null;
+    post({ type: 'blur' });
   }, true);
   document.addEventListener('submit', event => offerSave(event.target), true);
   document.addEventListener('keydown', event => {

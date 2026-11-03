@@ -30,6 +30,7 @@ final class AutofillManager: NSObject, VaultPresenter, NSPopoverDelegate {
     @ObservationIgnored private var popover: NSPopover?
     @ObservationIgnored private weak var popoverWebView: WKWebView?
     @ObservationIgnored private var pickerCompletion: ((VaultPickerItem?) -> Void)?
+    @ObservationIgnored private var pickerShownAt = Date.distantPast
     @ObservationIgnored private static let saveOfferLifetime: Duration = .seconds(120)
 
     // MARK: - Picker
@@ -42,10 +43,11 @@ final class AutofillManager: NSObject, VaultPresenter, NSPopoverDelegate {
         popover.behavior = .transient
         popover.delegate = self
         popover.contentViewController = NSHostingController(
-            rootView: VaultPickerView(host: host, items: items) { [weak self] item in self?.closePicker(with: item) })
+            rootView: VaultPickerView(host: host, items: items) { [weak self] item in self?.pick(item) })
         self.popover = popover
         popoverWebView = webView
         pickerCompletion = completion
+        pickerShownAt = .now
         popover.show(relativeTo: anchor, of: webView, preferredEdge: webView.isFlipped ? .maxY : .minY)
     }
 
@@ -59,6 +61,12 @@ final class AutofillManager: NSObject, VaultPresenter, NSPopoverDelegate {
             guard (notification.object as? NSPopover) === popover else { return }
             closePicker(with: nil)
         }
+    }
+
+    /// A click or Return the page lined up before the popover appeared does not pick.
+    private func pick(_ item: VaultPickerItem?) {
+        if item != nil, !VaultPrompt.acceptsPick(shownAt: pickerShownAt, now: .now) { return }
+        closePicker(with: item)
     }
 
     private func closePicker(with item: VaultPickerItem?) {

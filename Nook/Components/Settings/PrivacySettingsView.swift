@@ -64,7 +64,7 @@ struct PrivacySettingsView: View {
                     LabeledContent("Status") {
                         vaultStatus(vault.status)
                     }
-                    // While this pane shows, follow the vault: approval and unlocking happen there.
+                    // While this pane shows, follow the vault: unlocking happens there.
                     .task {
                         while !Task.isCancelled {
                             await vault.refresh()
@@ -124,7 +124,7 @@ struct PrivacySettingsView: View {
         case nil: ("Checking…", .secondary)
         case .connected: ("Connected", .green)
         case .locked: ("Vault locked", .orange)
-        case .awaitingApproval: ("Waiting for approval in Pawl Vault", .orange)
+        case .notTeamSigned: ("This Nook build is not signed by your team", .red)
         case .notRunning: ("Pawl Vault is not running", .secondary)
         case .notPawlVault: ("Not Pawl Vault (signature check failed)", .red)
         }

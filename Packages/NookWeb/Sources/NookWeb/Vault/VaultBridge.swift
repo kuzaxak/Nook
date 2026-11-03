@@ -49,8 +49,10 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
     /// Token of the picker this bridge has open; a stale picker's completion never clears a newer one.
     private var openPicker: Int?
     private var pickerCount = 0
-    /// Bumped by every focus and close, so a slow vault lookup cannot open a picker late.
+    /// Bumped by every open request and close, so a slow vault lookup cannot open a picker late.
     private var focusGeneration = 0
+    /// The main frame's origin as of its last commit; a subframe must match it.
+    private var committedOrigin: String?
 
     private init(session: PageSession, service: VaultService, webView: WKWebView) {
         self.session = session
@@ -118,6 +120,12 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
         if !passkeys { endPasskeyRequests(.notAllowed) }
     }
 
+    /// A new main-frame document committed with `origin`.
+    func pageCommitted(origin: String?) {
+        committedOrigin = origin
+        documentChanged()
+    }
+
     /// The page's document went away: its requests end and its pickers close.
     func documentChanged() {
         endPasskeyRequests(.abort)
@@ -169,7 +177,7 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
               let origin = Self.allowedOrigin(of: message.frameInfo)
         else { return }
         switch type {
-        case "focus":
+        case "open":
             showAccounts(frame: message.frameInfo, origin: origin, rect: body["rect"] as? [String: Any],
                          webauthn: body["webauthn"] as? Bool ?? false, in: webView)
         case "blur":
@@ -236,7 +244,7 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
                   !logins.contains(where: { $0.username == username }),
                   let presenter = service.presenter
             else { return }
-            presenter.offerSave(host: host, username: username, in: webView) { save in
+            presenter.offerSave(host: host, username: VaultPrompt.displayText(username), in: webView) { save in
                 guard save else { return }
                 Task { _ = try? await service.send(VaultSave(origin: origin, username: username, password: password, profile: profile)) }
             }
@@ -324,9 +332,8 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
         let security = message.frameInfo.securityOrigin
         guard let origin = WebAuthnPolicy.origin(scheme: security.protocol, host: security.host, port: security.port)
         else { return .failure(.security) }
-        let mainFrameOrigin = webView.url.flatMap(WebAuthnPolicy.origin(of:))
         guard WebAuthnPolicy.isAllowedFrame(isMainFrame: message.frameInfo.isMainFrame, frameOrigin: origin,
-                                            mainFrameOrigin: mainFrameOrigin)
+                                            mainFrameOrigin: committedOrigin)
         else { return .failure(.notAllowed) }
         guard WebAuthnPolicy.isAllowedOrigin(scheme: security.protocol, host: security.host) else { return .failure(.security) }
         return .success(PageContext(origin: origin, host: security.host.lowercased(), profile: profile))
@@ -368,7 +375,7 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
         closePicker()
         modalGetID = id
         let token = pickerOpened()
-        presenter.presentPicker(host: rpId, items: passkeys.map(VaultPickerItem.init), anchor: Self.topAnchor(in: webView),
+        presenter.presentPicker(host: context.host, items: passkeys.map(VaultPickerItem.init), anchor: Self.topAnchor(in: webView),
                                 in: webView) { [weak self] item in
             _ = self?.pickerClosed(token)
             if self?.modalGetID == id { self?.modalGetID = nil }
@@ -421,7 +428,8 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
             clientDataHash: Base64URL.encode(WebAuthnClientData.hash(clientDataJSON)),
             pubKeyCredParams: algorithms.isEmpty ? [-7, -257] : algorithms, excludeCredentials: exclude,
             origin: context.origin, profile: context.profile)
-        presenter.confirmPasskeyCreation(rpId: rpId, userName: userName.isEmpty ? displayName : userName, in: webView) { confirmed in
+        let shownName = VaultPrompt.displayText(userName.isEmpty ? displayName : userName)
+        presenter.confirmPasskeyCreation(rpId: rpId, userName: shownName, in: webView) { confirmed in
             guard confirmed, reply.isPending else { return reply.fail(.notAllowed) }
             Task {
                 do {

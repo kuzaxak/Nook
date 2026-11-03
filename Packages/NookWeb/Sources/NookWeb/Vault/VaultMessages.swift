@@ -272,18 +272,19 @@ public enum VaultCodec {
 public enum VaultStatus: Equatable, Sendable {
     case connected
     case locked
-    case awaitingApproval
+    /// The vault accepts only Nook builds signed by its own team; this one is not.
+    case notTeamSigned
     case notRunning
     case notPawlVault
 
     public init(_ hello: VaultHello.Reply) {
-        self = !hello.paired ? .awaitingApproval : hello.unlocked ? .connected : .locked
+        self = !hello.paired ? .notTeamSigned : hello.unlocked ? .connected : .locked
     }
 
     public init(_ error: VaultClientError) {
         switch error {
         case .notPawlVault: self = .notPawlVault
-        case .server(.unpaired, _): self = .awaitingApproval
+        case .server(.unpaired, _): self = .notTeamSigned
         case .server(.locked, _): self = .locked
         default: self = .notRunning
         }

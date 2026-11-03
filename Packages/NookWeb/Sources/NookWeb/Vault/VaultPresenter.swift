@@ -31,15 +31,15 @@ public struct VaultPickerItem: Identifiable, Sendable {
     init(_ login: VaultLogin) {
         id = "login:" + login.id
         kind = .login(id: login.id)
-        title = login.title
-        account = login.username
+        title = VaultPrompt.displayText(login.title)
+        account = VaultPrompt.displayText(login.username)
     }
 
     init(_ passkey: VaultPasskey) {
         id = "passkey:" + passkey.credentialId
         kind = .passkey(credentialId: passkey.credentialId)
-        title = passkey.title
-        account = passkey.userName
+        title = VaultPrompt.displayText(passkey.title)
+        account = VaultPrompt.displayText(passkey.userName)
     }
 }
 

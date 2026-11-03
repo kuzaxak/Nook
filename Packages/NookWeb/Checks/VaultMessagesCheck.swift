@@ -103,12 +103,12 @@ struct VaultMessagesCheck {
 
         // Status line, from hello or from the error that stopped it.
         precondition(VaultStatus(hello) == .locked)
-        precondition(VaultStatus(try! reply(VaultHello.self, #"{"id":1,"result":{"vault":"Pawl Vault","version":1,"paired":false,"unlocked":true}}"#)) == .awaitingApproval)
+        precondition(VaultStatus(try! reply(VaultHello.self, #"{"id":1,"result":{"vault":"Pawl Vault","version":1,"paired":false,"unlocked":true}}"#)) == .notTeamSigned)
         precondition(VaultStatus(try! reply(VaultHello.self, #"{"id":1,"result":{"vault":"Pawl Vault","version":1,"paired":true,"unlocked":true}}"#)) == .connected)
         precondition(VaultStatus(VaultClientError.notRunning) == .notRunning)
         precondition(VaultStatus(VaultClientError.timeout) == .notRunning)
         precondition(VaultStatus(VaultClientError.notPawlVault) == .notPawlVault)
-        precondition(VaultStatus(VaultClientError.server(.unpaired, "")) == .awaitingApproval)
+        precondition(VaultStatus(VaultClientError.server(.unpaired, "")) == .notTeamSigned)
         precondition(VaultStatus(VaultClientError.server(.locked, "")) == .locked)
 
         // Vault errors as DOMException names. Only an excluded credential on create differs.

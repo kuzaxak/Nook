@@ -94,7 +94,7 @@ public final class VaultService {
 
     /// A new document committed in `webView`: requests and pickers from the old one end.
     public func pageCommitted(in webView: WKWebView) {
-        VaultBridge.bridge(for: webView)?.documentChanged()
+        VaultBridge.bridge(for: webView)?.pageCommitted(origin: webView.url.flatMap(WebAuthnPolicy.origin(of:)))
     }
 
     private func settingChanged() {
