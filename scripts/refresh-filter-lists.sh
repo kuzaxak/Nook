@@ -19,7 +19,10 @@ LISTS=(
 for entry in "${LISTS[@]}"; do
   name="${entry%%|*}"; url="${entry#*|}"
   tmp="$(mktemp)"
-  curl -sfL --max-time 90 "$url" -o "$tmp"
+  if ! curl -sfL --max-time 90 "$url" -o "$tmp"; then
+    echo "refresh-filter-lists: $name did not download; keeping old copy" >&2
+    rm -f "$tmp"; continue
+  fi
   first="$(grep -m1 -v '^[[:space:]]*$' "$tmp" || true)"
   if [ "$(wc -c < "$tmp")" -lt 5000 ] || ! [[ "$first" == "["* || "$first" == "!"* || "$first" == "#"* ]]; then
     echo "refresh-filter-lists: $name looks wrong (size $(wc -c < "$tmp"), first line: ${first:0:40}); keeping old copy" >&2

@@ -28,6 +28,17 @@ SPARKLE_BIN="build/SourcePackages/artifacts/sparkle/Sparkle/bin"
 OUT="build/release"
 APP="$OUT/Nook.app"
 
+# A tag that already names another commit would get this build's binaries; stop before building.
+if [[ "$PUBLISH" == "--publish" ]]; then
+  REMOTE="https://github.com/kuzaxak/Nook.git"
+  TAG_COMMIT="$(git ls-remote "$REMOTE" "refs/tags/$TAG^{}" | cut -f1)"
+  [[ -n "$TAG_COMMIT" ]] || TAG_COMMIT="$(git ls-remote "$REMOTE" "refs/tags/$TAG" | cut -f1)"
+  if [[ -n "$TAG_COMMIT" && "$TAG_COMMIT" != "$(git rev-parse HEAD)" ]]; then
+    echo "$TAG already points at $TAG_COMMIT, not at $(git rev-parse HEAD)."
+    exit 1
+  fi
+fi
+
 SIGN_IDENTITY="${SIGN_IDENTITY-$(security find-identity -v -p codesigning | grep -o "\"Developer ID Application: [^\"]*($TEAM)\"" | head -1 | tr -d '"')}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 NOTARY_PROFILE="${NOTARY_PROFILE-nook-notary}"
@@ -118,8 +129,13 @@ fi
 
 echo "Built $DMG and $OUT/feed/appcast.xml (version $VERSION, build $BUILD_NUMBER)"
 if [[ "$PUBLISH" == "--publish" ]]; then
-  gh release create "$TAG" "$DMG" "$OUT/feed/appcast.xml" --repo kuzaxak/Nook --target "$(git rev-parse HEAD)" \
-    --title "Nook $VERSION" --notes-file "$NOTES"
+  # A rerun after a failed upload replaces the files on the release it already made.
+  if gh release view "$TAG" --repo kuzaxak/Nook >/dev/null 2>&1; then
+    gh release upload "$TAG" "$DMG" "$OUT/feed/appcast.xml" --repo kuzaxak/Nook --clobber
+  else
+    gh release create "$TAG" "$DMG" "$OUT/feed/appcast.xml" --repo kuzaxak/Nook --target "$(git rev-parse HEAD)" \
+      --title "Nook $VERSION" --notes-file "$NOTES"
+  fi
 else
   echo "Not published. Publish with: scripts/release.sh $VERSION --publish"
 fi
