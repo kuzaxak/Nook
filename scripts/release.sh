@@ -93,6 +93,20 @@ if [[ "$SIGN_IDENTITY" != "-" ]]; then
   fi
 fi
 
+# The version's CHANGELOG.md section is the release's notes, on GitHub and in Sparkle's update
+# window, which embeds an .html file named like the DMG.
+NOTES="$OUT/notes.md"
+awk -v v="$VERSION" '/^## / { on = ($2 == v); next } on' CHANGELOG.md > "$NOTES"
+[[ -s "$NOTES" ]] || echo "Fork build $VERSION. Universal: Apple silicon and Intel." > "$NOTES"
+awk '
+  { gsub(/&/, "\\&amp;"); gsub(/</, "\\&lt;"); gsub(/>/, "\\&gt;") }
+  /^### / { if (list) { print "</ul>"; list = 0 } sub(/^### /, ""); print "<h3>" $0 "</h3>"; next }
+  /^- / { if (!list) { print "<ul>"; list = 1 } sub(/^- /, ""); print "<li>" $0 "</li>"; next }
+  /^[[:space:]]*$/ { next }
+  { if (list) { print "</ul>"; list = 0 } print "<p>" $0 "</p>" }
+  END { if (list) print "</ul>" }
+' "$NOTES" > "${DMG%.dmg}.html"
+
 if [[ -n "${SPARKLE_KEY_FILE:-}" ]]; then
   SPARKLE_KEY=(--ed-key-file "$SPARKLE_KEY_FILE")
 else
@@ -105,7 +119,7 @@ fi
 echo "Built $DMG and $OUT/feed/appcast.xml (version $VERSION, build $BUILD_NUMBER)"
 if [[ "$PUBLISH" == "--publish" ]]; then
   gh release create "$TAG" "$DMG" "$OUT/feed/appcast.xml" --repo kuzaxak/Nook --target "$(git rev-parse HEAD)" \
-    --title "Nook $VERSION" --notes "Fork build $VERSION (build $BUILD_NUMBER). Universal: Apple silicon and Intel."
+    --title "Nook $VERSION" --notes-file "$NOTES"
 else
   echo "Not published. Publish with: scripts/release.sh $VERSION --publish"
 fi

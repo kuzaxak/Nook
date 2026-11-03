@@ -6,7 +6,7 @@ name: Release
 # https://github.com/kuzaxak/Nook/releases/latest/download/appcast.xml, so the newest release is
 # the update everyone gets.
 #
-# Repository secrets:
+# Repository secrets (scripts/setup-release-secrets.sh stores them):
 #   APPLE_CERTIFICATE_P12_BASE64, APPLE_CERTIFICATE_PASSWORD  Developer ID Application identity
 #   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID       notarization
 #   SPARKLE_SIGNING_KEY                                       EdDSA private key (generate_keys -x)

@@ -1,47 +1,54 @@
 # Changelog
 
-## Unreleased (fork)
+## 1.5.0
 
-### Changed
-
-- New tabs open ungrouped, below the selected tab's folder (Settings → General → Tabs)
-- Tabs opened from a pinned tab, a favorite or a folder land in Tabs; a run of background links keeps click order
-- Option to stop nesting link tabs under their opener; Back still returns to the opener
-- Duplicate Tab keeps the copy next to the original, in Pinned, Favorites or the same folder
-- Tabs inside folders are bookmarks: closing one ends its page and keeps it, as a pinned tab does
-- Cmd+D bookmarks a tab (to Pinned) or turns a bookmark back into a normal tab
-- Universal build for Apple silicon and Intel; own bundle id
-- Own update stream: Sparkle reads the fork's GitHub releases, signed with the fork's key; scripts/release.sh builds, signs with Developer ID, notarizes and publishes
+The first release of this fork: it builds for Intel and Apple silicon, updates from its own releases, and works more like Arc.
 
 ### Added
 
-- Normal tabs not seen for 3 days are archived to Reopen Closed Tab (12 hours to 30 days in Settings → General → Tabs)
-- History index for the command bar: every visited page stays findable, ranked by frecency (Settings → Privacy → History)
-- Secret and tracking parameters (token, code, state, session, utm_*, fbclid, gclid) are dropped from history
+- Pawl Vault passwords and passkeys (Settings → Privacy → Passwords, off by default): pick an account under a login field, save a new password after signing in, sign in and register with passkeys; Nook checks the vault's code signature, keeps no credentials, and asks again only for saves or after 15 minutes
+- Profiles pane, as in Arc (Settings → Profiles): add, rename and delete profiles; each sets its search engine, its download location (Downloads, a chosen folder, or ask every time starting where the last file went) and clears its website data
+- Kagi Session Link: paste it in Settings → General and Kagi searches are signed in from every space; the token stays in the Keychain and out of history and tabs; Settings links to Kagi's page that shows it
+- Search suggestions from Kagi when Kagi is the search engine
+- Peek, as in Arc: links a page opens in a new tab and Shift-clicked links open over the page with back, forward, reload and Copy URL, and Close, Open as Tab and Open in Split View beside it; each tab keeps its own Peek and shows its icon in the sidebar (Settings → General → Peek)
+- Split view, as in Arc: each pane has its own toolbar above the page; the split row has one menu for the pair; drop a dragged tab on the left or right half of the page to split
+- Developer Mode, as in Arc: Ctrl+D turns it on for the current site; its bar replaces the toolbar, and its tools work from the bar with shortcuts (⌥⌘N Network, ⌥⌘G Performance, ⇧⌘2 Copy Screenshot, ⌥⌘P Portrait, ⌥⌘J Console); the lock opens Site Controls
+- Cmd+Shift+D moves the address and navigation buttons between the sidebar and a toolbar above the page
+- History index for the command bar: every visited page stays findable, ranked by frecency (Settings → Privacy → History); secret and tracking parameters (token, code, state, session, utm_*, fbclid, gclid) are dropped
 - Command bar keys from zsh and fish: → or Ctrl+E takes the grey completion, ⌥→ takes one word, Ctrl+W and ⌥⌫ delete a word, Ctrl+U clears, Ctrl+N/P move
 - Command bar: arrows no longer rewrite what you typed; Tab on a row narrows the field to its site; ⌘↩ opens in the background and keeps the bar open; ⇧↩ opens in split view
 - Command bar rows show the title over a short address; hold ⌘ for the full one
-- Command bar finds sidebar folders and renamed pinned links by word; Tab on a folder searches inside it (sub-folders too), Return shows it in the sidebar
-- Command bar scopes: `t ` lists tabs by space, `h ` or Ctrl+R lists history; sections with headers and up to 8 rows
-- Command bar actions: commands such as Copy Current URL, Pin to Space or Move to Space run from the bar with their shortcuts shown; `> ` lists only actions
+- Command bar finds sidebar folders and renamed pinned links by word; Tab on a folder searches inside it, Return shows it in the sidebar
+- Command bar scopes: `t ` lists tabs by space, `h ` or Ctrl+R lists history, `> ` lists actions; commands such as Copy Current URL, Pin to Space or Move to Space run from the bar with their shortcuts shown
+- Command bar developer shortcuts: `loc` or `127` lists local servers one row per port; keywords such as `gh owner/repo` open their address (Settings → General → URL Shortcuts)
 - New bindable actions: Pin to Space, Add to Favorites, Add to Folder, Move to Space, Rename Tab, Translate Page, Toggle Extension Library, Manage Extensions, Toggle Dark Mode, Toggle Developer Mode for Site
-- Kagi Session Link: paste it in Settings → General and Kagi searches are signed in from every space; the token stays in the Keychain and out of history and tabs
-- Search suggestions from Kagi when Kagi is the search engine
-- Search engine per space (Settings → Spaces → Search), e.g. Kagi in one space and Google in another
-- Settings links to Kagi's account page where the Session Link is
-- Peek like Arc: links a page opens in a new tab and Shift-clicked links open in an overlay with Close, Open as Tab and Open in Split View (Settings → General → Tabs)
-- Cmd+Shift+D moves the address and navigation buttons between the sidebar and a toolbar above the page, as in Arc
-- Ctrl+D turns Developer Mode on or off for the current site (also in the View menu)
-- The space switcher shows each space's icon (or its initial) instead of dots, unless the dock is too crowded; click the icon in Settings → Spaces to choose one
-- Split view like Arc: each pane has its own toolbar (back, forward, reload, address, separate, close) above the page; the split row has one menu for the pair; drop a dragged tab anywhere on the left or right half of the page to split
-- Control-Tab shows up to 20 recent tabs in rows; arrow keys and Return work while it is open
-- The sidebar keeps the selected tab in view; denser tab rows; tab titles stay faded before the close button while it is under the pointer
-- Closing the command bar gives the keyboard back to the page
-- Favorites are shared by spaces that use the same profile, as in Arc; opening one keeps you in the current space
-- Rename like Arc: double-click a tab or folder (or use Rename); the name starts selected, Enter or clicking away saves, Esc cancels; the field gets the whole row
-- Long tab and folder names fade at the end and show in full on hover
-- Command bar developer shortcuts: `loc` or `127` lists local servers one row per port, ranked by use; keywords such as `gh owner/repo` open their address (Settings → General → URL Shortcuts)
-- Pawl Vault passwords and passkeys (Settings → Privacy → Passwords, off by default): pick an account under a login field, save a new password after signing in, sign in and register with passkeys; Nook checks the vault's code signature and keeps no credentials
+- Normal tabs not seen for 3 days are archived to Reopen Closed Tab (12 hours to 30 days in Settings → General → Tabs)
+- Favorites are shared by spaces that use the same profile; opening one keeps you in the current space
+- The space switcher shows each space's icon or initial instead of dots; choose the icon in Settings → Spaces
+- Control-Tab shows up to 20 recent tabs in rows, with each tab's Peek; arrows, Ctrl+F/B/N/P and Return work while it is open
+- Copy URL buttons in the sidebar, the toolbar and Peek, with ⇧⌘C in their tooltips
+
+### Changed
+
+- Universal build for Apple silicon and Intel, with its own bundle id
+- Updates come from this fork's GitHub releases, signed with the fork's key; a version tag builds, signs with Developer ID, notarizes and publishes the release
+- New tabs open ungrouped, below the selected tab's folder (Settings → General → Tabs); tabs opened from a pinned tab, a favorite or a folder land in Tabs; a run of background links keeps click order
+- Option to stop nesting link tabs under their opener; Back still returns to the opener
+- Duplicate Tab keeps the copy next to the original, in Pinned, Favorites or the same folder
+- Tabs inside folders are bookmarks: closing one ends its page and keeps it, as a pinned tab does; Cmd+D bookmarks a tab or turns a bookmark back into a normal tab
+- Rename as in Arc: double-click a tab or folder; the name starts selected, Enter or clicking away saves, Esc cancels
+- Long tab and folder names fade at the end and show in full on hover; denser tab rows; the sidebar keeps the selected tab in view
+- The command bar has a soft glow around it and gives the keyboard back to the page when it closes
+- Toolbar text follows the page's colour, so titles stay readable on dark pages
+- Settings: footers read from the leading edge, the update toggles work, clearer AI, history and shortcut rows, visible Kagi and URL Shortcut fields
+- An empty Favorites area is one row tall
+
+### Fixed
+
+- The passkey sheet no longer takes the Return that submitted a sign-up form as Continue
+- The quit confirmation no longer opens behind Settings
+- The toolbar's Copy URL button stays under the pointer
+- The iOS target builds again
 
 ## 1.4.0
 
