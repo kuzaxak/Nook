@@ -7,6 +7,14 @@
 - Pawl Vault one-time codes: click a verification-code field (or press ↓ in it) to pick an account with a one-time code, and Nook fills the current code, one digit per box when the site splits it; the form is never submitted and codes are never kept
 - Default browser: Settings → General shows whether Nook is your default browser and makes it one with a click; Nook offers it at launch until you agree, and asks again 30 days after Not Now
 
+### Changed
+
+- The command bar's top row says where Return opens: this tab, a new tab below the named one, or the top of Tabs
+
+### Fixed
+
+- Deleting a profile deletes its history and its command bar entries too
+
 ## 1.5.0
 
 The first release of this fork: it builds for Intel and Apple silicon, updates from its own releases, and works more like Arc.
