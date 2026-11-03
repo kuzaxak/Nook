@@ -86,6 +86,8 @@ public final class TabsController {
     @ObservationIgnored public var onTabsPinned: (([UUID]) -> Void)?
     /// A window is about to show another tab instead of this one, which is still on screen.
     @ObservationIgnored public var onLeavingTab: ((UUID, BrowserWindowState) -> Void)?
+    /// A page let go of its web views: unloaded, or closed, in a private window too.
+    @ObservationIgnored public var onPageUnloaded: ((UUID) -> Void)?
 
     /// Launch argument that redirects tab state, e.g. `-NookStateDir /tmp/bench`.
     /// Read from the argument domain only, never from persisted defaults, so a stray written

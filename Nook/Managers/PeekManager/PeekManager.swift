@@ -31,7 +31,14 @@ final class PeekManager {
         // A tab's Peek is still drawn as the window leaves the tab: its picture is taken for the
         // Control-Tab card then, like the tab's own.
         browserManager.tabs.onLeavingTab = { [weak self] itemID, window in
-            self?.slots.page(tab: itemID, window: window.id)?.captureSwitcherSnapshot()
+            guard let peek = self?.slots.page(tab: itemID, window: window.id) else { return }
+            peek.captureSwitcherSnapshot()
+            // A Peek waits hidden with its tab; nothing would show a video playing in it.
+            peek.webView?.pauseAllMediaPlayback(completionHandler: nil)
+        }
+        // A tab that lets go of its page, closed or unloaded, ends its Peeks with it.
+        browserManager.tabs.onPageUnloaded = { [weak self] itemID in
+            self?.tabClosed(itemID)
         }
     }
 
@@ -70,7 +77,7 @@ final class PeekManager {
         page.onClose = { [weak self] in self?.dismiss(tab: tab, window: windowID) }
         let replaced = withAnimation(NookDesign.Motion.spring) { slots.open(page, tab: tab, window: window.id) }
         if let replaced {
-            browserManager.tabs.endDetached(replaced)
+            end(replaced)
         }
     }
 
@@ -98,15 +105,19 @@ final class PeekManager {
     }
 
     func tabClosed(_ itemID: UUID) {
-        for page in slots.closeAll(tab: itemID) { browserManager?.tabs.endDetached(page) }
+        for page in slots.closeAll(tab: itemID) { end(page) }
     }
 
     func windowClosed(_ windowID: UUID) {
-        for page in slots.closeAll(window: windowID) { browserManager?.tabs.endDetached(page) }
+        for page in slots.closeAll(window: windowID) { end(page) }
     }
 
     private func dismiss(tab: UUID, window: UUID) {
         guard let page = withAnimation(NookDesign.Motion.spring, { slots.close(tab: tab, window: window) }) else { return }
+        end(page)
+    }
+
+    private func end(_ page: PageSession) {
         origins[page.itemID] = nil
         browserManager?.tabs.endDetached(page)
     }
@@ -116,8 +127,9 @@ final class PeekManager {
     private func adopt(in window: BrowserWindowState) -> UUID? {
         guard let browserManager, let tab = window.selectedItemID,
               let page = withAnimation(NookDesign.Motion.spring, { slots.close(tab: tab, window: window.id) }) else { return nil }
+        origins[page.itemID] = nil
         guard let itemID = browserManager.tabs.adopt(page, in: window, from: tab) else {
-            browserManager.tabs.endDetached(page)
+            end(page)
             return nil
         }
         return itemID

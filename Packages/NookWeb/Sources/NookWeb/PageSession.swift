@@ -452,6 +452,7 @@ public final class PageSession: NSObject, Identifiable {
     /// Releases every web view for this page (primary and window clones) and resets
     /// live state. The item and its URL stay; selecting it again loads a fresh view.
     public func unload() {
+        controller?.onPageUnloaded?(itemID)
         let interval = BrowserPerformance.signposter.beginInterval("TabEviction")
         defer { BrowserPerformance.signposter.endInterval("TabEviction", interval) }
         let primary = primaryWebView
