@@ -40,7 +40,6 @@ struct PeekOverlayView: View {
             }
         }
         .zIndex(9999) // Put it at the very top
-        .animation(NookDesign.Motion.spring, value: page?.itemID)
     }
 
     /// Dims the page area only; the sidebar stays bright and takes clicks.

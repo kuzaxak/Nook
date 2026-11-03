@@ -24,6 +24,7 @@ public struct SpaceTab: View {
     /// The pointer is on the row or one of its buttons; a button's own tracking area takes the
     /// row's hover away, so both count. A rename hides them, so the field gets the whole row.
     private var showsControls: Bool { !isRenaming && (isHovering || isCloseHovering || isResetHovering) }
+    @Environment(\.peekedPage) private var peekedPage
     @State private var draftName: String = ""
     @FocusState private var isTextFieldFocused: Bool
     @Environment(BrowserWindowState.self) private var windowState
@@ -134,12 +135,23 @@ public struct SpaceTab: View {
                         // Only a rename animates; a page changing its own title swaps without motion.
                         .animation(NookDesign.Motion.spring, value: item.customTitle)
                         // On hover the text ends before the close button.
-                        .nookTrailingFade(reserving: showsControls ? NookDesign.Size.row + (showsReset ? NookDesign.Size.rowButton : 0) : 0)
+                        .nookTrailingFade(reserving: showsControls ? NookDesign.Size.row + (showsReset ? NookDesign.Size.rowButton : 0)
+                                          : peekedPage(item.id) != nil ? NookDesign.Size.row : 0)
                         .textSelection(.disabled)
                         .opacity(isUnloaded ? NookDesign.Surface.unloadedOpacity : 1)
                 }
             }
             .overlay(alignment: .trailing) {
+                // A Peek open over this tab, shown by its page's icon where the close button goes, as in Arc.
+                if !showsControls, let peek = peekedPage(item.id) {
+                    peek.favicon
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: NookDesign.Size.favicon - 2, height: NookDesign.Size.favicon - 2)
+                        .clipShape(NookDesign.Radius.shape(NookDesign.Radius.xs))
+                        .frame(width: NookDesign.Size.rowButton, height: NookDesign.Size.rowButton)
+                        .help("Peek: \(peek.title)")
+                }
                 if showsControls {
                     HStack(spacing: 0) {
                         // Resets a pinned tab whose page left its pinned URL; sits left of close and fades in with it.
@@ -260,4 +272,9 @@ public struct SpaceTab: View {
             tabs.rename(item.id, name.isEmpty ? nil : name)
         }
     }
+}
+
+public extension EnvironmentValues {
+    /// The Peek open over a tab in this window, for the tab's row.
+    @Entry var peekedPage: (UUID) -> PageSession? = { _ in nil }
 }

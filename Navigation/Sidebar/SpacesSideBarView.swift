@@ -37,6 +37,9 @@ struct SpacesSideBarView: View {
 
     var body: some View {
         sidebarContent
+            .environment(\.peekedPage) { [peekManager = browserManager.peekManager, windowID = windowState.id] in
+                peekManager.page(tab: $0, window: windowID)
+            }
             .contentShape(Rectangle())
             .onHoverTracking { state in
                 guard state != isSidebarHovered else { return }

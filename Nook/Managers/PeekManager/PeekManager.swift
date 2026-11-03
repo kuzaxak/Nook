@@ -7,7 +7,9 @@
 //
 
 import Foundation
+import NookDesign
 import NookWeb
+import SwiftUI
 
 /// Peek: a link shown in a card over the tab that opened it, as a detached page that runs like a
 /// tab and becomes one when moved to a tab or split. Each tab keeps its own Peek while another
@@ -29,6 +31,10 @@ final class PeekManager {
         window.selectedItemID.flatMap { slots.page(tab: $0, window: window.id) }
     }
 
+    func page(tab: UUID, window: UUID) -> PageSession? {
+        slots.page(tab: tab, window: window)
+    }
+
     func presentExternalURL(_ url: URL, from source: PageSession?) {
         // A private page never falls back to the default persistent store.
         guard let browserManager, let source, let profile = source.profile,
@@ -45,7 +51,8 @@ final class PeekManager {
         let page = browserManager.tabs.openDetached(url: url, profile: profile, in: window)
         let windowID = window.id
         page.onClose = { [weak self] in self?.dismiss(tab: tab, window: windowID) }
-        if let replaced = slots.open(page, tab: tab, window: window.id) {
+        let replaced = withAnimation(NookDesign.Motion.spring) { slots.open(page, tab: tab, window: window.id) }
+        if let replaced {
             browserManager.tabs.endDetached(replaced)
         }
     }
@@ -82,7 +89,7 @@ final class PeekManager {
     }
 
     private func dismiss(tab: UUID, window: UUID) {
-        guard let page = slots.close(tab: tab, window: window) else { return }
+        guard let page = withAnimation(NookDesign.Motion.spring, { slots.close(tab: tab, window: window) }) else { return }
         browserManager?.tabs.endDetached(page)
     }
 
@@ -90,7 +97,7 @@ final class PeekManager {
     @discardableResult
     private func adopt(in window: BrowserWindowState) -> UUID? {
         guard let browserManager, let tab = window.selectedItemID,
-              let page = slots.close(tab: tab, window: window.id) else { return nil }
+              let page = withAnimation(NookDesign.Motion.spring, { slots.close(tab: tab, window: window.id) }) else { return nil }
         guard let itemID = browserManager.tabs.adopt(page, in: window, from: tab) else {
             browserManager.tabs.endDetached(page)
             return nil
