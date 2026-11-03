@@ -23,6 +23,19 @@ struct TabSwitcherStateCheck {
         precondition(!TabSwitcherState.shouldPresent(elapsed: 0.05))
         precondition(TabSwitcherState.shouldPresent(elapsed: 0.1))
         precondition(!TabSwitcherState.start(items: [a, b], step: 1)!.isPresented)
+        // Up to maxItems recent tabs, laid out in rows of `columns`; arrows move along and across rows.
+        precondition(TabSwitcherState.maxItems >= 20)
+        let many = (0..<12).map { _ in UUID() }
+        var grid = TabSwitcherState.start(items: many, step: 1, columns: 5)!
+        precondition(grid.index == 1 && grid.columns == 5)
+        grid.moveRow(by: 1); precondition(grid.index == 6, "down one row")
+        grid.moveRow(by: 1); precondition(grid.index == 11)
+        grid.moveRow(by: 1); precondition(grid.index == 11, "no row below: stays")
+        grid.moveRow(by: -1); precondition(grid.index == 6)
+        grid.advance(by: -1); precondition(grid.index == 5, "left")
+        precondition(TabSwitcherState.start(items: [a, b], step: 1, columns: 5)!.columns == 2, "never more columns than tabs")
+        precondition(TabSwitcherState.columns(forWidth: 600) < TabSwitcherState.columns(forWidth: 1400))
+        precondition(TabSwitcherState.columns(forWidth: 100) == 1)
         print("TabSwitcherStateCheck passed")
     }
 }

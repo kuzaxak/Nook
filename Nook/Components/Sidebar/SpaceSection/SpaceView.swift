@@ -78,6 +78,12 @@ struct SpaceView: View {
             // Inset the rows, not the scroll viewport: the indicator belongs at the sidebar edge.
             .padding(.horizontal, NookDesign.Spacing.sidebarInset)
         }
+        // Selection from the keyboard, the command bar or the switcher scrolls just enough to
+        // show the tab; a click on a visible row scrolls nothing.
+        .onChange(of: windowState.selectedItemID) { _, itemID in
+            guard isActive, let itemID, !dragSession.isDragging else { return }
+            withAnimation(NookDesign.Motion.standard) { proxy.scrollTo(itemID) }
+        }
         .onChange(of: windowState.sidebarRevealItemID) { _, itemID in
             guard isActive, let itemID else { return }
             // The folders just opened lay out their rows on the next pass.

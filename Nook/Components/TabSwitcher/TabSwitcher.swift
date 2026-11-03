@@ -4,7 +4,8 @@
 //  Nook
 //
 //  Arc's Control-Tab: hold Control, press Tab to step through this window's recent tabs on a
-//  card of page pictures, let go to switch; Shift goes back, Escape stays put.
+//  card of page pictures, let go to switch; Shift goes back, the arrow keys move along and
+//  between rows, Return switches at once, Escape stays put.
 //
 
 import AppKit
@@ -22,7 +23,6 @@ enum TabSwitcher {
     private static var resignObserver: NSObjectProtocol?
     private static var closeObserver: NSObjectProtocol?
     private static var presentWork: DispatchWorkItem?
-    private static let maxTabs = 8
 
     /// Control-Tab (`step` 1) or Control-Shift-Tab (-1): opens the card, or moves along it.
     static func step(_ step: Int, in window: BrowserWindowState, tabs: TabsController) {
@@ -31,7 +31,9 @@ enum TabSwitcher {
             window.tabSwitcher = state
             return
         }
-        guard let state = TabSwitcherState.start(items: Array(tabs.recentItems(in: window).prefix(maxTabs)), step: step) else { return }
+        let width = Double(NSApp.keyWindow?.frame.width ?? 1200)
+        guard let state = TabSwitcherState.start(items: Array(tabs.recentItems(in: window).prefix(TabSwitcherState.maxItems)),
+                                                 step: step, columns: TabSwitcherState.columns(forWidth: width)) else { return }
         // A quick tap can let Control go before this runs: then it is a plain flip to the last tab.
         guard NSEvent.modifierFlags.contains(.control) else {
             tabs.select(state.highlighted, in: window)
@@ -96,6 +98,19 @@ enum TabSwitcher {
             case .keyDown where event.keyCode == 53: // Escape
                 cancel(window)
                 return nil
+            case .keyDown where event.keyCode == 36 || event.keyCode == 76: // Return, Enter
+                commit(window, tabs: tabs)
+                return nil
+            case .keyDown where [123, 124, 125, 126].contains(event.keyCode): // arrows
+                guard var state = window.tabSwitcher else { return nil }
+                switch event.keyCode {
+                case 123: state.advance(by: -1)
+                case 124: state.advance(by: 1)
+                case 125: state.moveRow(by: 1)
+                default: state.moveRow(by: -1)
+                }
+                window.tabSwitcher = state
+                return nil
             default:
                 break
             }
@@ -114,13 +129,15 @@ struct TabSwitcherOverlay: View {
 
     var body: some View {
         if let state = windowState.tabSwitcher, state.isPresented {
-            HStack(spacing: NookDesign.Spacing.sm) {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(tileWidth), spacing: NookDesign.Spacing.sm), count: state.columns),
+                      spacing: NookDesign.Spacing.sm) {
                 ForEach(Array(state.items.enumerated()), id: \.element) { index, itemID in
                     if let item = tabs.item(itemID) {
                         tile(item, selected: index == state.index)
                     }
                 }
             }
+            .fixedSize()
             .padding(NookDesign.Spacing.md)
             .nookFloatingSurface(in: NookDesign.Radius.shape(NookDesign.Radius.xl))
             .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -228,9 +228,9 @@ extension TabsController {
         window.refreshCompositor()
     }
 
-    /// Keeps switcher pictures only for each window's 8 most recent tabs (what the card can show).
+    /// Keeps switcher pictures only for each window's most recent tabs (what the card can show).
     private func dropStaleSwitcherSnapshots() {
-        let keep = Set(allWindows.flatMap { recentItems(in: $0).prefix(8) })
+        let keep = Set(allWindows.flatMap { recentItems(in: $0).prefix(TabSwitcherState.maxItems) })
         for session in sessions where session.switcherSnapshot != nil && !keep.contains(session.itemID) {
             session.switcherSnapshot = nil
         }
