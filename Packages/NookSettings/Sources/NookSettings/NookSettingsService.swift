@@ -62,6 +62,8 @@ public final class NookSettingsService {
     private let newTabsAtTopLevelKey = "settings.newTabsAtTopLevel"
     private let nestLinkTabsUnderOpenerKey = "settings.nestLinkTabsUnderOpener"
     private let openNewTabLinksInPeekKey = "settings.openNewTabLinksInPeek"
+    private let peekOnShiftClickKey = "settings.peekOnShiftClick"
+    private let peekLinksToOtherSitesKey = "settings.peekLinksToOtherSites"
     private let archiveTabsAfterHoursKey = "settings.archiveTabsAfterHours"
     private let historyHalfLifeDaysKey = "settings.historyHalfLifeDays"
     private let paletteWordStopsKey = "settings.paletteWordStops"
@@ -493,6 +495,20 @@ public final class NookSettingsService {
         }
     }
 
+    /// A link clicked with Shift held shows in Peek.
+    public var peekOnShiftClick: Bool {
+        didSet {
+            userDefaults.set(peekOnShiftClick, forKey: peekOnShiftClickKey)
+        }
+    }
+
+    /// A link to another site clicked in a favorite or pinned tab shows in Peek, so the tab stays on its site.
+    public var peekLinksToOtherSites: Bool {
+        didSet {
+            userDefaults.set(peekLinksToOtherSites, forKey: peekLinksToOtherSitesKey)
+        }
+    }
+
     public static let historyHalfLifeDaysRange = 3...60
 
     /// Kagi's Session Link token, read from the Keychain at launch and kept nowhere else.
@@ -679,6 +695,8 @@ public final class NookSettingsService {
             newTabsAtTopLevelKey: true,
             nestLinkTabsUnderOpenerKey: true,
             openNewTabLinksInPeekKey: true,
+            peekOnShiftClickKey: true,
+            peekLinksToOtherSitesKey: true,
             archiveTabsAfterHoursKey: 72,
             historyHalfLifeDaysKey: 10,
             paletteWordStopsKey: "/.?&=#:-",
@@ -812,6 +830,8 @@ public final class NookSettingsService {
         self.newTabsAtTopLevel = userDefaults.bool(forKey: newTabsAtTopLevelKey)
         self.nestLinkTabsUnderOpener = userDefaults.bool(forKey: nestLinkTabsUnderOpenerKey)
         self.openNewTabLinksInPeek = userDefaults.bool(forKey: openNewTabLinksInPeekKey)
+        self.peekOnShiftClick = userDefaults.bool(forKey: peekOnShiftClickKey)
+        self.peekLinksToOtherSites = userDefaults.bool(forKey: peekLinksToOtherSitesKey)
         self.historyHalfLifeDays = min(max(userDefaults.integer(forKey: historyHalfLifeDaysKey), Self.historyHalfLifeDaysRange.lowerBound), Self.historyHalfLifeDaysRange.upperBound)
         self.paletteWordStops = userDefaults.string(forKey: paletteWordStopsKey) ?? "/.?&=#:-"
         self.kagiSessionToken = KagiSession.loadToken()

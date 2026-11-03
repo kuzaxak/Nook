@@ -32,13 +32,14 @@ extension PageSession {
 
     // MARK: - Peek Detection
 
-    /// A click on a link the page opens in a new tab (target=_blank) shows in Peek when that
-    /// setting is on, and Shift always peeks, as in Arc. Command and the middle button still
-    /// open a background tab.
+    /// A click on a link the page opens in a new tab (target=_blank), or any link clicked with
+    /// Shift, shows in Peek when its setting is on, as in Arc. Command and the middle button
+    /// still open a background tab.
     func peeksNewTabLink(_ action: WKNavigationAction) -> Bool {
         guard !isAgentPage, action.navigationType == .linkActivated,
-              !action.modifierFlags.contains(.command), action.buttonNumber != 2 else { return false }
-        return action.modifierFlags.contains(.shift) || controller?.settings.openNewTabLinksInPeek == true
+              !action.modifierFlags.contains(.command), action.buttonNumber != 2,
+              let settings = controller?.settings else { return false }
+        return action.modifierFlags.contains(.shift) ? settings.peekOnShiftClick : settings.openNewTabLinksInPeek
     }
 
     /// Option always peeks. Otherwise only a favorite or pinned tab peeks, for a link to another
@@ -46,7 +47,8 @@ extension PageSession {
     func shouldRedirectToPeek(url: URL) -> Bool {
         if isAgentPage { return false }
         if isOptionKeyDown { return true }
-        guard controller?.isSynced(itemID) == true, let from = self.url.host, let to = Self.destinationHost(of: url)
+        guard controller?.settings.peekLinksToOtherSites == true,
+              controller?.isSynced(itemID) == true, let from = self.url.host, let to = Self.destinationHost(of: url)
         else { return false }
         return !Self.isSameSite(from, to)
     }
