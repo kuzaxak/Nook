@@ -117,10 +117,6 @@ struct NookCommands: Commands {
             Button("Make Nook Default Browser") {
                 browserManager.setAsDefaultBrowser()
             }
-
-            Button("Check for Updates...") {
-                browserManager.appDelegate?.updaterController.checkForUpdates(nil)
-            }
         }
         
 

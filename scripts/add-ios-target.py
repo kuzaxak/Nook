@@ -110,7 +110,7 @@ def config(oid_, name, extra):
 \t\t\t\t\t"@executable_path/Frameworks",
 \t\t\t\t);
 \t\t\t\tMARKETING_VERSION = 0.1.0;
-\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.gstudios.nook;
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = ee.qdo.nook;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSDKROOT = iphoneos;
 \t\t\t\tSUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

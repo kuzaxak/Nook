@@ -94,7 +94,7 @@ final class BrowserModel: ObservableObject {
         }
         memory = MemoryPressureWatcher(tabs: tabs)
         #if DEBUG
-        // Hands-off checks: `xcrun simctl launch <udid> com.gstudios.nook -NookStartURL <url>`.
+        // Hands-off checks: `xcrun simctl launch <udid> ee.qdo.nook -NookStartURL <url>`.
         // http links opened from outside go to the default browser, which Nook cannot be
         // until Apple grants the web-browser entitlement.
         if let start = UserDefaults.standard.string(forKey: "NookStartURL") {

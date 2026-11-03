@@ -8,7 +8,7 @@
 //  holds a GET stream open for as long as it runs, so the last one closing ends the agent's tabs.
 //
 //  claude mcp add --transport http nook http://127.0.0.1:47823/mcp \
-//    --header "Authorization: Bearer $(cat ~/Library/Application\ Support/com.gstudios.nook/dev-mcp-token)"
+//    --header "Authorization: Bearer $(cat ~/Library/Application\ Support/ee.qdo.nook/dev-mcp-token)"
 //
 
 import AppKit

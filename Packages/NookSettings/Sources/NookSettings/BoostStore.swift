@@ -20,7 +20,7 @@ public final class BoostStore: @unchecked Sendable {
 
     public static var defaultFileURL: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return base.appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.gstudios.nook", isDirectory: true)
+        return base.appendingPathComponent(Bundle.main.bundleIdentifier ?? "ee.qdo.nook", isDirectory: true)
             .appendingPathComponent("Boosts.json")
     }
 

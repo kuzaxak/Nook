@@ -514,7 +514,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.4.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.gstudios.nook;
+				PRODUCT_BUNDLE_IDENTIFIER = ee.qdo.nook;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
@@ -562,7 +562,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.4.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.gstudios.nook;
+				PRODUCT_BUNDLE_IDENTIFIER = ee.qdo.nook;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
@@ -599,7 +599,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.gstudios.nook;
+				PRODUCT_BUNDLE_IDENTIFIER = ee.qdo.nook;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -630,7 +630,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.gstudios.nook;
+				PRODUCT_BUNDLE_IDENTIFIER = ee.qdo.nook;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

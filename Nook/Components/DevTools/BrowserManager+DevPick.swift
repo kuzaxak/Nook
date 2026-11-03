@@ -90,7 +90,7 @@ extension BrowserManager {
     private static func devPicksDirectory() throws -> URL {
         let fm = FileManager.default
         let caches = try fm.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        let dir = caches.appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.gstudios.nook")
+        let dir = caches.appendingPathComponent(Bundle.main.bundleIdentifier ?? "ee.qdo.nook")
             .appendingPathComponent("DevPicks")
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         let cutoff = Date().addingTimeInterval(-86_400)
