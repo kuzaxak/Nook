@@ -283,6 +283,26 @@ public struct SettingsGeneralTab: View {
                 Text("Type a keyword, a space and the rest in the command palette, such as \"gh owner/repo\". %@ in the address stands for the rest.")
                     .settingsFooter()
             }
+
+            Section {
+                LabeledContent("Word stops") {
+                    HStack(spacing: NookDesign.Spacing.md) {
+                        TextField("Word stops", text: $settings.paletteWordStops)
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
+                            .font(.body.monospaced())
+                        Button("Reset") {
+                            settings.paletteWordStops = NookSettingsService.defaultPaletteWordStops
+                        }
+                        .disabled(settings.paletteWordStops == NookSettingsService.defaultPaletteWordStops)
+                    }
+                }
+            } header: {
+                Text("Word Stops")
+            } footer: {
+                Text("In the command palette, \u{2325}\u{2192}, \u{2325}\u{232B} and Control-W move or delete up to these characters, and history search splits words at them. Letters, digits and spaces are ignored.")
+                    .settingsFooter()
+            }
         }
         .formStyle(.grouped)
         .sheet(isPresented: $showingAddSite) {
