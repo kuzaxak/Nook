@@ -347,7 +347,7 @@ extension TabsController {
         guard let owner = owner(ofItem: itemID) else { return }
         let source = tree(owner)
         guard let item = source.item(itemID) else { return }
-        if !item.isFolder, source.isBookmark(itemID) {
+        if source.keepsItemOnClose(itemID) {
             // The page it showed, so Reopen Closed Tab can bring it back in place.
             var page = session(for: itemID).map { OpenPage(url: $0.storableURL, title: $0.title) }
             if page == nil, case .main = owner { page = device.openPages[itemID] }
@@ -412,9 +412,7 @@ extension TabsController {
     /// its trail parent, else the recorded opener of a link tab placed as a sibling.
     public func opener(of itemID: UUID) -> UUID? {
         guard let owner = owner(ofItem: itemID) else { return nil }
-        let source = tree(owner)
-        if let parent = source.trailParent(of: itemID) { return parent }
-        return openers(owner)[itemID].flatMap { source.item($0) != nil ? $0 : nil }
+        return tree(owner).opener(of: itemID, recorded: openers(owner))
     }
 
     /// Back with no page left: shows the tab that opened `itemID` and closes it, as Safari and
@@ -617,9 +615,7 @@ extension TabsController {
         let page = session(for: itemID)
         let id = UUID()
         guard perform(owner, "duplicate", {
-            var change = try $0.createTab(id: id, url: page?.storableURL ?? url, title: page?.title ?? pageTitle, in: item.parent, after: itemID)
-            if let customTitle = item.customTitle { change.merge(try $0.rename(id, customTitle: customTitle)) }
-            return change
+            try $0.duplicate(itemID, as: id, url: page?.storableURL ?? url, title: page?.title ?? pageTitle)
         }) != nil else { return nil }
         select(id, in: window)
         return id
