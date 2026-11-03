@@ -283,6 +283,12 @@ struct NookCommands: Commands {
             .modifier(dynamicShortcut(.openDevTools))
             .disabled(browserManager.tabs.activeWindowSession == nil)
 
+            Button("Developer Mode for This Site") {
+                shortcutManager.perform(.toggleDeveloperMode)
+            }
+            .modifier(dynamicShortcut(.toggleDeveloperMode))
+            .disabled(browserManager.tabs.activeWindowSession?.url.host == nil)
+
             if nookSettings.developerModeEnabled {
                 Button("Developer Panel") {
                     browserManager.toggleDevPanel(.console)

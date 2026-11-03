@@ -19,12 +19,14 @@ class KeyboardShortcutManager {
     private let userDefaults = UserDefaults.standard
     private let shortcutsKey = "keyboard.shortcuts"
     private let shortcutsVersionKey = "keyboard.shortcuts.version"
-    private let currentVersion = 12 // Increment when adding new shortcuts; 10 added Go to Space 1-9 (Ctrl+1-9) and moved Next/Previous Space to Cmd+Opt+arrows; 11 added Bookmark Tab (Cmd+D); 12 listed the command bar actions unbound
+    private let currentVersion = 13 // Increment when adding new shortcuts; 10 added Go to Space 1-9 (Ctrl+1-9) and moved Next/Previous Space to Cmd+Opt+arrows; 11 added Bookmark Tab (Cmd+D); 12 listed the command bar actions unbound; 13 moved the top bar to Cmd+Shift+D and bound Developer Mode to Ctrl+D
 
     /// Defaults that changed key: a user still on the old key gets the new one.
     private let movedDefaults: [(action: ShortcutAction, from: KeyCombination, version: Int)] = [
         (.nextSpace, KeyCombination(key: "]", modifiers: [.command, .control]), 10),
         (.previousSpace, KeyCombination(key: "[", modifiers: [.command, .control]), 10),
+        (.toggleTopBarAddressView, KeyCombination(key: "t", modifiers: [.command, .option]), 13),
+        (.toggleDeveloperMode, KeyCombination(key: ""), 13),
     ]
 
     /// Hash-based storage for O(1) lookup: ["cmd+t": KeyboardShortcut]
@@ -96,13 +98,15 @@ class KeyboardShortcutManager {
 
     private func moveDefaults(since savedVersion: Int) {
         for moved in movedDefaults where moved.version > savedVersion {
-            guard let old = shortcutMap[moved.from.lookupKey], old.action == moved.action,
+            // An unbound shortcut is stored under its action, not a key.
+            let oldKey = moved.from.key.isEmpty ? "none:\(moved.action.rawValue)" : moved.from.lookupKey
+            guard let old = shortcutMap[oldKey], old.action == moved.action,
                   let new = KeyboardShortcut.defaultShortcuts.first(where: { $0.action == moved.action }),
                   shortcutMap[new.keyCombination.lookupKey] == nil else { continue }
             var updated = old
             updated.keyCombination = new.keyCombination
-            shortcutMap[old.keyCombination.lookupKey] = nil
-            shortcutMap[updated.keyCombination.lookupKey] = updated
+            shortcutMap[oldKey] = nil
+            shortcutMap[updated.lookupKey] = updated
         }
         saveShortcuts()
     }
@@ -630,7 +634,9 @@ class KeyboardShortcutManager {
                 settings.appearanceMode = isDark ? .light : .dark
             case .toggleDeveloperMode:
                 guard let settings = browserManager.nookSettings, let host = tabs.activeWindowSession?.url.host else { break }
-                settings.setDeveloperSite(host, on: !settings.isDeveloperSite(host))
+                let on = !settings.isDeveloperSite(host)
+                settings.setDeveloperSite(host, on: on)
+                if let window { browserManager.showWindowToast("Developer Mode \(on ? "on" : "off") for \(host)", in: window) }
             }
 
         }

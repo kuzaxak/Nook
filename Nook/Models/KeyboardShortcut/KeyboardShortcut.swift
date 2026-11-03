@@ -401,8 +401,9 @@ extension KeyboardShortcut {
             KeyboardShortcut(action: .toggleExtensionLibrary, keyCombination: KeyCombination(key: "")),
             KeyboardShortcut(action: .manageExtensions, keyCombination: KeyCombination(key: "")),
             KeyboardShortcut(action: .toggleDarkMode, keyCombination: KeyCombination(key: "")),
-            KeyboardShortcut(action: .toggleDeveloperMode, keyCombination: KeyCombination(key: "")),
-            KeyboardShortcut(action: .toggleTopBarAddressView, keyCombination: KeyCombination(key: "t", modifiers: [.command, .option])),
+            KeyboardShortcut(action: .toggleDeveloperMode, keyCombination: KeyCombination(key: "d", modifiers: [.control])),
+            // Arc's Cmd+Shift+D moves the address and buttons between the sidebar and a toolbar above the page.
+            KeyboardShortcut(action: .toggleTopBarAddressView, keyCombination: KeyCombination(key: "d", modifiers: [.command, .shift])),
 
             // Space Management
             KeyboardShortcut(action: .nextSpace, keyCombination: KeyCombination(key: "right", modifiers: [.command, .option])),
