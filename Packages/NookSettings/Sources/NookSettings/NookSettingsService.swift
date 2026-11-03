@@ -63,6 +63,7 @@ public final class NookSettingsService {
     private let nestLinkTabsUnderOpenerKey = "settings.nestLinkTabsUnderOpener"
     private let archiveTabsAfterHoursKey = "settings.archiveTabsAfterHours"
     private let historyHalfLifeDaysKey = "settings.historyHalfLifeDays"
+    private let paletteWordStopsKey = "settings.paletteWordStops"
     private let tidyDownloadsKey = "settings.tidyDownloads"
     private let linkPreviewsKey = "settings.linkPreviews"
     private let autoPictureInPictureKey = "settings.autoPictureInPicture"
@@ -473,6 +474,13 @@ public final class NookSettingsService {
 
     public static let historyHalfLifeDaysRange = 3...60
 
+    /// Characters the command bar's word keys (⌥→, Ctrl+W, ⌥⌫) stop at, besides whitespace.
+    public var paletteWordStops: String {
+        didSet {
+            userDefaults.set(paletteWordStops, forKey: paletteWordStopsKey)
+        }
+    }
+
     /// How fast a visit's weight in the palette's history ranking halves, in days.
     public var historyHalfLifeDays: Int {
         didSet {
@@ -620,6 +628,7 @@ public final class NookSettingsService {
             nestLinkTabsUnderOpenerKey: true,
             archiveTabsAfterHoursKey: 72,
             historyHalfLifeDaysKey: 10,
+            paletteWordStopsKey: "/.?&=#:-",
             tidyDownloadsKey: false,
             linkPreviewsKey: false,
             sponsorBlockEnabledKey: false,
@@ -750,6 +759,7 @@ public final class NookSettingsService {
         self.newTabsAtTopLevel = userDefaults.bool(forKey: newTabsAtTopLevelKey)
         self.nestLinkTabsUnderOpener = userDefaults.bool(forKey: nestLinkTabsUnderOpenerKey)
         self.historyHalfLifeDays = min(max(userDefaults.integer(forKey: historyHalfLifeDaysKey), Self.historyHalfLifeDaysRange.lowerBound), Self.historyHalfLifeDaysRange.upperBound)
+        self.paletteWordStops = userDefaults.string(forKey: paletteWordStopsKey) ?? "/.?&=#:-"
         let archiveHours = userDefaults.integer(forKey: archiveTabsAfterHoursKey)
         self.archiveTabsAfterHours = Self.archiveTabsAfterHoursChoices.contains(archiveHours) ? archiveHours : 72
         self.tidyDownloads = userDefaults.bool(forKey: tidyDownloadsKey)

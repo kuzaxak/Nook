@@ -13,57 +13,18 @@ import NookUI
 
 struct HistorySuggestionItem: View {
     let entry: HistoryEntry
-    var isSelected: Bool = false
-    
-    @State private var isHovered: Bool = false
+    /// Held Command on the highlighted row shows the whole address instead of the short one.
+    var showsFullURL: Bool = false
+
     @State private var resolvedFavicon: SwiftUI.Image? = nil
 
-    // Color configuration
-    private var colors: ColorConfig {
-        ColorConfig(
-            isSelected: isSelected,
-            isHovered: isHovered
-        )
-    }
-    
     var body: some View {
         HStack(alignment: .center, spacing: 9) {
-            ZStack {
-                (resolvedFavicon ?? Image(systemName: "globe"))
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundStyle(colors.faviconColor)
-                    .frame(width: 14, height: 14)
-            }
-            .frame(width: 24, height: 24)
-            .background(colors.faviconBackground)
-            .clipShape(NookDesign.Radius.shape(NookDesign.Radius.xs))
-            
-            HStack(spacing: 4) {
-                Text(entry.displayTitle)
-                    .font(NookDesign.Font.label)
-                    .foregroundStyle(colors.titleColor)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                
-                Text("-")
-                    .font(NookDesign.Font.label)
-                    .foregroundStyle(colors.urlColor)
-                
-                Text(entry.displayURL)
-                    .font(NookDesign.Font.label)
-                    .foregroundStyle(colors.urlColor)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
+            SuggestionIcon(image: resolvedFavicon ?? Image(systemName: "globe"))
+            SuggestionLines(title: entry.displayTitle, detail: showsFullURL ? entry.url.absoluteString : PaletteText.shortURL(entry.url))
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .onHoverTracking { hovering in
-            withAnimation(NookDesign.Motion.quick) {
-                isHovered = hovering
-            }
-        }
         // Rows are keyed by index, so a row is reused for the next entry as the query changes.
         .task(id: entry.url) {
             resolvedFavicon = nil
@@ -79,30 +40,39 @@ struct HistorySuggestionItem: View {
     }
 }
 
-// MARK: - Colors simplified
-private struct ColorConfig {
-    let isSelected: Bool
-    let isHovered: Bool
+/// The favicon tile at the start of a row.
+struct SuggestionIcon: View {
+    let image: SwiftUI.Image
 
-    var titleColor: Color {
-        if isSelected {
-            return .white
-        }
-        return .primary
+    var body: some View {
+        image
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(.secondary)
+            .frame(width: 14, height: 14)
+            .frame(width: 24, height: 24)
+            .background(NookDesign.Surface.fill)
+            .clipShape(NookDesign.Radius.shape(NookDesign.Radius.xs))
     }
+}
 
-    var urlColor: Color {
-        if isSelected {
-            return .white.opacity(0.5)
+/// A row's title over its short address.
+struct SuggestionLines: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title)
+                .font(NookDesign.Font.label)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text(detail)
+                .font(NookDesign.Font.secondary)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
-        return .secondary
-    }
-    
-    var faviconColor: Color {
-        return isSelected ? .white.opacity(0.7) : .secondary
-    }
-    
-    var faviconBackground: Color {
-        return isSelected ? .white : NookDesign.Surface.fill
     }
 }

@@ -13,54 +13,24 @@ import NookUI
 
 struct TabSuggestionItem: View {
     let tab: SearchManager.TabMatch
-    var isSelected: Bool = false
-    
-    @State private var isHovered: Bool = false
-    @EnvironmentObject var gradientColorManager: GradientColorManager
+    /// Held Command on the highlighted row shows the whole address instead of the short one.
+    var showsFullURL: Bool = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 0) {
-            HStack(spacing: 9) {
-                ZStack {
-                    tab.favicon
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundStyle(.secondary)
-                        .frame(width: 14, height: 14)
-                }
-                .frame(width: 24, height: 24)
-                .background(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(NookDesign.Surface.fill))
-                .clipShape(
-                    NookDesign.Radius.shape(NookDesign.Radius.xs)
-                )
-                Text(tab.title)
-                    .font(NookDesign.Font.label)
-                    .foregroundStyle(isSelected ? .white : .primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
+        HStack(alignment: .center, spacing: 9) {
+            SuggestionIcon(image: tab.favicon)
+            SuggestionLines(title: tab.title, detail: showsFullURL ? tab.url.absoluteString : PaletteText.shortURL(tab.url))
             Spacer()
-            HStack(spacing: 10) {
-                Text("Switch to Tab")
-                    .font(NookDesign.Font.secondary)
-                    .foregroundStyle(isSelected ? .white : .secondary)
-                ZStack {
-                    Image(systemName: "arrow.right")
-                        .font(NookDesign.Font.label)
-                        .foregroundStyle(isSelected ? gradientColorManager.accentColor : .secondary)
-                        .frame(width: 16, height: 16)
-                }
+            Text("Switch to Tab")
+                .font(NookDesign.Font.secondary)
+                .foregroundStyle(.secondary)
+            Image(systemName: "arrow.right")
+                .font(NookDesign.Font.label)
+                .foregroundStyle(.secondary)
                 .frame(width: 24, height: 24)
-                .background(isSelected ? .white : NookDesign.Surface.fill)
+                .background(NookDesign.Surface.fill)
                 .clipShape(NookDesign.Radius.shape(NookDesign.Radius.xs))
-
-            }
         }
         .frame(maxWidth: .infinity)
-        .onHoverTracking { hovering in
-            withAnimation(NookDesign.Motion.quick) {
-                isHovered = hovering
-            }
-        }
     }
 }

@@ -16,6 +16,9 @@
 - Normal tabs not seen for 3 days are archived to Reopen Closed Tab (12 hours to 30 days in Settings → General → Tabs)
 - History index for the command bar: every visited page stays findable, ranked by frecency (Settings → Privacy → History)
 - Secret and tracking parameters (token, code, state, session, utm_*, fbclid, gclid) are dropped from history
+- Command bar keys from zsh and fish: → or Ctrl+E takes the grey completion, ⌥→ takes one word, Ctrl+W and ⌥⌫ delete a word, Ctrl+U clears, Ctrl+N/P move
+- Command bar: arrows no longer rewrite what you typed; Tab on a row narrows the field to its site; ⌘↩ opens in the background and keeps the bar open; ⇧↩ opens in split view
+- Command bar rows show the title over a short address; hold ⌘ for the full one
 
 ## 1.4.0
 
