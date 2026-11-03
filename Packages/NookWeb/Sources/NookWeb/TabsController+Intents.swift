@@ -334,7 +334,7 @@ extension TabsController {
         guard let item = source.item(itemID) else { return }
         if !item.isFolder, source.isBookmark(itemID) {
             // The page it showed, so Reopen Closed Tab can bring it back in place.
-            var page = session(for: itemID).map { OpenPage(url: $0.url, title: $0.title) }
+            var page = session(for: itemID).map { OpenPage(url: $0.storableURL, title: $0.title) }
             if page == nil, case .main = owner { page = device.openPages[itemID] }
             moveSelectionOff([itemID])
             endSession(itemID)
@@ -361,7 +361,8 @@ extension TabsController {
         remove(itemID, promotingChildren: false)
     }
 
-    private func remove(_ itemID: UUID, promotingChildren: Bool) {
+    /// `archiving` files the closed entry with the archive sweep's, apart from the person's closes.
+    func remove(_ itemID: UUID, promotingChildren: Bool, archiving: Bool = false) {
         guard let owner = owner(ofItem: itemID) else { return }
         let ids = promotingChildren ? [itemID] : tree(owner).subtree(of: itemID)
         if let item = tree(owner).item(itemID) { dismissFromLiveFolder(item) }
@@ -376,7 +377,7 @@ extension TabsController {
         for id in ids { endSession(id) }
         switch owner {
         case .main:
-            recordClosed(closedEntry)
+            recordClosed(closedEntry, archived: archiving)
         case .privateWindow(let window):
             window.privateClosed.append(closedEntry)
             if window.privateClosed.count > DeviceState.closedLimit { window.privateClosed.removeFirst() }
@@ -414,7 +415,7 @@ extension TabsController {
     public func reopenLastClosed(in window: BrowserWindowState) {
         let owner = owner(of: window)
         let isPrivate = window.privateTree != nil
-        guard let entry = isPrivate ? window.privateClosed.last : device.closed.last,
+        guard let entry = isPrivate ? window.privateClosed.last : device.newestClosed,
               let fallbackSpace = window.spaceID ?? tree(owner).orderedSpaces.first?.id else { return }
         // A pinned tab or favorite whose page was closed: reopen that page on the same item.
         if let page = entry.endedPage, let root = entry.items.first, tree(owner).item(root.id) != nil {
@@ -501,7 +502,7 @@ extension TabsController {
         guard let owner = owner(ofItem: itemID) else { return }
         let current = session(for: itemID)
         let wasSynced = tree(owner).scope(of: itemID) == .synced
-        let currentURL = current?.url ?? (wasSynced ? device.openPages[itemID]?.url : nil)
+        let currentURL = current?.storableURL ?? (wasSynced ? device.openPages[itemID]?.url : nil)
         // Extensions see the move against the window list the tab was in.
         // ponytail: only the moved item is reported, not tabs inside a moved folder.
         let oldWindow = regularWindows.first { displayOrder(in: $0).contains(itemID) }
@@ -519,7 +520,7 @@ extension TabsController {
         } else if !wasSynced, isSynced {
             for id in tree.subtree(of: itemID) {
                 guard let page = session(for: id), tree.item(id)?.isFolder == false else { continue }
-                setOpenPage(id, OpenPage(url: page.url, title: page.title))
+                setOpenPage(id, OpenPage(url: page.storableURL, title: page.title))
             }
             if case .pinned = tree.section(of: itemID) {
                 onTabsPinned?(tree.subtree(of: itemID).filter { tree.item($0)?.isFolder == false })
@@ -576,7 +577,7 @@ extension TabsController {
         let page = session(for: itemID)
         let id = UUID()
         guard perform(owner, "duplicate", {
-            var change = try $0.createTab(id: id, url: page?.url ?? url, title: page?.title ?? pageTitle, in: item.parent, after: itemID)
+            var change = try $0.createTab(id: id, url: page?.storableURL ?? url, title: page?.title ?? pageTitle, in: item.parent, after: itemID)
             if let customTitle = item.customTitle { change.merge(try $0.rename(id, customTitle: customTitle)) }
             return change
         }) != nil else { return nil }
@@ -599,7 +600,7 @@ extension TabsController {
 
     /// Makes a synced tab's current page its home URL.
     public func setHomeToCurrent(_ itemID: UUID) {
-        guard let current = session(for: itemID)?.url ?? device.openPages[itemID]?.url else { return }
+        guard let current = session(for: itemID)?.storableURL ?? device.openPages[itemID]?.url else { return }
         setHome(itemID, url: current)
     }
 

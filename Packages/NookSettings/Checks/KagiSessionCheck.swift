@@ -18,6 +18,8 @@ struct KagiSessionCheck {
         // Stored page addresses never keep it; other sites keep their parameters.
         let signed = URL(string: "https://kagi.com/search?token=abc&q=swift")!
         precondition(KagiSession.withoutToken(signed).absoluteString == "https://kagi.com/search?q=swift")
+        let plusses = URL(string: "https://kagi.com/search?token=abc&q=c%2B%2B")!
+        precondition(KagiSession.withoutToken(plusses).absoluteString == "https://kagi.com/search?q=c%2B%2B", "encoded query survives")
         let other = URL(string: "https://example.com/?token=keep")!
         precondition(KagiSession.withoutToken(other) == other)
         print("KagiSessionCheck passed")

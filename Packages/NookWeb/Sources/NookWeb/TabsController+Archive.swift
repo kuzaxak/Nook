@@ -10,8 +10,8 @@ import Foundation
 import NookTabsCore
 
 extension TabsController {
-    /// Closes normal tabs unseen for longer than the archive setting into Reopen Closed Tab's
-    /// history. Tabs in use stay: each window's selected tab in every space, split panes,
+    /// Closes normal tabs unseen for longer than the archive setting into the archive list, which
+    /// Reopen Closed Tab also reads, newest entry first. Tabs in use stay: each window's selected tab in every space, split panes,
     /// pages on screen or in picture in picture, and pages playing sound.
     public func archiveStaleTabs(now: Date = Date()) {
         guard !isReadOnly else { return }
@@ -24,6 +24,6 @@ extension TabsController {
         let interval = TimeInterval(settings.archiveTabsAfterHours) * 3600
         let stale = tree.staleTabs(lastSeen: device.lastSeen ?? [:], now: now, after: interval, keeping: keep)
         startSeenClocks(at: now)
-        for id in stale { close(id) }
+        for id in stale where tree.item(id) != nil { remove(id, promotingChildren: true, archiving: true) }
     }
 }

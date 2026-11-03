@@ -35,9 +35,9 @@ public enum KagiSession {
     public static func withoutToken(_ url: URL) -> URL {
         guard let host = url.host?.lowercased(), host == "kagi.com" || host.hasSuffix(".kagi.com"),
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let items = components.queryItems, items.contains(where: { $0.name == "token" }) else { return url }
+              let items = components.percentEncodedQueryItems, items.contains(where: { $0.name == "token" }) else { return url }
         let kept = items.filter { $0.name != "token" }
-        components.queryItems = kept.isEmpty ? nil : kept
+        components.percentEncodedQueryItems = kept.isEmpty ? nil : kept
         return components.url ?? url
     }
 

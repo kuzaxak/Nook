@@ -38,6 +38,7 @@ struct HistoryIndexCheck {
         precondition(cleaned.absoluteString == "https://kagi.com/search?q=swift&page=2#top", cleaned.absoluteString)
         precondition(HistoryIndex.cleanURL(URL(string: "https://a.example/cb?code=1&state=2")!).absoluteString == "https://a.example/cb")
         precondition(HistoryIndex.cleanURL(URL(string: "https://a.example/p")!).absoluteString == "https://a.example/p")
+        precondition(HistoryIndex.cleanURL(URL(string: "https://kagi.com/search?q=c%2B%2B&utm_x=1")!).absoluteString == "https://kagi.com/search?q=c%2B%2B")
 
         // Tokens split on the URL separators, as the FTS table does.
         precondition(HistoryIndex.tokens("github.com/glia/infra-k8s  Foo_bar") == ["github", "com", "glia", "infra", "k8s", "foo", "bar"])
@@ -95,6 +96,18 @@ struct HistoryIndexCheck {
         do { let ok = await index.search("infra", profile: home)!.count == 1; precondition(ok, "another space's rows survive its neighbour's clear") }
         await index.clear(before: now.addingTimeInterval(1), profile: nil)
         do { let ok = await index.search("infra", profile: home)!.isEmpty; precondition(ok) }
+
+        // Migrated rows lose their secrets too; rows that become one URL merge their visits.
+        let merged = HistoryIndex(fileURL: dir.appendingPathComponent("merge.sqlite"), halfLife: halfLife)
+        await merged.migrate([
+            HistorySeed(url: "https://a.example/cb?code=SECRET&state=S2", title: "Callback", profile: work, visitCount: 2, lastVisited: now.addingTimeInterval(-day)),
+            HistorySeed(url: "https://a.example/cb", title: "Callback newer", profile: work, visitCount: 3, lastVisited: now),
+        ])
+        do {
+            let rows = await merged.search("callback", profile: work)!
+            precondition(rows.count == 1 && rows[0].url == "https://a.example/cb", "\(rows)")
+            precondition(rows[0].visitCount == 5 && rows[0].title == "Callback newer" && rows[0].lastVisited == now)
+        }
 
         // Timing on 200k rows.
         let big = HistoryIndex(fileURL: dir.appendingPathComponent("big.sqlite"), halfLife: halfLife)

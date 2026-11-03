@@ -204,6 +204,9 @@ public final class PageSession: NSObject, Identifiable {
     @ObservationIgnored var navigationGestureCount = 0
     /// One-shot initial-navigation suppression for a WebKit-created popup.
     @ObservationIgnored var isPopupHost: Bool = false
+    /// The page's address as it may be stored, copied or shown: without a Kagi session token.
+    public var storableURL: URL { KagiSession.withoutToken(url) }
+
     /// The palette chose this page's next load, so its visit counts double in history ranking.
     @ObservationIgnored public var typedVisitPending = false
     /// How the latest main-frame navigation started; a reload adds nothing to history ranking.

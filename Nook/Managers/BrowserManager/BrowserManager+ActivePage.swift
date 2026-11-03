@@ -140,7 +140,7 @@ extension BrowserManager {
 
     // MARK: - URL Utilities
     func copyCurrentURL() {
-        if let url = tabs.activeWindowSession?.url.absoluteString {
+        if let url = tabs.activeWindowSession?.storableURL.absoluteString {
             #if DEBUG
             print("Attempting to copy URL: \(url)")
             #endif

@@ -91,13 +91,13 @@ public actor HistoryIndex {
     /// `url` without secret or tracking parameters (`token`, `code`, `utm_*`, …).
     nonisolated public static func cleanURL(_ url: URL) -> URL {
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let items = components.queryItems, !items.isEmpty else { return url }
+              let items = components.percentEncodedQueryItems, !items.isEmpty else { return url }
         let kept = items.filter { item in
             let name = item.name.lowercased()
             return !secretParameters.contains(name) && !name.hasPrefix("utm_")
         }
         guard kept.count != items.count else { return url }
-        components.queryItems = kept.isEmpty ? nil : kept
+        components.percentEncodedQueryItems = kept.isEmpty ? nil : kept
         return components.url ?? url
     }
 
@@ -155,9 +155,23 @@ public actor HistoryIndex {
         return userVersion(db) < Self.schemaVersion
     }
 
-    /// Copies history store rows in, in one transaction, and marks the file migrated.
-    public func migrate(_ rows: [HistorySeed]) {
+    /// Copies history store rows in, in one transaction, and marks the file migrated. Secrets
+    /// are dropped from each URL first, and rows that become the same URL merge their visits.
+    public func migrate(_ seeds: [HistorySeed]) {
         guard let db = open(create: true) else { return }
+        var merged: [String: HistorySeed] = [:]
+        for seed in seeds {
+            let url = URL(string: seed.url).map { Self.cleanURL($0).absoluteString } ?? seed.url
+            let key = Self.profileKey(seed.profile) + " " + url
+            guard let earlier = merged[key] else {
+                merged[key] = HistorySeed(url: url, title: seed.title, profile: seed.profile, visitCount: seed.visitCount, lastVisited: seed.lastVisited)
+                continue
+            }
+            let newer = seed.lastVisited > earlier.lastVisited ? seed : earlier
+            merged[key] = HistorySeed(url: url, title: newer.title, profile: seed.profile,
+                                      visitCount: earlier.visitCount + seed.visitCount, lastVisited: newer.lastVisited)
+        }
+        let rows = Array(merged.values)
         let sql = """
             INSERT INTO visits(url, profile, title, host, key, visitCount, lastVisited) VALUES(?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(url, profile) DO NOTHING

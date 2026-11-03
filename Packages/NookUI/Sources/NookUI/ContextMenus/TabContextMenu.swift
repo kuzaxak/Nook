@@ -309,13 +309,16 @@ public struct TabContextMenu: View {
             }
         }
 
-        // Close others / below apply to the tabs section, where closing removes items. Each
-        // closed tab takes its trail with it; this tab's own children stay.
+        // Close others / below apply to the tabs section. A normal tab goes with its trail; a
+        // bookmark in a folder only ends its page, as closing it does. This tab's children stay.
         if context == .sidebar, case .tabs = section {
             let siblings = tabs.children(of: item.parent).filter { !$0.isFolder }
+            let closeSibling: (UUID) -> Void = { id in
+                if tabs.isBookmark(id) { tabs.close(id) } else { tabs.remove(id) }
+            }
             if siblings.contains(where: { $0.id != itemID }) {
                 Button {
-                    siblings.map(\.id).filter { $0 != itemID }.forEach(tabs.remove)
+                    siblings.map(\.id).filter { $0 != itemID }.forEach(closeSibling)
                 } label: {
                     Label("Close Other Tabs", systemImage: "xmark.circle")
                 }
@@ -323,7 +326,7 @@ public struct TabContextMenu: View {
 
             if let position = siblings.firstIndex(where: { $0.id == itemID }), position + 1 < siblings.count {
                 Button {
-                    siblings[(position + 1)...].map(\.id).forEach(tabs.remove)
+                    siblings[(position + 1)...].map(\.id).forEach(closeSibling)
                 } label: {
                     Label("Close All Below", systemImage: "arrow.down.to.line")
                 }

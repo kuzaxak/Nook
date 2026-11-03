@@ -45,4 +45,36 @@ struct ArchiveTests {
         device.prune(against: f.tree)
         #expect(device.lastSeen == [:])
     }
+
+    @Test func archivedTabsKeepTheirOwnListAndReopenNewestFirst() {
+        var f = Fixture()
+        let tabs = Parent.tabs(spaceID: f.spaceA)
+        func entry(_ name: String, at offset: TimeInterval) -> ClosedEntry {
+            let id = f.tab(name, in: tabs)
+            return ClosedEntry(items: [f.tree.item(id)!], section: tabs, closedAt: fixedNow.addingTimeInterval(offset))
+        }
+        var device = DeviceState()
+        let manual = entry("manual", at: 0)
+        device.pushClosed(manual)
+        for index in 0..<(DeviceState.archivedLimit + 20) {
+            device.pushArchived(entry("archived \(index)", at: 10))
+        }
+        // A big sweep never pushes a manual close out, and its own list stays bounded.
+        #expect(device.closed == [manual])
+        #expect(device.archived?.count == DeviceState.archivedLimit)
+
+        // Reopen takes the newest entry of either list.
+        #expect(device.newestClosed == device.archived?.last)
+        device.dropNewestClosed()
+        #expect(device.archived?.count == DeviceState.archivedLimit - 1)
+        let later = entry("later manual", at: 20)
+        device.pushClosed(later)
+        #expect(device.newestClosed == later)
+
+        // Entries for items back in the tree leave both lists.
+        let ids = Set([later.items[0].id, device.archived!.last!.items[0].id])
+        device.dropClosed(containing: ids)
+        #expect(device.closed == [manual])
+        #expect(device.archived?.count == DeviceState.archivedLimit - 2)
+    }
 }

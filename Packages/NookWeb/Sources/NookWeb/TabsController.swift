@@ -329,7 +329,7 @@ public final class TabsController {
         return path.hasSuffix("/") ? String(path.dropLast()) : path
     }
 
-    var canReopenClosed: Bool { !device.closed.isEmpty }
+    var canReopenClosed: Bool { device.newestClosed != nil }
 
     func treeHolding(_ parent: Parent) -> TabTree {
         switch parent {
@@ -645,23 +645,21 @@ public final class TabsController {
         save()
     }
 
-    func recordClosed(_ entry: ClosedEntry) {
+    func recordClosed(_ entry: ClosedEntry, archived: Bool = false) {
         // The agent's closed tabs stay out of the person's Reopen Closed Tab.
         if let agent = agentSpaceID, entry.section.spaceID == agent { return }
-        device.pushClosed(entry)
+        if archived { device.pushArchived(entry) } else { device.pushClosed(entry) }
         save()
     }
 
     /// Removes reopen entries holding any of `ids` (items that are back in the tree).
     func dropClosed(containing ids: Set<UUID>) {
-        let count = device.closed.count
-        device.closed.removeAll { entry in entry.items.contains { ids.contains($0.id) } }
-        if device.closed.count != count { save() }
+        if device.dropClosed(containing: ids) { save() }
     }
 
     func dropLastClosed() {
-        guard !device.closed.isEmpty else { return }
-        device.closed.removeLast()
+        guard device.newestClosed != nil else { return }
+        device.dropNewestClosed()
         save()
     }
 

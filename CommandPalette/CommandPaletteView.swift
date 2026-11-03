@@ -578,7 +578,9 @@ struct CommandPaletteView: View {
     /// to it. Keys left `.ignored` get the text view's own behaviour.
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         if isComposing { return .ignored }
-        let modifiers = press.modifiers
+        // Arrow keys arrive flagged as keypad and function keys, and Caps Lock rides along with
+        // anything, so neither counts as a modifier here.
+        let modifiers = press.modifiers.subtracting([.numericPad, .function, .capsLock])
         if press.key == .delete || press.characters == "\u{7F}" {
             if modifiers.contains(.shift), removeSelectedHistoryRow() { return .handled }
             if modifiers.contains(.option) {
@@ -610,9 +612,10 @@ struct CommandPaletteView: View {
             navigateSuggestions(direction: 1)
             return .handled
         case .rightArrow:
-            if modifiers.contains(.option) { return acceptGhostWord() ? .handled : .ignored }
-            return modifiers.isEmpty && caretIsAtEnd && acceptGhost() ? .handled : .ignored
-        case .leftArrow where modifiers.contains(.option):
+            guard caretIsAtEnd else { return .ignored }
+            if modifiers == .option { return acceptGhostWord() ? .handled : .ignored }
+            return modifiers.isEmpty && acceptGhost() ? .handled : .ignored
+        case .leftArrow where modifiers == .option:
             moveCaretBackOneWord()
             return .handled
         case .escape:
@@ -647,7 +650,7 @@ struct CommandPaletteView: View {
         }
         if modifiers == .option, let letter = Self.letter(of: press) {
             switch letter {
-            case "f", "ƒ": return acceptGhostWord() ? .handled : .ignored
+            case "f", "ƒ": return caretIsAtEnd && acceptGhostWord() ? .handled : .ignored
             case "b", "∫":
                 moveCaretBackOneWord()
                 return .handled

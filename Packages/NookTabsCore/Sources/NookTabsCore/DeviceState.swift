@@ -4,6 +4,9 @@ import Foundation
 /// State that belongs to this Mac only and never syncs.
 public struct DeviceState: Codable, Equatable, Sendable {
     public static let closedLimit = 50
+    /// Tabs the archive sweep closed, kept apart so a big sweep never pushes out what the person
+    /// closed themselves.
+    public static let archivedLimit = 200
 
     public var openFolders: Set<UUID> = []
     /// Live pages of synced tabs (pinned and favorites), by item id.
@@ -20,12 +23,42 @@ public struct DeviceState: Codable, Equatable, Sendable {
     public var openers: [UUID: UUID]?
     /// When each normal tab was last selected or left, for archiving tabs left unseen.
     public var lastSeen: [UUID: Date]?
+    /// Newest last. Optional because files written before archiving have no such key.
+    public var archived: [ClosedEntry]?
 
     public init() {}
 
     public mutating func pushClosed(_ entry: ClosedEntry) {
         closed.append(entry)
         if closed.count > Self.closedLimit { closed.removeFirst(closed.count - Self.closedLimit) }
+    }
+
+    public mutating func pushArchived(_ entry: ClosedEntry) {
+        var list = archived ?? []
+        list.append(entry)
+        if list.count > Self.archivedLimit { list.removeFirst(list.count - Self.archivedLimit) }
+        archived = list
+    }
+
+    /// What Reopen Closed Tab brings back: the newer of the last closed and last archived entry.
+    public var newestClosed: ClosedEntry? {
+        guard let archivedLast = archived?.last else { return closed.last }
+        guard let closedLast = closed.last else { return archivedLast }
+        return archivedLast.closedAt > closedLast.closedAt ? archivedLast : closedLast
+    }
+
+    public mutating func dropNewestClosed() {
+        guard let newest = newestClosed else { return }
+        if newest == closed.last { closed.removeLast() } else { archived?.removeLast() }
+    }
+
+    /// Drops entries holding any of `ids` from both lists. True when something was dropped.
+    @discardableResult
+    public mutating func dropClosed(containing ids: Set<UUID>) -> Bool {
+        let before = closed.count + (archived?.count ?? 0)
+        closed.removeAll { entry in entry.items.contains { ids.contains($0.id) } }
+        archived?.removeAll { entry in entry.items.contains { ids.contains($0.id) } }
+        return closed.count + (archived?.count ?? 0) != before
     }
 
     /// Drops references to items and spaces that no longer exist.
