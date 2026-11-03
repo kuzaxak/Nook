@@ -327,7 +327,7 @@ struct WindowView: View {
     @ViewBuilder
     private func WebContent() -> some View {
         let cornerRadius = NookDesign.Radius.page
-        let hasTopBar = nookSettings.topBarAddressView
+        let hasTopBar = browserManager.showsTopBar(in: windowState)
         let bordered = !nookSettings.hideWebContentBorder
 
         ZStack(alignment: .top) {
@@ -352,8 +352,8 @@ struct WindowView: View {
                         .environmentObject(browserManager)
                         .environment(windowState)
                         .clipShape(UnevenRoundedRectangle(
-                            topLeadingRadius: hasTopBar ? 0 : cornerRadius, bottomLeadingRadius: 0,
-                            bottomTrailingRadius: 0, topTrailingRadius: hasTopBar ? 0 : cornerRadius, style: .continuous))
+                            topLeadingRadius: cornerRadius, bottomLeadingRadius: 0,
+                            bottomTrailingRadius: 0, topTrailingRadius: cornerRadius, style: .continuous))
                         .zIndex(2400)
                 }
 

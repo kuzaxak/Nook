@@ -16,11 +16,10 @@ import NookUI
 struct SidebarHeader: View {
     @EnvironmentObject var browserManager: BrowserManager
     @Environment(BrowserWindowState.self) private var windowState
-    @Environment(\.nookSettings) var nookSettings
     let isSidebarHovered: Bool
 
     var body: some View {
-        if !nookSettings.topBarAddressView {
+        if !browserManager.showsTopBar(in: windowState) {
             URLBarView(isSidebarHovered: isSidebarHovered)
                 .padding(.horizontal, NookDesign.Spacing.sidebarInset)
         }

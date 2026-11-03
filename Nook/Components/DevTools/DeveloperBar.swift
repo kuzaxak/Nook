@@ -22,6 +22,12 @@ extension BrowserManager {
         return settings.isDeveloperSite(host)
     }
 
+    /// The address bar over the page. The Developer Mode bar takes its place, as in Arc, and
+    /// back, forward and the address return to the sidebar.
+    func showsTopBar(in windowState: BrowserWindowState) -> Bool {
+        nookSettings?.topBarAddressView == true && !showsDeveloperBar(in: windowState)
+    }
+
     /// The copy toast with any message, for the developer tools.
     func showWindowToast(_ text: String, in windowState: BrowserWindowState) {
         windowState.copyToastText = text

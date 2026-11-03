@@ -451,7 +451,7 @@ struct SpacesSideBarView: View {
             }
             .nookSidebarIconButtons()
             Spacer(minLength: 0)
-            if showsHistory, !nookSettings.topBarAddressView {
+            if showsHistory, !browserManager.showsTopBar(in: windowState) {
                 SidebarHistoryButtons()
                     .environmentObject(browserManager)
                     .environment(windowState)
