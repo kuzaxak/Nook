@@ -114,6 +114,7 @@ public enum NookDesign {
         public static let librarySpaces: CGFloat = 840 // ...and of its Spaces page
         public static let libraryMin: CGFloat = 417    // narrowest the library gets, whatever the window
         public static let libraryEdgeGap: CGFloat = 56 // window width the library leaves uncovered
+        public static let accountPicker: CGFloat = 280 // Pawl Vault's account popover under a login field
 
         // Settings
         public static let settingsChip: CGFloat = 22           // tinted icon chip in the settings sidebar

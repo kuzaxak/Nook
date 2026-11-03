@@ -82,6 +82,7 @@ public final class NookSettingsService {
     private let facebookHideReelsKey = "settings.facebookHideReels"
     private let facebookHideSuggestedKey = "settings.facebookHideSuggested"
     private let redditSortHotKey = "settings.redditSortHot"
+    private let pawlVaultEnabledKey = "settings.pawlVaultEnabled"
 
     public var searchEngineId: String {
         didSet {
@@ -613,6 +614,18 @@ public final class NookSettingsService {
         didSet { userDefaults.set(redditSortHot, forKey: redditSortHotKey) }
     }
 
+    public static let pawlVaultEnabledDidChange = Notification.Name("NookPawlVaultEnabledDidChange")
+
+    /// Fill and save passwords, and use passkeys, from the Pawl Vault app over its local socket.
+    public var pawlVaultEnabled: Bool {
+        didSet {
+            userDefaults.set(pawlVaultEnabled, forKey: pawlVaultEnabledKey)
+            if pawlVaultEnabled != oldValue {
+                NotificationCenter.default.post(name: Self.pawlVaultEnabledDidChange, object: nil)
+            }
+        }
+    }
+
     public init() {
         // Register default values
         userDefaults.register(defaults: [
@@ -805,6 +818,7 @@ public final class NookSettingsService {
         self.facebookHideReels = userDefaults.bool(forKey: facebookHideReelsKey)
         self.facebookHideSuggested = userDefaults.bool(forKey: facebookHideSuggestedKey)
         self.redditSortHot = userDefaults.bool(forKey: redditSortHotKey)
+        self.pawlVaultEnabled = userDefaults.bool(forKey: pawlVaultEnabledKey)
 
         if let data = userDefaults.data(forKey: siteSearchEntriesKey),
            let decoded = try? JSONDecoder().decode([SiteSearchEntry].self, from: data) {

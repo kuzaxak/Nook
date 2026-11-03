@@ -78,6 +78,10 @@ public final class TabsController {
     @ObservationIgnored public weak var sessionDelegate: PageSessionDelegate?
     @ObservationIgnored public weak var tabEvents: TabEventObserver?
     @ObservationIgnored public weak var alerts: AlertPresenter?
+    #if os(macOS)
+    /// Pawl Vault passwords and passkeys; set by the app.
+    @ObservationIgnored public var vault: VaultService?
+    #endif
     /// Called with each tab that a move brought into a pinned section from the tabs section.
     @ObservationIgnored public var onTabsPinned: (([UUID]) -> Void)?
 

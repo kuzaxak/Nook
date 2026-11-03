@@ -56,33 +56,34 @@ public class BrowserConfiguration {
 
         // Note: webExtensionController will be set by ExtensionManager during initialization
 
-        // MARK: Passkey suppression
-        // Pending Apple approval of com.apple.developer.web-browser.public-key-credential,
-        // tell websites we don't support platform authenticators so they won't prompt for passkeys.
-        // TODO: Remove this once the entitlement is granted.
-        let passkeySuppress = WKUserScript(
-            source: """
-            // Nook Passkey Suppression
-            (function() {
-                if (window.PublicKeyCredential) {
-                    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = function() {
-                        return Promise.resolve(false);
-                    };
-                    if (PublicKeyCredential.isConditionalMediationAvailable) {
-                        PublicKeyCredential.isConditionalMediationAvailable = function() {
-                            return Promise.resolve(false);
-                        };
-                    }
-                }
-            })();
-            """,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
-        )
-        config.userContentController.addUserScript(passkeySuppress)
+        config.userContentController.addUserScript(Self.passkeySuppressionScript)
 
         return config
     }()
+
+    // MARK: Passkey suppression
+    // Pending Apple approval of com.apple.developer.web-browser.public-key-credential,
+    // tell websites we don't support platform authenticators so they won't prompt for passkeys.
+    // While Pawl Vault is connected, VaultBridge swaps this for its own passkey shim.
+    public static var passkeySuppressionScript: WKUserScript {
+        WKUserScript(source: passkeySuppressionSource, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+    }
+
+    private static let passkeySuppressionSource = """
+        // Nook Passkey Suppression
+        (function() {
+            if (window.PublicKeyCredential) {
+                PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = function() {
+                    return Promise.resolve(false);
+                };
+                if (PublicKeyCredential.isConditionalMediationAvailable) {
+                    PublicKeyCredential.isConditionalMediationAvailable = function() {
+                        return Promise.resolve(false);
+                    };
+                }
+            }
+        })();
+        """
 
     /// Optional hook for ContentBlockerManager to apply rule lists to new controllers.
     public var contentRuleListApplicator: ((WKUserContentController) -> Void)?

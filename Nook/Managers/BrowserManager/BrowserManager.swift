@@ -421,6 +421,7 @@ class BrowserManager: ObservableObject {
     var siteRoutingManager: SiteRoutingManager
     var externalMiniWindowManager = ExternalMiniWindowManager()
     let peekManager = PeekManager()
+    let autofillManager = AutofillManager()
 
     // TEMPORARY: Will be removed when cross-window coordination is eliminated
     weak var webViewCoordinator: WebViewCoordinator?
@@ -489,6 +490,9 @@ class BrowserManager: ObservableObject {
         self.tabs.sessionDelegate = self
         self.tabs.tabEvents = self
         self.tabs.alerts = self
+        let vault = VaultService(settings: settings)
+        vault.presenter = autofillManager
+        self.tabs.vault = vault
         if case .readOnly(let reason) = tabs.loadOutcome {
             TabsController.presentReadOnlyAlert(reason: reason, directory: tabs.directory)
         }

@@ -159,6 +159,9 @@ extension PageSession: WKNavigationDelegate {
         }
 
         injectPageObservers(into: webView)
+        #if os(macOS)
+        controller?.vault?.pageCommitted(in: webView)
+        #endif
         offerTranslationIfNeeded()
         updateNavigationStateEnhanced(source: "didCommit")
 
@@ -363,6 +366,9 @@ extension PageSession: WKNavigationDelegate {
 
             // Setup content blocker scripts before navigation starts
             controller?.blocker.setupContentBlockerScripts(for: url, in: webView, tab: self)
+            #if os(macOS)
+            controller?.vault?.navigationStarted()
+            #endif
 
             // Inject SponsorBlock script (independent of content blocker)
             controller?.sponsorBlock.injectScriptIfNeeded(for: url, in: webView)

@@ -303,6 +303,13 @@ struct WebsiteView: View {
                         Spacer()
                     }
                 }
+                if let offer = browserManager.autofillManager.saveOffer, offer.itemID == session.itemID {
+                    VStack {
+                        VaultSaveOfferView(offer: offer) { browserManager.autofillManager.answerSaveOffer($0) }
+                            .padding(.top, NookDesign.Spacing.lg)
+                        Spacer()
+                    }
+                }
             }
 
             // History, as a page over the web content (Cmd-Y).
