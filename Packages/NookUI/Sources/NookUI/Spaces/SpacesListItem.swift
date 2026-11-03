@@ -20,7 +20,7 @@ struct SpacesListItem: View {
     let isActive: Bool
     let selection: Double
     let isFaded: Bool
-    /// Draw a plain dot whatever the icon; the Agent space keeps its mark.
+    /// Draw a plain dot whatever the icon, when the dock is too crowded for icons; the Agent space keeps its mark.
     let forceDot: Bool
 
     @State private var showThemePicker = false
@@ -101,10 +101,10 @@ struct SpacesListItem: View {
                 .foregroundStyle(NookDesign.Surface.agentGradient)
                 .opacity(NookDesign.Surface.agentIconInactiveOpacity + (1 - NookDesign.Surface.agentIconInactiveOpacity) * selection)
                 .animation(NookDesign.Motion.standard, value: isActive)
-        } else if forceDot || SpaceIcon.isDot(space.icon) {
+        } else if forceDot {
             plainDot
         } else {
-            SpaceIcon(space.icon)
+            SpaceIcon(space.icon, name: space.name)
                 .foregroundStyle(isActive ? Color.primary : Color.secondary)
         }
     }

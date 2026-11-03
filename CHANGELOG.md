@@ -32,6 +32,7 @@
 - Peek like Arc: links a page opens in a new tab and Shift-clicked links open in an overlay with Close, Open as Tab and Open in Split View (Settings → General → Tabs)
 - Cmd+Shift+D moves the address and navigation buttons between the sidebar and a toolbar above the page, as in Arc
 - Ctrl+D turns Developer Mode on or off for the current site (also in the View menu)
+- The space switcher shows each space's icon (or its initial) instead of dots, unless the dock is too crowded; click the icon in Settings → Spaces to choose one
 - Split view like Arc: each pane has its own toolbar (back, forward, reload, address, separate, close) above the page; the split row has one menu for the pair; drop a dragged tab anywhere on the left or right half of the page to split
 - Control-Tab shows up to 20 recent tabs in rows; arrow keys and Return work while it is open
 - The sidebar keeps the selected tab in view; denser tab rows; tab titles stay faded before the close button while it is under the pointer

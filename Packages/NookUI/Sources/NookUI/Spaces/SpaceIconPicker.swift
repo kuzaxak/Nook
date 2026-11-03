@@ -8,7 +8,12 @@ import AppKit
 /// Existing space icon strings store either an SF Symbol name or one emoji grapheme.
 public struct SpaceIcon: View {
     let value: String
-    public init(_ value: String) { self.value = value }
+    /// A space with a placeholder icon shows its name's first letter instead of a plain dot.
+    let name: String?
+    public init(_ value: String, name: String? = nil) {
+        self.value = value
+        self.name = name
+    }
     /// Empty, or one of the placeholder icons spaces carried before the picker existed: all draw
     /// as the plain accent dot.
     public static func isDot(_ value: String) -> Bool {
@@ -18,7 +23,12 @@ public struct SpaceIcon: View {
         value.unicodeScalars.contains { $0.properties.isEmoji && $0.value > 127 }
     }
     public var body: some View {
-        if Self.isDot(value) {
+        if Self.isDot(value), let letter = name?.trimmingCharacters(in: .whitespaces).first {
+            Text(String(letter).uppercased())
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 18, height: 18)
+                .background(NookDesign.Radius.shape(NookDesign.Radius.xs).fill(.quaternary))
+        } else if Self.isDot(value) {
             Circle().frame(width: NookDesign.Spacing.sm, height: NookDesign.Spacing.sm)
         } else if Self.isEmoji(value) {
             Text(value).font(NookDesign.Font.heading)

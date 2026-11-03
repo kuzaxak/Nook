@@ -170,7 +170,7 @@ public struct SpacesSettingsView: View {
             }
 
             Button { showIconPickerFor = space.id } label: {
-                SpaceIcon(space.icon)
+                SpaceIcon(space.icon, name: space.name)
                     .frame(width: NookDesign.Size.spaceTarget, height: NookDesign.Size.spaceTarget)
                     .contentShape(Rectangle())
             }

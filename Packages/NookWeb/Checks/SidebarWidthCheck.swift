@@ -21,8 +21,8 @@ struct SidebarWidthCheck {
         precondition(SpaceSwitcher.itemSize(available: 160, count: 3) == 34, "ceiling")
         precondition(SpaceSwitcher.itemSize(available: 160, count: 5) == 25.6)
         precondition(SpaceSwitcher.itemSize(available: 160, count: 0) == 34, "no spaces")
-        precondition(SpaceSwitcher.isCompact(itemSize: 21))
-        precondition(!SpaceSwitcher.isCompact(itemSize: 22))
+        precondition(SpaceSwitcher.isCompact(itemSize: 17))
+        precondition(!SpaceSwitcher.isCompact(itemSize: 18))
 
         // Dragging in from the left: snaps at 260 with a haptic, holds, frees at speed.
         var d = SidebarDrag(startingWidth: 300)
