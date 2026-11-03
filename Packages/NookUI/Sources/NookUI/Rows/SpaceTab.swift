@@ -22,8 +22,8 @@ public struct SpaceTab: View {
     @State private var isCloseHovering: Bool = false
     @State private var isResetHovering: Bool = false
     /// The pointer is on the row or one of its buttons; a button's own tracking area takes the
-    /// row's hover away, so both count.
-    private var showsControls: Bool { isHovering || isCloseHovering || isResetHovering }
+    /// row's hover away, so both count. A rename hides them, so the field gets the whole row.
+    private var showsControls: Bool { !isRenaming && (isHovering || isCloseHovering || isResetHovering) }
     @State private var draftName: String = ""
     @FocusState private var isTextFieldFocused: Bool
     @Environment(BrowserWindowState.self) private var windowState
@@ -198,6 +198,8 @@ public struct SpaceTab: View {
             }
         }
         .buttonStyle(NookTabButtonStyle())
+        // The whole title, for one too long for the row.
+        .help(isRenaming ? "" : title)
         .padding(.vertical, NookDesign.Tab.verticalInset)
         .onHoverTracking { hovering in
             withAnimation(NookDesign.Motion.quick) {

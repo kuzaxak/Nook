@@ -70,11 +70,20 @@ public struct TabFolderView: View {
                         .onSubmit { commitRename() }
                         .onEscapeKey { cancelRename() }
                 } else {
+                    // Long names fade at the end, as tab titles do.
                     Text(item.displayTitle)
                         .font(NookDesign.Tab.font)
-                        .foregroundStyle(.primary)
                         .lineLimit(1)
-                        .truncationMode(.tail)
+                        .hidden()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(alignment: .leading) {
+                            Text(item.displayTitle)
+                                .font(NookDesign.Tab.font)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+                        .nookTrailingFade()
                 }
 
                 Spacer(minLength: NookDesign.Spacing.xs)
@@ -107,6 +116,7 @@ public struct TabFolderView: View {
             .nookTabSurface(selected: isDropTarget, hovered: isHovering)
         }
         .buttonStyle(NookTabButtonStyle())
+        .help(isRenaming ? "" : item.displayTitle)
         .accessibilityValue(isOpen ? "Expanded" : "Collapsed")
         .padding(.vertical, NookDesign.Tab.verticalInset)
         .onHoverTracking { hovering in
