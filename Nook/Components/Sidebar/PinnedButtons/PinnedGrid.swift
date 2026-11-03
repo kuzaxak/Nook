@@ -49,25 +49,12 @@ struct PinnedGrid: View {
                     manager: dragSession,
                     onDrop: { id, position in tabs.dropOnFavorites(id, spaceID: spaceID, index: position.index) }
                 ) {
-                    VStack(spacing: NookDesign.Spacing.md) {
-                        Image(systemName: "star.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
-
-                        VStack(spacing: NookDesign.Spacing.xxs) {
-                            Text("Drag to add Favorites")
-                                .font(NookDesign.Font.label)
-                                .foregroundStyle(.secondary)
-
-                            Text("Favorites keep your most\nused sites and apps close")
-                                .font(NookDesign.Font.secondary)
-                                .foregroundStyle(.tertiary)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, NookDesign.Spacing.xl)
-                    .padding(.horizontal, NookDesign.Spacing.lg)
+                    Label("Drag tabs here for Favorites", systemImage: "star")
+                        .font(NookDesign.Font.secondary)
+                        .foregroundStyle(isDragging ? .secondary : .tertiary)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: NookDesign.Size.row)
                     .background {
                         NookDesign.Radius.shape(NookDesign.Radius.lg)
                             .strokeBorder(style: StrokeStyle(lineWidth: NookDesign.Size.hairlineWidth, dash: [NookDesign.Spacing.sm, NookDesign.Spacing.xs]))
