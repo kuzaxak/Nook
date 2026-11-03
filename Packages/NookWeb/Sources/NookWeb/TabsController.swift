@@ -562,8 +562,10 @@ public final class TabsController {
 
     /// A committed navigation or SPA URL change. Device items store it as their URL; synced items
     /// keep their home URL and store the open page instead.
-    func pageCommitted(itemID: UUID, url: URL) {
+    func pageCommitted(itemID: UUID, url committed: URL) {
         guard let owner = owner(ofItem: itemID) else { return }
+        // A Kagi Session Link token stays out of tabs.json and device.json.
+        let url = KagiSession.withoutToken(committed)
         if case .main = owner { livePageCommitted(url, itemID: itemID) }
         guard tree(owner).scope(of: itemID) == .synced else {
             perform(owner, "setURL", undoable: false) { try $0.setURL(itemID, url) }

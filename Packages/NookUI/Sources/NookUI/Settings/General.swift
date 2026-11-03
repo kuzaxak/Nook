@@ -16,6 +16,7 @@ public struct SettingsGeneralTab: View {
     @Environment(NookSettingsService.self) var nookSettings
     @State private var showingAddSite = false
     @State private var showingAddEngine = false
+    @State private var kagiSessionLink = ""
     @State private var newShortcutKeyword = ""
     @State private var newShortcutTemplate = ""
 
@@ -124,6 +125,29 @@ public struct SettingsGeneralTab: View {
                 searchEnginePicker(settings)
                 Button("Add Search Engine…") { showingAddEngine = true }
                 #endif
+
+                if nookSettings.searchEngineId == SearchProvider.kagi.rawValue {
+                    if nookSettings.kagiSessionToken != nil {
+                        LabeledContent("Kagi Session Link") {
+                            HStack(spacing: NookDesign.Spacing.md) {
+                                Text("Saved in the Keychain")
+                                    .foregroundStyle(.secondary)
+                                Button("Remove") { nookSettings.setKagiSession(nil) }
+                            }
+                        }
+                    } else {
+                        LabeledContent("Kagi Session Link") {
+                            HStack(spacing: NookDesign.Spacing.md) {
+                                SecureField("https://kagi.com/search?token=…", text: $kagiSessionLink)
+                                Button("Save") {
+                                    nookSettings.setKagiSession(kagiSessionLink)
+                                    kagiSessionLink = ""
+                                }
+                                .disabled(KagiSession.token(fromPasted: kagiSessionLink) == nil)
+                            }
+                        }
+                    }
+                }
 
                 if let selected = nookSettings.customSearchEngines.first(where: { $0.id.uuidString == nookSettings.searchEngineId }) {
                     LabeledContent {

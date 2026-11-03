@@ -12,6 +12,7 @@ import os
 import SwiftData
 import SwiftUI
 import WebKit
+import NookSettings
 import NookTabsCore
 import NookWeb
 
@@ -334,7 +335,7 @@ extension ExtensionManager {
             return
         }
         if configuration.shouldBeMuted { bm.tabs.session(for: itemID)?.setMuted(true) }
-        Self.logger.info("Extension opened tab \(url.absoluteString, privacy: .public)")
+        Self.logger.info("Extension opened tab \(KagiSession.withoutToken(url).absoluteString, privacy: .public)")
         completionHandler(adapter(for: itemID), nil)
     }
 

@@ -166,6 +166,7 @@ public final class NookSettingsService {
     /// Checks built-in `SearchProvider` cases first, then custom engines.
     public var resolvedSearchEngineTemplate: String {
         if let provider = SearchProvider(rawValue: searchEngineId) {
+            if provider == .kagi, let kagiSessionToken { return KagiSession.searchTemplate(token: kagiSessionToken) }
             return provider.queryTemplate
         }
         if let custom = customSearchEngines.first(where: { $0.id.uuidString == searchEngineId }) {
@@ -475,6 +476,16 @@ public final class NookSettingsService {
 
     public static let historyHalfLifeDaysRange = 3...60
 
+    /// Kagi's Session Link token, read from the Keychain at launch and kept nowhere else.
+    public private(set) var kagiSessionToken: String?
+
+    /// Saves the token from a pasted Session Link (or a bare token) to the Keychain; nil removes it.
+    public func setKagiSession(_ pasted: String?) {
+        let token = pasted.flatMap(KagiSession.token(fromPasted:))
+        KagiSession.saveToken(token)
+        kagiSessionToken = token
+    }
+
     /// Command bar keywords that expand to an address, such as `gh owner/repo`.
     public var urlShortcuts: [URLShortcut] {
         didSet {
@@ -770,6 +781,7 @@ public final class NookSettingsService {
         self.nestLinkTabsUnderOpener = userDefaults.bool(forKey: nestLinkTabsUnderOpenerKey)
         self.historyHalfLifeDays = min(max(userDefaults.integer(forKey: historyHalfLifeDaysKey), Self.historyHalfLifeDaysRange.lowerBound), Self.historyHalfLifeDaysRange.upperBound)
         self.paletteWordStops = userDefaults.string(forKey: paletteWordStopsKey) ?? "/.?&=#:-"
+        self.kagiSessionToken = KagiSession.loadToken()
         self.urlShortcuts = userDefaults.data(forKey: urlShortcutsKey)
             .flatMap { try? JSONDecoder().decode([URLShortcut].self, from: $0) } ?? URLShortcut.defaults
         let archiveHours = userDefaults.integer(forKey: archiveTabsAfterHoursKey)
