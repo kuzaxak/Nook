@@ -133,6 +133,17 @@ public final class HistoryManager {
         }
     }
 
+    /// A profile was deleted: its history goes with its cookies and logins.
+    public func deleteHistory(forProfile profile: UUID) {
+        let pageText = pageText
+        let index = index
+        enqueue { store in
+            await store.deleteProfile(profile)
+            await index?.deleteProfile(profile)
+            if let pageText { await pageText.retain(only: await store.allURLs()) }
+        }
+    }
+
     public func deleteHistoryEntry(_ entryId: UUID) {
         let pageText = pageText
         let index = index
@@ -396,6 +407,17 @@ actor HistoryStore {
         } catch {
             Self.logger.error("History deletion failed: \(error.localizedDescription, privacy: .public)")
             return nil
+        }
+    }
+
+    /// Deletes the rows a deleted profile recorded; untagged rows, which every profile sees, stay.
+    func deleteProfile(_ profile: UUID) {
+        do {
+            try modelContext.delete(model: HistoryEntity.self, where: #Predicate { $0.profileId == profile })
+            try modelContext.save()
+            autofillCache = nil
+        } catch {
+            Self.logger.error("History deletion failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

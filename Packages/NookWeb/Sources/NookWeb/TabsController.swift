@@ -492,9 +492,10 @@ public final class TabsController {
         return tree.orderedSpaces.compactMap { profile(forSpace: $0.id) }.filter { seen.insert($0.id).inserted }
     }
 
-    /// Drops a cached data store no space uses any more.
+    /// Drops a data store no space uses any more.
     func forgetProfile(_ storeID: UUID) {
         spaceProfiles[storeID] = nil
+        history?.deleteHistory(forProfile: storeID)
     }
 
     /// The data store a session's page uses: the private window's ephemeral one, else the store

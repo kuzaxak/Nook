@@ -252,6 +252,17 @@ public actor HistoryIndex {
         }
     }
 
+    /// Removes everything recorded for a deleted profile: its rows and its picks. Untagged rows,
+    /// which every profile sees, stay.
+    public func deleteProfile(_ profile: UUID) {
+        guard let db = open(create: false) else { return }
+        for table in ["visits", "picks"] {
+            run(db, "DELETE FROM \(table) WHERE profile = ?") { stmt in
+                sqlite3_bind_text(stmt, 1, Self.profileKey(profile), -1, Self.transient)
+            }
+        }
+    }
+
     /// Removes rows last visited before `date`: `profile`'s and untagged ones, or all when nil.
     public func clear(before date: Date, profile: UUID?) {
         guard let db = open(create: false) else { return }

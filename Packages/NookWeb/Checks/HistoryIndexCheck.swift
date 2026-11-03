@@ -97,6 +97,16 @@ struct HistoryIndexCheck {
         await index.clear(before: now.addingTimeInterval(1), profile: nil)
         do { let ok = await index.search("infra", profile: home)!.isEmpty; precondition(ok) }
 
+        // Deleting a profile takes its rows and picks; other profiles keep theirs.
+        let gone = UUID()
+        await index.record(url: "https://gone.example/secret", title: "Gone secret", profile: gone, at: now, weight: 2)
+        await index.record(url: "https://kept.example/secret", title: "Kept secret", profile: work, at: now, weight: 2)
+        await index.recordPick(prefix: "sec", url: "https://gone.example/secret", profile: gone, at: now)
+        await index.deleteProfile(gone)
+        do { let ok = await index.search("secret", profile: gone)!.isEmpty; precondition(ok, "a deleted profile's rows are gone") }
+        do { let ok = await index.picks(profile: gone).isEmpty; precondition(ok, "and its picks") }
+        do { let ok = await index.search("secret", profile: work)!.map(\.url) == ["https://kept.example/secret"]; precondition(ok, "another profile keeps its rows") }
+
         // Migrated rows lose their secrets too; rows that become one URL merge their visits.
         let merged = HistoryIndex(fileURL: dir.appendingPathComponent("merge.sqlite"), halfLife: halfLife)
         await merged.migrate([
