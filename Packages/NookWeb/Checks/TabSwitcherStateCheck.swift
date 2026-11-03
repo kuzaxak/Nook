@@ -45,6 +45,7 @@ struct TabSwitcherStateCheck {
         precondition(keys.move(keyCode: 35, characters: "p") && keys.index == 1, "Control-P: row above")
         precondition(keys.move(keyCode: 124, characters: nil) && keys.index == 2, "arrows where Mission Control lets them through")
         precondition(!keys.move(keyCode: 0, characters: "a") && keys.index == 2)
+        precondition(keys.move(keyCode: 3, characters: "а") && keys.index == 3, "Control-F by key position on a Russian layout")
         print("TabSwitcherStateCheck passed")
     }
 }

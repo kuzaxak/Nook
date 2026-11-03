@@ -51,13 +51,17 @@ public struct TabSwitcherState: Equatable, Sendable {
     }
 
     /// A key pressed with Control held: the arrows, or Cocoa's Control-F/B/N/P, which macOS does
-    /// not take for Spaces and Mission Control. False for any other key.
+    /// not take for Spaces and Mission Control. The letters match by character, as Dvorak types
+    /// them, or by key position on layouts without Latin letters. False for any other key.
     public mutating func move(keyCode: UInt16, characters: String?) -> Bool {
-        switch (keyCode, characters?.lowercased()) {
-        case (123, _), (_, "b"): advance(by: -1)
-        case (124, _), (_, "f"): advance(by: 1)
-        case (125, _), (_, "n"): moveRow(by: 1)
-        case (126, _), (_, "p"): moveRow(by: -1)
+        let typed = characters?.lowercased()
+        let byPosition: [UInt16: String] = [11: "b", 3: "f", 45: "n", 35: "p"]
+        let letter = typed.flatMap { $0.unicodeScalars.allSatisfy(\.isASCII) ? $0 : nil } ?? byPosition[keyCode]
+        switch (keyCode, letter) {
+        case (123, _), (_, "b"?): advance(by: -1)
+        case (124, _), (_, "f"?): advance(by: 1)
+        case (125, _), (_, "n"?): moveRow(by: 1)
+        case (126, _), (_, "p"?): moveRow(by: -1)
         default: return false
         }
         return true
