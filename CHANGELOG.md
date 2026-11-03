@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.5.2
+
+Links from other apps can open in the current space, as in Arc, and ClickUp lists scroll smoothly.
 
 ### Added
 
