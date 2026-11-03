@@ -2,7 +2,7 @@
 
 ## 1.5.1
 
-One-time codes from Pawl Vault, an offer to become the default browser, editable word stops, and fixes for Peek, the command bar and deleted profiles.
+One-time codes from Pawl Vault, an offer to become the default browser, segment-by-segment address completion, editable word stops, and fixes for Peek, the command bar and deleted profiles.
 
 ### Added
 
@@ -13,6 +13,7 @@ One-time codes from Pawl Vault, an offer to become the default browser, editable
 
 - The command bar's top row says where Return opens: this tab, a new tab below the named one, or the top of Tabs
 - Word stops can be changed in Settings → General; history search splits words at the same characters as ⌥→ and Control-W, so `_` now stays inside a word
+- The command bar's grey completion finishes only the host or path segment you are typing, as in Firefox; Return opens exactly the bold and grey text, typing `/` offers the next segment, ⌫ removes the grey text first, and deeper pages stay in the list
 
 ### Fixed
 
