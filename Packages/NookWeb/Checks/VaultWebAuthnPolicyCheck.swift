@@ -89,6 +89,12 @@ struct VaultWebAuthnPolicyCheck {
             precondition(!WebAuthnPolicy.isValidRPID(rpId, forHost: host, suffixes: psl), "\(rpId) for \(host)")
         }
 
+        // A list that failed to load fails closed: only the host itself.
+        let missing = PublicSuffixList(text: "")
+        precondition(WebAuthnPolicy.isValidRPID("login.example.com", forHost: "login.example.com", suffixes: missing))
+        precondition(!WebAuthnPolicy.isValidRPID("example.com", forHost: "login.example.com", suffixes: missing))
+        precondition(!WebAuthnPolicy.isValidRPID("example.co.uk", forHost: "foo.example.co.uk", suffixes: missing))
+
         print("VaultWebAuthnPolicyCheck passed")
     }
 }

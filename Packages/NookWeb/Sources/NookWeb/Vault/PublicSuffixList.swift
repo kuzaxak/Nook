@@ -50,6 +50,9 @@ public struct PublicSuffixList {
         return labels.last ?? domain
     }
 
+    /// No rules: the list did not load.
+    public var isEmpty: Bool { rules.isEmpty && wildcards.isEmpty && exceptions.isEmpty }
+
     public func isPublicSuffix(_ domain: String) -> Bool {
         publicSuffix(of: domain) == domain
     }

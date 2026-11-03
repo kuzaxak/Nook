@@ -41,6 +41,7 @@ public enum WebAuthnPolicy {
 
     /// `rpId` equals `host`, or is a suffix of it at a label boundary that is neither the host's
     /// public suffix nor part of it (HTML's "is a registrable domain suffix of or is equal to").
+    /// Without a loaded list only the host itself passes.
     public static func isValidRPID(_ rpId: String, forHost host: String, suffixes: PublicSuffixList) -> Bool {
         let rpId = rpId.lowercased(), host = host.lowercased()
         let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789-.".utf8)
@@ -48,7 +49,7 @@ public enum WebAuthnPolicy {
               !rpId.split(separator: ".", omittingEmptySubsequences: false).contains(where: \.isEmpty)
         else { return false }
         if rpId == host { return true }
-        guard !isIPAddress(host), host.hasSuffix("." + rpId) else { return false }
+        guard !suffixes.isEmpty, !isIPAddress(host), host.hasSuffix("." + rpId) else { return false }
         let hostSuffix = suffixes.publicSuffix(of: host)
         return rpId != hostSuffix && !hostSuffix.hasSuffix("." + rpId)
     }

@@ -24,7 +24,7 @@ public actor VaultClient {
             .appendingPathComponent("Library/Group Containers/group.com.kuzaxak.pawlvault/browser-bridge.sock").path
     }
 
-    static let serverRequirement = #"anchor apple generic and certificate leaf[subject.OU] = "538SB59LX4""#
+    static let serverRequirement = #"anchor apple generic and certificate leaf[subject.OU] = "538SB59LX4" and (identifier "com.kuzaxak.pawlvault" or identifier "com.kuzaxak.pawlvault.pro" or identifier "com.kuzaxak.pawlvault.org")"#
 
     private let queue = DispatchSerialQueue(label: "ee.qdo.nook.vault-client")
     public nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
