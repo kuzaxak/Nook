@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.5.1
+
+One-time codes from Pawl Vault, an offer to become the default browser, editable word stops, and fixes for Peek, the command bar and deleted profiles.
 
 ### Added
 
