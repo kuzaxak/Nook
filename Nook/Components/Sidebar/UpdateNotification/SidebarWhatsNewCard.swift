@@ -18,8 +18,7 @@ struct SidebarWhatsNewCard: View {
     @Environment(BrowserWindowState.self) private var windowState
     @State private var isHovering = false
 
-    // One place to point at a designed page later.
-    private static let notesBase = "https://github.com/nook-browser/Nook/releases/tag/v"
+    private static let notesBase = "https://github.com/kuzaxak/Nook/releases/tag/v"
 
     var body: some View {
         // The update card owns this slot while an update is pending.

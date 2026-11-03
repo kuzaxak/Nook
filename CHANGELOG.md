@@ -19,6 +19,7 @@ One-time codes from Pawl Vault, an offer to become the default browser, segment-
 
 - Deleting a profile deletes its history and its command bar entries too
 - Cmd+T opens the command bar over a Peek, as in Arc
+- "What's new in Nook" opens this fork's release notes instead of upstream's
 
 ## 1.5.0
 
