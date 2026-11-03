@@ -107,7 +107,8 @@ final class AutofillManager: NSObject, VaultPresenter, NSPopoverDelegate {
         alert.informativeText = userName.isEmpty
             ? "Pawl Vault will save the new passkey."
             : "Pawl Vault will save a passkey for \(userName)."
-        alert.addButton(withTitle: "Continue")
+        // The Return that submitted the site's form must not also confirm the passkey.
+        alert.addButton(withTitle: "Continue").keyEquivalent = ""
         alert.addButton(withTitle: "Cancel")
         alert.beginSheetModal(for: window) { completion($0 == .alertFirstButtonReturn) }
     }
