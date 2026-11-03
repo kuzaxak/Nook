@@ -1,0 +1,9 @@
+public_suffix_list.dat
+
+The Public Suffix List, from https://publicsuffix.org/list/public_suffix_list.dat
+(the VERSION and COMMIT lines at the top of the file say which copy this is).
+
+This file is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of
+the MPL was not distributed with this file, you can obtain one at
+https://mozilla.org/MPL/2.0/. It is included unmodified. Nook uses it only to check
+that a passkey's relying party id is not a public suffix (PublicSuffixList.swift).
