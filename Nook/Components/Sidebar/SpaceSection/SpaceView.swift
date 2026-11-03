@@ -94,7 +94,7 @@ struct SpaceView: View {
         }
         }
         .contentMargins(.trailing, 0, for: .scrollIndicators)
-        .scrollIndicators(showsScrollIndicator && !windowState.isSidebarResizeHovered ? .visible : .hidden)
+        .scrollIndicators(showsScrollIndicator && !windowState.isSidebarResizeHovered && NSScroller.preferredScrollerStyle == .overlay ? .visible : .hidden)
         .onScrollPhaseChange { _, phase in
             // Tracking alone (a finger resting on the pad) is not scrolling.
             isUserScrolling = phase == .interacting || phase == .decelerating

@@ -108,6 +108,8 @@ public struct PinnedTabView<Icon: View>: View {
             .modifier(TileSelection(isActive: isActive, themed: colors != nil))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(tabName)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
         .onHoverTracking { hovering in
             self.isHovered = hovering
         }

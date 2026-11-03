@@ -107,6 +107,7 @@ public struct TabFolderView: View {
             .nookTabSurface(selected: isDropTarget, hovered: isHovering)
         }
         .buttonStyle(NookTabButtonStyle())
+        .accessibilityValue(isOpen ? "Expanded" : "Collapsed")
         .padding(.vertical, NookDesign.Tab.verticalInset)
         .onHoverTracking { hovering in
             withAnimation(NookDesign.Motion.quick) {

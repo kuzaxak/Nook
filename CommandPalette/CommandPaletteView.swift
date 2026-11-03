@@ -372,6 +372,13 @@ struct CommandPaletteView: View {
                 }
             } else {
                 isSearchFocused = false
+                // Without this the field editor keeps first responder and Space no longer scrolls the page.
+                DispatchQueue.main.async {
+                    if let itemID = windowState.selectedItemID,
+                       let webView = browserManager.getWebView(for: itemID, in: windowState.id) {
+                        webView.window?.makeFirstResponder(webView)
+                    }
+                }
                 searchManager.clearSuggestions()
                 text = ""
                 activeSiteSearch = nil
@@ -456,6 +463,7 @@ struct CommandPaletteView: View {
                             }
                         }
                         .onTapGesture { onSelect(suggestion) }
+                        .accessibilityAddTraits(selectedIndex == index ? .isSelected : [])
                         .id(index)
                 }
             }

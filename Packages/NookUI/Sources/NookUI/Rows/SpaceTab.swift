@@ -21,6 +21,9 @@ public struct SpaceTab: View {
     @State private var isHovering: Bool = false
     @State private var isCloseHovering: Bool = false
     @State private var isResetHovering: Bool = false
+    /// The pointer is on the row or one of its buttons; a button's own tracking area takes the
+    /// row's hover away, so both count.
+    private var showsControls: Bool { isHovering || isCloseHovering || isResetHovering }
     @State private var draftName: String = ""
     @FocusState private var isTextFieldFocused: Bool
     @Environment(BrowserWindowState.self) private var windowState
@@ -131,13 +134,13 @@ public struct SpaceTab: View {
                         // Only a rename animates; a page changing its own title swaps without motion.
                         .animation(NookDesign.Motion.spring, value: item.customTitle)
                         // On hover the text ends before the close button.
-                        .nookTrailingFade(reserving: isHovering ? NookDesign.Size.row + (showsReset ? NookDesign.Size.rowButton : 0) : 0)
+                        .nookTrailingFade(reserving: showsControls ? NookDesign.Size.row + (showsReset ? NookDesign.Size.rowButton : 0) : 0)
                         .textSelection(.disabled)
                         .opacity(isUnloaded ? NookDesign.Surface.unloadedOpacity : 1)
                 }
             }
             .overlay(alignment: .trailing) {
-                if isHovering {
+                if showsControls {
                     HStack(spacing: 0) {
                         // Resets a pinned tab whose page left its pinned URL; sits left of close and fades in with it.
                         if showsReset {
@@ -185,7 +188,7 @@ public struct SpaceTab: View {
                         .strokeBorder(accentColor, lineWidth: NookDesign.Size.hairlineWidth)
                 }
             }
-            .nookTabSurface(selected: isCurrentTab, hovered: isHovering)
+            .nookTabSurface(selected: isCurrentTab, hovered: showsControls)
             // Developer Mode on this tab's site, marked as Arc marks it.
             .overlay {
                 if nookSettings.isDeveloperSite(tabs.currentURL(for: item)?.host) {

@@ -27,6 +27,9 @@
 - New bindable actions: Pin to Space, Add to Favorites, Add to Folder, Move to Space, Rename Tab, Translate Page, Toggle Extension Library, Manage Extensions, Toggle Dark Mode, Toggle Developer Mode for Site
 - Kagi Session Link: paste it in Settings → General and Kagi searches are signed in from every space; the token stays in the Keychain and out of history and tabs
 - Search suggestions from Kagi when Kagi is the search engine
+- Control-Tab shows up to 20 recent tabs in rows; arrow keys and Return work while it is open
+- The sidebar keeps the selected tab in view; denser tab rows; tab titles stay faded before the close button while it is under the pointer
+- Closing the command bar gives the keyboard back to the page
 - Command bar developer shortcuts: `loc` or `127` lists local servers one row per port, ranked by use; keywords such as `gh owner/repo` open their address (Settings → General → URL Shortcuts)
 - Pawl Vault passwords and passkeys (Settings → Privacy → Passwords, off by default): pick an account under a login field, save a new password after signing in, sign in and register with passkeys; Nook checks the vault's code signature and keeps no credentials
 
