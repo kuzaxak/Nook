@@ -1,0 +1,100 @@
+name: Release
+
+# A version tag (v1.4.0.2) builds the universal app with scripts/release.sh: Developer ID
+# signature, notarized and stapled app and DMG, EdDSA-signed appcast, and a GitHub release with
+# the DMG and appcast.xml. Installed copies update from
+# https://github.com/kuzaxak/Nook/releases/latest/download/appcast.xml, so the newest release is
+# the update everyone gets.
+#
+# Repository secrets:
+#   APPLE_CERTIFICATE_P12_BASE64, APPLE_CERTIFICATE_PASSWORD  Developer ID Application identity
+#   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID       notarization
+#   SPARKLE_SIGNING_KEY                                       EdDSA private key (generate_keys -x)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, such as 1.4.0.2; the release is tagged v<version> at this commit
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$INPUT_VERSION"
+          fi
+          [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+)+$ ]] || { echo "Not a version: $VERSION"; exit 1; }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Import Developer ID certificate
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          printf "%s" "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 7200 "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security find-identity -v -p codesigning "$KEYCHAIN" | grep -q "Developer ID Application"
+
+      - name: Store notarization credentials
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials nook-notary \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD"
+
+      - name: Write Sparkle signing key
+        env:
+          SPARKLE_SIGNING_KEY: ${{ secrets.SPARKLE_SIGNING_KEY }}
+        run: |
+          KEY_FILE="$RUNNER_TEMP/sparkle_private_key"
+          (umask 077; printf "%s" "$SPARKLE_SIGNING_KEY" > "$KEY_FILE")
+          echo "SPARKLE_KEY_FILE=$KEY_FILE" >> "$GITHUB_ENV"
+
+      - name: Ensure Metal Toolchain
+        run: xcodebuild -downloadComponent MetalToolchain || echo "Metal Toolchain already present or download unsupported, continuing"
+
+      - name: Refresh bundled filter lists
+        run: ./scripts/refresh-filter-lists.sh
+
+      - name: Build, notarize and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/release.sh "$VERSION" --publish
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/sparkle_private_key"
+          security delete-keychain "$RUNNER_TEMP/build.keychain" || true

@@ -12,8 +12,9 @@
 # one (override with SIGN_IDENTITY, or SIGN_IDENTITY=- for ad-hoc). A Developer ID build is
 # notarized with the notarytool profile NOTARY_PROFILE (default nook-notary) and the script stops
 # if that fails; NOTARY_PROFILE= skips notarization. The DMG is signed for Sparkle with the EdDSA
-# key stored in the login Keychain under account ee.qdo.nook (generate_keys). Both Keychain items
-# may ask for access the first time: run it at the Mac and choose Always Allow.
+# key stored in the login Keychain under account ee.qdo.nook (generate_keys), or with the key file
+# SPARKLE_KEY_FILE names (CI). Both Keychain items may ask for access the first time: run it at
+# the Mac and choose Always Allow. .github/workflows/release.yml runs this script for version tags.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -92,13 +93,18 @@ if [[ "$SIGN_IDENTITY" != "-" ]]; then
   fi
 fi
 
-"$SPARKLE_BIN/generate_appcast" --account ee.qdo.nook \
+if [[ -n "${SPARKLE_KEY_FILE:-}" ]]; then
+  SPARKLE_KEY=(--ed-key-file "$SPARKLE_KEY_FILE")
+else
+  SPARKLE_KEY=(--account ee.qdo.nook)
+fi
+"$SPARKLE_BIN/generate_appcast" "${SPARKLE_KEY[@]}" \
   --download-url-prefix "https://github.com/kuzaxak/Nook/releases/download/$TAG/" \
   --link "https://github.com/kuzaxak/Nook" "$OUT/feed"
 
 echo "Built $DMG and $OUT/feed/appcast.xml (version $VERSION, build $BUILD_NUMBER)"
 if [[ "$PUBLISH" == "--publish" ]]; then
-  gh release create "$TAG" "$DMG" "$OUT/feed/appcast.xml" --repo kuzaxak/Nook \
+  gh release create "$TAG" "$DMG" "$OUT/feed/appcast.xml" --repo kuzaxak/Nook --target "$(git rev-parse HEAD)" \
     --title "Nook $VERSION" --notes "Fork build $VERSION (build $BUILD_NUMBER). Universal: Apple silicon and Intel."
 else
   echo "Not published. Publish with: scripts/release.sh $VERSION --publish"
