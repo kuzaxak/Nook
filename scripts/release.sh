@@ -9,9 +9,11 @@
 # newest published release is the update every install sees.
 #
 # Signing: the "Developer ID Application" identity of team 538SB59LX4 when the login Keychain has
-# one (override with SIGN_IDENTITY, or SIGN_IDENTITY=- for ad-hoc); notarization with the
-# notarytool profile NOTARY_PROFILE (default nook-notary) when it exists. The DMG is signed for
-# Sparkle with the EdDSA key stored in the login Keychain under account ee.qdo.nook (generate_keys).
+# one (override with SIGN_IDENTITY, or SIGN_IDENTITY=- for ad-hoc). A Developer ID build is
+# notarized with the notarytool profile NOTARY_PROFILE (default nook-notary) and the script stops
+# if that fails; NOTARY_PROFILE= skips notarization. The DMG is signed for Sparkle with the EdDSA
+# key stored in the login Keychain under account ee.qdo.nook (generate_keys). Both Keychain items
+# may ask for access the first time: run it at the Mac and choose Always Allow.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -63,13 +65,14 @@ if [[ "$SIGN_IDENTITY" != "-" ]]; then
   sign --options runtime --entitlements "$ENTITLEMENTS" "$APP"
   codesign --verify --deep --strict "$APP"
 
-  if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+  if [[ -n "$NOTARY_PROFILE" ]]; then
     ditto -c -k --keepParent "$APP" "$OUT/Nook-notarize.zip"
-    xcrun notarytool submit "$OUT/Nook-notarize.zip" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun notarytool submit "$OUT/Nook-notarize.zip" --keychain-profile "$NOTARY_PROFILE" --wait | tee "$OUT/notarize.log"
+    grep -q "status: Accepted" "$OUT/notarize.log" || { echo "Notarization was not accepted; see $OUT/notarize.log"; exit 1; }
     xcrun stapler staple "$APP"
     rm "$OUT/Nook-notarize.zip"
   else
-    echo "No notarytool profile \"$NOTARY_PROFILE\"; the release is signed but not notarized."
+    echo "NOTARY_PROFILE is empty; the release is signed but not notarized."
   fi
 fi
 
@@ -82,6 +85,11 @@ DMG="$OUT/feed/Nook-$VERSION-universal.dmg"
 hdiutil create -volname "Nook $VERSION" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
   codesign --force --sign "$SIGN_IDENTITY" --timestamp "$DMG"
+  if [[ -n "$NOTARY_PROFILE" ]]; then
+    xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait | tee "$OUT/notarize-dmg.log"
+    grep -q "status: Accepted" "$OUT/notarize-dmg.log" || { echo "DMG notarization was not accepted; see $OUT/notarize-dmg.log"; exit 1; }
+    xcrun stapler staple "$DMG"
+  fi
 fi
 
 "$SPARKLE_BIN/generate_appcast" --account ee.qdo.nook \
