@@ -61,17 +61,21 @@ struct PeekOverlayView: View {
                     .fill(colorScheme == .dark ? Color.black : Color.white)
                     .nookElevation(.floating)
 
-                DetachedPageHost(page: page, cornerRadius: cornerRadius)
-                    .id(page.itemID)
+                VStack(spacing: 0) {
+                    PeekNavigationBar(page: page, cornerRadius: cornerRadius)
+                    ZStack {
+                        DetachedPageHost(page: page, cornerRadius: cornerRadius, squareTop: true)
+                            .id(page.itemID)
 
-                BlockedPageView(session: page)
-                TranslationTaskHost(session: page)
+                        BlockedPageView(session: page)
+                        TranslationTaskHost(session: page)
 
-                if let webView = page.webView {
-                    PageLoadBar(webView: webView, tint: currentSpaceColor)
-                        .padding(.horizontal, cornerRadius)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                        .id(page.itemID)
+                        if let webView = page.webView {
+                            PageLoadBar(webView: webView, tint: currentSpaceColor)
+                                .frame(maxHeight: .infinity, alignment: .top)
+                                .id(page.itemID)
+                        }
+                    }
                 }
             }
             .frame(width: frame.width, height: frame.height)
@@ -146,5 +150,62 @@ struct PeekOverlayView: View {
             ),
             cornerRadius: cornerRadius
         )
+    }
+}
+
+/// Arc's Peek bar: back, forward and reload at the leading edge and the site in the middle, which
+/// copies the link. It takes the page's colour, as the top bar does.
+private struct PeekNavigationBar: View {
+    let page: PageSession
+    let cornerRadius: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var copied = false
+
+    private var pageColor: NSColor? { page.topBarBackgroundColor ?? page.pageBackgroundColor }
+
+    var body: some View {
+        ZStack {
+            HStack(spacing: NookDesign.Spacing.xxs) {
+                Button("Back", systemImage: "chevron.backward") { page.goBack(in: page.webView) }
+                    .disabled(!page.canGoBack)
+                Button("Forward", systemImage: "chevron.forward") { page.goForward() }
+                    .disabled(!page.canGoForward)
+                Button(page.isLoading ? "Stop" : "Reload", systemImage: page.isLoading ? "xmark" : "arrow.clockwise") {
+                    page.isLoading ? page.stop() : page.refresh()
+                }
+                Spacer()
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(NookIconButtonStyle(size: NookDesign.Size.navRow, radius: NookDesign.Radius.sm))
+
+            Button(action: copyLink) {
+                Label(page.url.host.map { $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0 } ?? page.url.absoluteString,
+                      systemImage: copied ? "checkmark" : "link")
+                    .font(NookDesign.Font.secondary)
+                    .lineLimit(1)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.plain)
+            .help("Copy Link")
+            .padding(.horizontal, NookDesign.Size.navRow * 3 + NookDesign.Spacing.lg)
+        }
+        .foregroundStyle(.primary)
+        .padding(.horizontal, NookDesign.Spacing.sm)
+        .frame(height: NookDesign.Size.peekBar)
+        .background(
+            pageColor.map { Color(nsColor: $0) } ?? NookDesign.Surface.raised,
+            in: UnevenRoundedRectangle(topLeadingRadius: cornerRadius, topTrailingRadius: cornerRadius, style: .continuous)
+        )
+        .environment(\.colorScheme, pageColor.map { $0.isPerceivedDark ? .dark : .light } ?? colorScheme)
+    }
+
+    private func copyLink() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(page.url.absoluteString, forType: .string)
+        withAnimation(NookDesign.Motion.quick) { copied = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            withAnimation(NookDesign.Motion.quick) { copied = false }
+        }
     }
 }

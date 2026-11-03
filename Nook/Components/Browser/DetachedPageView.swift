@@ -20,6 +20,8 @@ import WebKit
 struct DetachedPageHost: NSViewRepresentable {
     let page: PageSession
     var cornerRadius: CGFloat = 0
+    /// Square top corners, for a bar drawn flush above the page.
+    var squareTop = false
 
     func makeNSView(context: Context) -> NSView {
         let container = DetachedPageContainer()
@@ -32,6 +34,10 @@ struct DetachedPageHost: NSViewRepresentable {
 
     func updateNSView(_ container: NSView, context: Context) {
         container.layer?.cornerRadius = cornerRadius
+        // The container is not flipped, so its layer's min-Y corners are the bottom ones.
+        container.layer?.maskedCorners = squareTop
+            ? [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+            : [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
     }
 }
 
