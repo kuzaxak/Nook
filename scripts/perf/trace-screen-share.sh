@@ -36,8 +36,12 @@ record() {
     "$BIN/scroll-driver" "$SECONDS_PER" &
     driver=$!
   fi
-  xcrun xctrace record --no-prompt --template "$template" "$@" --time-limit "${SECONDS_PER}s" \
-    --output "$OUT/$pass-$slug.trace" >/dev/null
+  # Instruments that need a kernel trace session fail on Macs whose SIP setup blocks it; the
+  # other recordings still answer the question.
+  if ! xcrun xctrace record --no-prompt --template "$template" "$@" --time-limit "${SECONDS_PER}s" \
+    --output "$OUT/$pass-$slug.trace" >/dev/null; then
+    echo "$pass: $template could not record; skipped"
+  fi
   [[ -n "$driver" ]] && wait "$driver" || true
 }
 
