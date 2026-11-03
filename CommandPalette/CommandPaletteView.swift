@@ -189,7 +189,7 @@ struct CommandPaletteView: View {
         let textFieldColor: Color = text.isEmpty ? .secondary : .primary
 
         return ZStack {
-            Color.clear
+            NookDesign.Surface.paletteWash
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .backgroundDraggable(onClick: {
