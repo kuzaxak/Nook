@@ -189,7 +189,7 @@ struct CommandPaletteView: View {
         let textFieldColor: Color = text.isEmpty ? .secondary : .primary
 
         return ZStack {
-            NookDesign.Surface.paletteWash
+            Color.clear
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .backgroundDraggable(onClick: {
@@ -332,6 +332,14 @@ struct CommandPaletteView: View {
                         .frame(maxWidth: .infinity)
                         .frame(width: effectiveCommandPaletteWidth)
                         .nookFloatingSurface(in: NookDesign.Radius.shape(NookDesign.Radius.xxl))
+                        // Arc's glow: grey that fades out a short way past the bar, not over the window.
+                        .background {
+                            NookDesign.Radius.shape(NookDesign.Radius.xxl)
+                                .fill(NookDesign.Surface.paletteHalo)
+                                .padding(-NookDesign.Spacing.xxxl * 2)
+                                .blur(radius: NookDesign.Spacing.xxxl * 2)
+                                .allowsHitTesting(false)
+                        }
                         .animation(
                             NookDesign.Motion.quick,
                             value: searchManager.suggestions.count
