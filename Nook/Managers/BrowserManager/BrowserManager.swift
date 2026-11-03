@@ -474,7 +474,8 @@ class BrowserManager: ObservableObject {
                 .appendingPathComponent("History/page-text.sqlite"),
             indexURL: TabsController.defaultDirectory.deletingLastPathComponent()
                 .appendingPathComponent("History/history-index.sqlite"),
-            halfLifeDays: settings.historyHalfLifeDays)
+            halfLifeDays: settings.historyHalfLifeDays,
+            wordStops: PaletteText.stops(from: settings.paletteWordStops))
         self.cookieManager = CookieManager(dataStore: initialProfile?.dataStore)
         self.cacheManager = CacheManager(dataStore: initialProfile?.dataStore)
         self.compositorManager = TabCompositorManager()
@@ -493,6 +494,13 @@ class BrowserManager: ObservableObject {
         self.tabs.sessionDelegate = self
         self.tabs.tabEvents = self
         self.tabs.alerts = self
+        NotificationCenter.default.addObserver(
+            forName: NookSettingsService.paletteWordStopsDidChange, object: nil, queue: .main
+        ) { [weak self, settings] _ in
+            MainActor.assumeIsolated {
+                self?.historyManager.setWordStops(PaletteText.stops(from: settings.paletteWordStops))
+            }
+        }
         let vault = VaultService(settings: settings)
         vault.presenter = autofillManager
         self.tabs.vault = vault

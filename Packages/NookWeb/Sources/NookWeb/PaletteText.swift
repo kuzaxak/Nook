@@ -11,6 +11,24 @@ import Foundation
 public enum PaletteText {
     /// Characters a word starts at, besides whitespace, as zsh's WORDCHARS leaves them out.
     public static let defaultStops: Set<Character> = ["/", ".", "?", "&", "=", "#", ":", "-"]
+    /// The characters URLs separate their parts with; any that are not stops belong to words.
+    static let urlPunctuation: Set<Character> = defaultStops.union(["_"])
+
+    /// The stops in Settings: its punctuation and symbols, or the defaults when it has none.
+    public static func stops(from setting: String) -> Set<Character> {
+        let stops = Set(setting.filter { $0.isPunctuation || $0.isSymbol })
+        return stops.isEmpty ? defaultStops : stops
+    }
+
+    /// Lowercased search words of `text`, split on whitespace and `stops`, which are dropped.
+    public static func terms(_ text: String, stops: Set<Character> = defaultStops) -> [String] {
+        text.lowercased().split { $0.isWhitespace || stops.contains($0) }.map(String.init)
+    }
+
+    /// URL punctuation a search index keeps inside words because it is not a stop.
+    public static func wordCharacters(stops: Set<Character>) -> Set<Character> {
+        urlPunctuation.subtracting(stops)
+    }
 
     /// `text` split before each run of stop characters: `github.com/glia/infra-k8s` is
     /// `github` · `.com` · `/glia` · `/infra` · `-k8s`. Joined, the words are `text` again.

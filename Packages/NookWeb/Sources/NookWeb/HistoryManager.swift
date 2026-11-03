@@ -36,13 +36,18 @@ public final class HistoryManager {
     /// falls back to scanning the history store.
     @ObservationIgnored private let index: HistoryIndex?
     public var currentProfileId: UUID?
+    private var wordStops: Set<Character>
     /// Visits older than this are pruned at launch, so "All time" in the history panel means this.
     nonisolated public static let retentionDays = 100
 
-    public init(context: ModelContext, profileId: UUID? = nil, pageTextURL: URL? = nil, indexURL: URL? = nil, halfLifeDays: Int = 10) {
+    public init(
+        context: ModelContext, profileId: UUID? = nil, pageTextURL: URL? = nil, indexURL: URL? = nil,
+        halfLifeDays: Int = 10, wordStops: Set<Character> = PaletteText.defaultStops
+    ) {
         currentProfileId = profileId
+        self.wordStops = wordStops
         pageText = pageTextURL.map(HistoryTextIndex.init(fileURL:))
-        index = indexURL.map { HistoryIndex(fileURL: $0, halfLife: TimeInterval(halfLifeDays) * 86_400) }
+        index = indexURL.map { HistoryIndex(fileURL: $0, halfLife: TimeInterval(halfLifeDays) * 86_400, wordStops: wordStops) }
         let container = context.container
         // Construct the model executor off the main actor as well as calling it there.
         storeTask = Task.detached { HistoryStore(modelContainer: container) }
@@ -60,6 +65,13 @@ public final class HistoryManager {
     public func setHalfLife(days: Int) {
         let index = index
         enqueue { _ in await index?.setHalfLife(TimeInterval(days) * 86_400) }
+    }
+
+    /// The command bar's word stops, which index search splits words at too.
+    public func setWordStops(_ stops: Set<Character>) {
+        wordStops = stops
+        let index = index
+        enqueue { _ in await index?.setWordStops(stops) }
     }
 
     public func switchProfile(_ profileId: UUID?) { currentProfileId = profileId }
@@ -177,7 +189,8 @@ public final class HistoryManager {
         await pendingWrite?.value
         guard !Task.isCancelled, let rows = await index.search(query, profile: profile) else { return nil }
         let picks = await index.picks(profile: profile)
-        return HistoryIndex.rank(rows, query: query, isOpen: isOpen, picks: picks).prefix(limit).map(HistoryEntry.init(indexed:))
+        return HistoryIndex.rank(rows, query: query, stops: wordStops, isOpen: isOpen, picks: picks)
+            .prefix(limit).map(HistoryEntry.init(indexed:))
     }
 
     /// Index rows matching `query`, highest key first, before ranking. Nil when the index is unavailable.

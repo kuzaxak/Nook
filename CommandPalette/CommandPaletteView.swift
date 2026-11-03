@@ -157,8 +157,7 @@ struct CommandPaletteView: View {
     }
 
     private var wordStops: Set<Character> {
-        let stops = Set(nookSettings.paletteWordStops)
-        return stops.isEmpty ? PaletteText.defaultStops : stops
+        PaletteText.stops(from: nookSettings.paletteWordStops)
     }
 
     let commandPaletteWidth: CGFloat = 765

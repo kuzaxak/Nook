@@ -37,6 +37,20 @@ struct PaletteTextCheck {
         // Custom stops: with '-' left out, a hyphenated name is one word.
         precondition(PaletteText.words("infra-k8s/x", stops: ["/"]) == ["infra-k8s", "/x"])
 
+        // The setting keeps punctuation and symbols; with none, the defaults apply.
+        precondition(PaletteText.stops(from: "/.-") == ["/", ".", "-"])
+        precondition(PaletteText.stops(from: "/a 1.") == ["/", "."], "letters, digits and spaces are never stops")
+        precondition(PaletteText.stops(from: "") == PaletteText.defaultStops)
+        precondition(PaletteText.stops(from: "ab") == PaletteText.defaultStops)
+
+        // Search terms split where the word keys stop, lowercased, without the stops themselves.
+        precondition(PaletteText.terms("github.com/glia/Infra-k8s  foo_bar") == ["github", "com", "glia", "infra", "k8s", "foo_bar"])
+        precondition(PaletteText.terms("infra-k8s/x", stops: ["/"]) == ["infra-k8s", "x"])
+
+        // Characters the search index keeps inside words: URL punctuation that is not a stop.
+        precondition(PaletteText.wordCharacters(stops: PaletteText.defaultStops) == ["_"])
+        precondition(PaletteText.wordCharacters(stops: ["/", ".", "_"]) == ["?", "&", "=", "#", ":", "-"])
+
         // Tab on a row refines to host and first path segment.
         precondition(PaletteText.refineText(for: URL(string: "https://www.github.com/glia/infra/pull/1?x=1")!) == "github.com/glia")
         precondition(PaletteText.refineText(for: URL(string: "https://kagi.com/")!) == "kagi.com")

@@ -559,10 +559,17 @@ public final class NookSettingsService {
         profileDownloads[id] = downloads
     }
 
-    /// Characters the command bar's word keys (⌥→, Ctrl+W, ⌥⌫) stop at, besides whitespace.
+    public static let paletteWordStopsDidChange = Notification.Name("NookPaletteWordStopsDidChange")
+    public static let defaultPaletteWordStops = "/.?&=#:-"
+
+    /// Characters the command bar's word keys (⌥→, Ctrl+W, ⌥⌫) stop at, besides whitespace;
+    /// history search splits words at the same characters.
     public var paletteWordStops: String {
         didSet {
             userDefaults.set(paletteWordStops, forKey: paletteWordStopsKey)
+            if paletteWordStops != oldValue {
+                NotificationCenter.default.post(name: Self.paletteWordStopsDidChange, object: nil)
+            }
         }
     }
 
@@ -728,7 +735,7 @@ public final class NookSettingsService {
             peekLinksToOtherSitesKey: true,
             archiveTabsAfterHoursKey: 72,
             historyHalfLifeDaysKey: 10,
-            paletteWordStopsKey: "/.?&=#:-",
+            paletteWordStopsKey: Self.defaultPaletteWordStops,
             tidyDownloadsKey: false,
             linkPreviewsKey: false,
             sponsorBlockEnabledKey: false,
@@ -862,7 +869,7 @@ public final class NookSettingsService {
         self.peekOnShiftClick = userDefaults.bool(forKey: peekOnShiftClickKey)
         self.peekLinksToOtherSites = userDefaults.bool(forKey: peekLinksToOtherSitesKey)
         self.historyHalfLifeDays = min(max(userDefaults.integer(forKey: historyHalfLifeDaysKey), Self.historyHalfLifeDaysRange.lowerBound), Self.historyHalfLifeDaysRange.upperBound)
-        self.paletteWordStops = userDefaults.string(forKey: paletteWordStopsKey) ?? "/.?&=#:-"
+        self.paletteWordStops = userDefaults.string(forKey: paletteWordStopsKey) ?? Self.defaultPaletteWordStops
         self.kagiSessionToken = KagiSession.loadToken()
         self.urlShortcuts = userDefaults.data(forKey: urlShortcutsKey)
             .flatMap { try? JSONDecoder().decode([URLShortcut].self, from: $0) } ?? URLShortcut.defaults

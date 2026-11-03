@@ -54,20 +54,21 @@ public actor HistoryIndex {
     private static let topScan = 3000
     /// Times count from here, so `t / halfLife` stays a small number.
     nonisolated static let epoch = Date(timeIntervalSince1970: 1_577_836_800)
-    /// Characters that split words, besides whitespace: in URLs, in queries and in the FTS table.
-    nonisolated public static let separators: Set<Character> = [".", "/", "?", "&", "=", "#", ":", "-", "_"]
     /// Query parameters that carry secrets or tracking, dropped before a URL is stored.
     nonisolated static let secretParameters: Set<String> = ["token", "access_token", "code", "state", "session", "fbclid", "gclid"]
 
     public let fileURL: URL
     private var halfLife: TimeInterval
+    /// The command bar's word stops; the FTS table and queries split words at the same characters.
+    private var wordStops: Set<Character>
     private var db: OpaquePointer?
     /// Set when FTS5 is missing or the file cannot be opened; callers fall back to the history store.
     private var unavailable = false
 
-    public init(fileURL: URL, halfLife: TimeInterval) {
+    public init(fileURL: URL, halfLife: TimeInterval, wordStops: Set<Character> = PaletteText.defaultStops) {
         self.fileURL = fileURL
         self.halfLife = halfLife
+        self.wordStops = wordStops
     }
 
     // MARK: - Frecency
@@ -101,21 +102,24 @@ public actor HistoryIndex {
         return components.url ?? url
     }
 
-    /// Lowercased words of `text`, split on whitespace and `separators`.
-    nonisolated public static func tokens(_ text: String) -> [String] {
-        text.lowercased().split { $0.isWhitespace || separators.contains($0) }.map(String.init)
+    /// Words as the FTS table's unicode61 tokenizer sees them: split on anything but letters,
+    /// digits and `wordCharacters`, lowercased, diacritics folded.
+    nonisolated static func indexWords(_ text: String, wordCharacters: Set<Character>) -> [Substring] {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .split { !$0.isLetter && !$0.isNumber && !wordCharacters.contains($0) }
     }
 
-    /// Words as the FTS table's unicode61 tokenizer sees them: split on anything but letters
-    /// and digits, lowercased, diacritics folded.
-    nonisolated static func indexWords(_ text: String) -> [Substring] {
-        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
-            .split { !$0.isLetter && !$0.isNumber }
+    /// The FTS tokenizer for `wordStops`: unicode61 already splits on punctuation, so only URL
+    /// punctuation that is not a stop needs naming, as `tokenchars`.
+    nonisolated static func tokenizer(wordStops: Set<Character>) -> String {
+        let wordCharacters = PaletteText.wordCharacters(stops: wordStops)
+        let base = "unicode61 remove_diacritics 2"
+        return wordCharacters.isEmpty ? base : "\(base) tokenchars '\(String(wordCharacters.sorted()))'"
     }
 
     /// Each word as a quoted prefix term, so no FTS5 operator or quote in the query can reach the parser.
-    nonisolated static func matchExpression(for query: String) -> String? {
-        let terms = tokens(query)
+    nonisolated static func matchExpression(for query: String, wordStops: Set<Character>) -> String? {
+        let terms = PaletteText.terms(query, stops: wordStops)
             .filter { $0.contains { $0.isLetter || $0.isNumber } }
             .map { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"*" }
         return terms.isEmpty ? nil : terms.joined(separator: " ")
@@ -126,8 +130,11 @@ public actor HistoryIndex {
     /// Orders search results by their key plus log2 of the match multipliers: host starts with
     /// the first word ×4, a title word starts with a query word ×2, open as a tab ×1.5. Each pick
     /// of the row for a prefix of the query, or for a longer query this one starts, adds log2(1 + n).
-    nonisolated public static func rank(_ visits: [IndexedVisit], query: String, isOpen: (String) -> Bool, picks: [HistoryPick]) -> [IndexedVisit] {
-        let words = tokens(query)
+    nonisolated public static func rank(
+        _ visits: [IndexedVisit], query: String, stops: Set<Character> = PaletteText.defaultStops,
+        isOpen: (String) -> Bool, picks: [HistoryPick]
+    ) -> [IndexedVisit] {
+        let words = PaletteText.terms(query, stops: stops)
         guard let first = words.first else { return visits }
         let typed = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         var picked: [String: Int] = [:]
@@ -139,7 +146,7 @@ public actor HistoryIndex {
             var host = URL(string: visit.url)?.host?.lowercased() ?? ""
             if host.hasPrefix("www.") { host.removeFirst(4) }
             if host.hasPrefix(first) { multiplier *= 4 }
-            let titleWords = tokens(visit.title)
+            let titleWords = PaletteText.terms(visit.title, stops: stops)
             if words.contains(where: { word in titleWords.contains { $0.hasPrefix(word) } }) { multiplier *= 2 }
             if isOpen(visit.url) { multiplier *= 1.5 }
             return visit.key + log2(multiplier) + log2(1 + Double(picked[visit.url] ?? 0))
@@ -297,6 +304,14 @@ public actor HistoryIndex {
         reseed(db)
     }
 
+    /// The FTS table is rebuilt to split words at `stops`.
+    public func setWordStops(_ stops: Set<Character>) {
+        guard stops != wordStops else { return }
+        wordStops = stops
+        guard let db = open(create: false), !wordsFollowStops(db) else { return }
+        rebuildWords(db)
+    }
+
     /// Closes and removes the file.
     public func erase() {
         if let db { sqlite3_close_v2(db) }
@@ -312,10 +327,10 @@ public actor HistoryIndex {
     /// `profile` and untagged ones, or all when nil. nil when the index is unavailable.
     public func search(_ query: String, profile: UUID?, limit: Int = 60) -> [IndexedVisit]? {
         guard let db = open(create: true) else { return nil }
-        guard limit > 0, let match = Self.matchExpression(for: query) else { return [] }
+        guard limit > 0, let match = Self.matchExpression(for: query, wordStops: wordStops) else { return [] }
         // One short word matches most rows, and the FTS join then sorts all of them. The best
         // rows by key usually hold enough matches; when they do, those are the answer.
-        let words = Self.indexWords(query)
+        let words = Self.indexWords(query, wordCharacters: PaletteText.wordCharacters(stops: wordStops))
         if words.count == 1 {
             let top = topByKey(db, matching: String(words[0]), profile: profile, limit: limit)
             if top.count >= limit { return top }
@@ -342,6 +357,7 @@ public actor HistoryIndex {
     /// Matches for one word among the `topScan` highest keys, checked as the FTS tokenizer would.
     private func topByKey(_ db: OpaquePointer, matching word: String, profile: UUID?, limit: Int) -> [IndexedVisit] {
         let profileKey = profile.map(Self.profileKey)
+        let wordCharacters = PaletteText.wordCharacters(stops: wordStops)
         var top: [IndexedVisit] = []
         run(db, "SELECT url, title, visitCount, lastVisited, key, profile FROM visits INDEXED BY visits_rank ORDER BY key DESC LIMIT \(Self.topScan)", bind: { _ in }, row: { stmt in
             guard top.count < limit else { return }
@@ -355,7 +371,8 @@ public actor HistoryIndex {
                 haystack = haystack.folding(options: .diacriticInsensitive, locale: nil)
             }
             guard haystack.contains(word),
-                  haystack.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).contains(where: { $0.hasPrefix(word) })
+                  haystack.split(whereSeparator: { !$0.isLetter && !$0.isNumber && !wordCharacters.contains($0) })
+                      .contains(where: { $0.hasPrefix(word) })
             else { return }
             top.append(IndexedVisit(url: url, title: title, visitCount: Int(sqlite3_column_int64(stmt, 2)),
                                     lastVisited: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3)), key: sqlite3_column_double(stmt, 4)))
@@ -402,9 +419,7 @@ public actor HistoryIndex {
                 PRIMARY KEY(url, profile));
             CREATE INDEX IF NOT EXISTS visits_key ON visits(profile, key DESC);
             CREATE INDEX IF NOT EXISTS visits_rank ON visits(key DESC);
-            CREATE VIRTUAL TABLE IF NOT EXISTS visits_fts USING fts5(
-                title, url, content='visits', content_rowid='rowid', prefix='1 2 3 4 5 6 7 8',
-                tokenize="unicode61 remove_diacritics 2 separators './?&=#:-_'");
+            \(ftsTable(ifNotExists: true));
             CREATE TRIGGER IF NOT EXISTS visits_ai AFTER INSERT ON visits BEGIN
                 INSERT INTO visits_fts(rowid, title, url) VALUES (new.rowid, new.title, new.url);
             END;
@@ -428,11 +443,41 @@ public actor HistoryIndex {
             return nil
         }
         db = handle
+        if !wordsFollowStops(handle) { rebuildWords(handle) }
         // Keys mean something only under the half-life they were written with.
         var stored: Double?
         run(handle, "SELECT value FROM meta WHERE name = 'halfLife'", bind: { _ in }, row: { stored = sqlite3_column_double($0, 0) })
         if stored != halfLife { reseed(handle) }
         return handle
+    }
+
+    private func ftsTable(ifNotExists: Bool) -> String {
+        """
+        CREATE VIRTUAL TABLE \(ifNotExists ? "IF NOT EXISTS " : "")visits_fts USING fts5(
+            title, url, content='visits', content_rowid='rowid', prefix='1 2 3 4 5 6 7 8',
+            tokenize="\(Self.tokenizer(wordStops: wordStops))")
+        """
+    }
+
+    private func wordsFollowStops(_ db: OpaquePointer) -> Bool {
+        var sql = ""
+        run(db, "SELECT sql FROM sqlite_master WHERE name = 'visits_fts'", bind: { _ in }, row: { sql = Self.text($0, 0) })
+        return sql.contains("tokenize=\"\(Self.tokenizer(wordStops: wordStops))\"")
+    }
+
+    /// Recreates the FTS table with the current tokenizer and fills it from the visits table.
+    private func rebuildWords(_ db: OpaquePointer) {
+        let sql = """
+            BEGIN;
+            DROP TABLE IF EXISTS visits_fts;
+            \(ftsTable(ifNotExists: false));
+            INSERT INTO visits_fts(visits_fts) VALUES ('rebuild');
+            COMMIT;
+            """
+        if sqlite3_exec(db, sql, nil, nil, nil) != SQLITE_OK {
+            Self.logger.error("History index word rebuild failed: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
+            sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
+        }
     }
 
     private func reseed(_ db: OpaquePointer) {

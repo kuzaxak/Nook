@@ -6,6 +6,7 @@
 //  History index check. NookWeb has no test target, so this compiles the shipped source directly:
 //
 //    swiftc -O -parse-as-library Packages/NookWeb/Sources/NookWeb/HistoryIndex.swift \
+//           Packages/NookWeb/Sources/NookWeb/PaletteText.swift \
 //           Packages/NookWeb/Checks/HistoryIndexCheck.swift -o /tmp/history-index-check && /tmp/history-index-check
 //
 
@@ -40,8 +41,6 @@ struct HistoryIndexCheck {
         precondition(HistoryIndex.cleanURL(URL(string: "https://a.example/p")!).absoluteString == "https://a.example/p")
         precondition(HistoryIndex.cleanURL(URL(string: "https://kagi.com/search?q=c%2B%2B&utm_x=1")!).absoluteString == "https://kagi.com/search?q=c%2B%2B")
 
-        // Tokens split on the URL separators, as the FTS table does.
-        precondition(HistoryIndex.tokens("github.com/glia/infra-k8s  Foo_bar") == ["github", "com", "glia", "infra", "k8s", "foo", "bar"])
 
         let index = HistoryIndex(fileURL: dir.appendingPathComponent("History/history-index.sqlite"), halfLife: halfLife)
 
@@ -106,6 +105,30 @@ struct HistoryIndexCheck {
         do { let ok = await index.search("secret", profile: gone)!.isEmpty; precondition(ok, "a deleted profile's rows are gone") }
         do { let ok = await index.picks(profile: gone).isEmpty; precondition(ok, "and its picks") }
         do { let ok = await index.search("secret", profile: work)!.map(\.url) == ["https://kept.example/secret"]; precondition(ok, "another profile keeps its rows") }
+
+        // The index splits words where the command bar's word keys stop, and follows the setting.
+        let wordIndex = HistoryIndex(fileURL: dir.appendingPathComponent("words.sqlite"), halfLife: halfLife)
+        await wordIndex.record(url: "https://github.com/glia/infra-k8s", title: "infra-k8s", profile: work, at: now, weight: 1)
+        await wordIndex.record(url: "https://docs.example/snake_case", title: "Naming", profile: work, at: now, weight: 1)
+        do { let ok = await wordIndex.search("k8s", profile: work)!.count == 1; precondition(ok, "'-' is a default stop") }
+        do { let ok = await wordIndex.search("case", profile: work)!.isEmpty; precondition(ok, "'_' is not a stop") }
+        do { let ok = await wordIndex.search("snake_ca", profile: work)!.count == 1; precondition(ok) }
+        await wordIndex.setWordStops(["/", ".", "_"])
+        do { let ok = await wordIndex.search("k8s", profile: work)!.isEmpty; precondition(ok, "without '-', infra-k8s is one word") }
+        do { let ok = await wordIndex.search("infra-k", profile: work)!.count == 1; precondition(ok) }
+        do { let ok = await wordIndex.search("case", profile: work)!.count == 1; precondition(ok, "'_' now splits") }
+        do {
+            let reopened = HistoryIndex(fileURL: dir.appendingPathComponent("words.sqlite"), halfLife: halfLife)
+            let ok = await reopened.search("k8s", profile: work)!.count == 1
+            precondition(ok, "opening with other stops rebuilds the words")
+        }
+        do {
+            let ranked = HistoryIndex.rank(
+                [IndexedVisit(url: "https://a.example/x", title: "snake_case", visitCount: 1, lastVisited: now, key: 0),
+                 IndexedVisit(url: "https://b.example/x", title: "snake-case", visitCount: 1, lastVisited: now, key: 0.5)],
+                query: "case", stops: ["_"], isOpen: { _ in false }, picks: [])
+            precondition(ranked.first?.url == "https://a.example/x", "title words for ranking split on the same stops")
+        }
 
         // Migrated rows lose their secrets too; rows that become one URL merge their visits.
         let merged = HistoryIndex(fileURL: dir.appendingPathComponent("merge.sqlite"), halfLife: halfLife)
