@@ -204,6 +204,10 @@ public final class PageSession: NSObject, Identifiable {
     @ObservationIgnored var navigationGestureCount = 0
     /// One-shot initial-navigation suppression for a WebKit-created popup.
     @ObservationIgnored var isPopupHost: Bool = false
+    /// The palette chose this page's next load, so its visit counts double in history ranking.
+    @ObservationIgnored public var typedVisitPending = false
+    /// How the latest main-frame navigation started; a reload adds nothing to history ranking.
+    @ObservationIgnored var mainFrameNavigationType: WKNavigationType = .other
     /// JavaScript dialogs since the last commit, and whether the user silenced the page.
     @ObservationIgnored var jsDialogCount = 0
     @ObservationIgnored var jsDialogsSuppressed = false

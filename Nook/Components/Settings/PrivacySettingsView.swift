@@ -63,6 +63,13 @@ struct PrivacySettingsView: View {
                 .onChange(of: nookSettings.searchPageTextInHistory) { _, enabled in
                     if !enabled { browserManager.historyManager.erasePageText() }
                 }
+                Stepper(value: $settings.historyHalfLifeDays, in: NookSettingsService.historyHalfLifeDaysRange) {
+                    LabeledContent("Ranking half-life", value: "\(nookSettings.historyHalfLifeDays) days")
+                }
+                .help("How quickly old visits count for less when the command bar ranks history.")
+                .onChange(of: nookSettings.historyHalfLifeDays) { _, days in
+                    browserManager.historyManager.setHalfLife(days: days)
+                }
             }
 
             Section {

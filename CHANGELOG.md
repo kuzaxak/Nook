@@ -14,6 +14,8 @@
 ### Added
 
 - Normal tabs not seen for 3 days are archived to Reopen Closed Tab (12 hours to 30 days in Settings → General → Tabs)
+- History index for the command bar: every visited page stays findable, ranked by frecency (Settings → Privacy → History)
+- Secret and tracking parameters (token, code, state, session, utm_*, fbclid, gclid) are dropped from history
 
 ## 1.4.0
 

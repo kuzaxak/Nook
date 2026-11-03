@@ -134,7 +134,6 @@ public class SearchManager {
 
         // History is a local lookup, so it runs on this keystroke rather than waiting for a pause
         // in typing. Only the network request is debounced.
-        // ponytail: the scan is bounded at 5k rows; move it behind an index if a large history drags.
         historyTask = Task { [weak self] in
             guard let self else { return }
             // Two spare rows, for when the first three turn out to be open tabs.
@@ -248,7 +247,13 @@ public class SearchManager {
 
     @MainActor private func searchHistory(for query: String) async -> [SearchSuggestion] {
         guard let historyManager = historyManager else { return [] }
-        
+        let open = Set(tabs?.sessions.map { Self.pageKey($0.url) } ?? [])
+        if let ranked = await historyManager.searchIndex(query: query, limit: 30, isOpen: { url in
+            URL(string: url).map { open.contains(Self.pageKey($0)) } ?? false
+        }) {
+            return ranked.map { SearchSuggestion(text: $0.displayTitle, type: .history($0)) }
+        }
+
         let words = Self.words(of: query)
         // Enough matches that the sort below, not recency alone, picks the rows shown.
         let historyEntries = await historyManager.searchHistory(query: query, offset: 0, limit: 100)

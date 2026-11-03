@@ -62,6 +62,7 @@ public final class NookSettingsService {
     private let newTabsAtTopLevelKey = "settings.newTabsAtTopLevel"
     private let nestLinkTabsUnderOpenerKey = "settings.nestLinkTabsUnderOpener"
     private let archiveTabsAfterHoursKey = "settings.archiveTabsAfterHours"
+    private let historyHalfLifeDaysKey = "settings.historyHalfLifeDays"
     private let tidyDownloadsKey = "settings.tidyDownloads"
     private let linkPreviewsKey = "settings.linkPreviews"
     private let autoPictureInPictureKey = "settings.autoPictureInPicture"
@@ -470,6 +471,15 @@ public final class NookSettingsService {
         }
     }
 
+    public static let historyHalfLifeDaysRange = 3...60
+
+    /// How fast a visit's weight in the palette's history ranking halves, in days.
+    public var historyHalfLifeDays: Int {
+        didSet {
+            userDefaults.set(historyHalfLifeDays, forKey: historyHalfLifeDaysKey)
+        }
+    }
+
     /// The choices for archiving unseen normal tabs, in hours: 12 hours to 30 days.
     public static let archiveTabsAfterHoursChoices = [12, 24, 72, 168, 336, 720]
 
@@ -609,6 +619,7 @@ public final class NookSettingsService {
             newTabsAtTopLevelKey: true,
             nestLinkTabsUnderOpenerKey: true,
             archiveTabsAfterHoursKey: 72,
+            historyHalfLifeDaysKey: 10,
             tidyDownloadsKey: false,
             linkPreviewsKey: false,
             sponsorBlockEnabledKey: false,
@@ -738,6 +749,7 @@ public final class NookSettingsService {
         self.autoRenamePinnedTabs = userDefaults.bool(forKey: autoRenamePinnedTabsKey)
         self.newTabsAtTopLevel = userDefaults.bool(forKey: newTabsAtTopLevelKey)
         self.nestLinkTabsUnderOpener = userDefaults.bool(forKey: nestLinkTabsUnderOpenerKey)
+        self.historyHalfLifeDays = min(max(userDefaults.integer(forKey: historyHalfLifeDaysKey), Self.historyHalfLifeDaysRange.lowerBound), Self.historyHalfLifeDaysRange.upperBound)
         let archiveHours = userDefaults.integer(forKey: archiveTabsAfterHoursKey)
         self.archiveTabsAfterHours = Self.archiveTabsAfterHoursChoices.contains(archiveHours) ? archiveHours : 72
         self.tidyDownloads = userDefaults.bool(forKey: tidyDownloadsKey)

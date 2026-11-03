@@ -135,13 +135,16 @@ extension PageSession: WKNavigationDelegate {
                     let profile = self?.profile
                     let profileId = profile?.id ?? self?.controller?.sessionDelegate?.currentProfile?.id
                     let isEphemeral = self?.isPrivate == true || self?.isAgentPage == true || profile?.isEphemeral == true
+                    let weight: Double = self?.typedVisitPending == true ? 2 : self?.mainFrameNavigationType == .reload ? 0 : 1
+                    self?.typedVisitPending = false
                     self?.controller?.history?.addVisit(
                         url: currentURL,
                         title: title,
                         timestamp: Date(),
                         tabId: self?.id,
                         profileId: profileId,
-                        isEphemeral: isEphemeral
+                        isEphemeral: isEphemeral,
+                        weight: weight
                     )
                     self?.schedulePageTextCapture(in: webView, sameDocument: false)
                 }
@@ -296,6 +299,7 @@ extension PageSession: WKNavigationDelegate {
     ) {
         if navigationAction.targetFrame?.isMainFrame == true, let url = navigationAction.request.url {
             applyProtection(to: preferences, for: url)
+            mainFrameNavigationType = navigationAction.navigationType
         }
         self.webView(webView, decidePolicyFor: navigationAction) { decisionHandler($0, preferences) }
     }

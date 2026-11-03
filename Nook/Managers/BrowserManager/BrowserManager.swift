@@ -467,7 +467,10 @@ class BrowserManager: ObservableObject {
         self.historyManager = HistoryManager(
             context: modelContext, profileId: initialProfile?.id,
             pageTextURL: TabsController.defaultDirectory.deletingLastPathComponent()
-                .appendingPathComponent("History/page-text.sqlite"))
+                .appendingPathComponent("History/page-text.sqlite"),
+            indexURL: TabsController.defaultDirectory.deletingLastPathComponent()
+                .appendingPathComponent("History/history-index.sqlite"),
+            halfLifeDays: settings.historyHalfLifeDays)
         self.cookieManager = CookieManager(dataStore: initialProfile?.dataStore)
         self.cacheManager = CacheManager(dataStore: initialProfile?.dataStore)
         self.compositorManager = TabCompositorManager()

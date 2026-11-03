@@ -483,10 +483,12 @@ struct CommandPaletteView: View {
         case .tab(let match):
             browserManager.tabs.select(match.itemID, in: windowState)
         case .history(let historyEntry):
+            browserManager.historyManager.recordPick(prefix: userTypedText, url: historyEntry.url)
             open(historyEntry.url)
         case .url, .search:
             // A page another window holds is not navigated from here; the text opens a new tab.
             if commandPalette.shouldNavigateCurrentTab, let session = browserManager.tabs.controllableSession(in: windowState) {
+                session.typedVisitPending = true
                 session.navigate(to: suggestion.text)
             } else {
                 // Normalize the URL/search query first, then create the tab with
@@ -494,7 +496,8 @@ struct CommandPaletteView: View {
                 let template = browserManager.nookSettings?.resolvedSearchEngineTemplate ?? SearchProvider.google.queryTemplate
                 let resolved = normalizeURL(suggestion.text, queryTemplate: template)
                 if let url = URL(string: resolved) {
-                    browserManager.tabs.open(url: url, in: windowState, placement: .newTab)
+                    let id = browserManager.tabs.open(url: url, in: windowState, placement: .newTab)
+                    id.flatMap(browserManager.tabs.session(for:))?.typedVisitPending = true
                 }
             }
         }
@@ -508,7 +511,8 @@ struct CommandPaletteView: View {
     /// Loads `url` in the selected page when the palette was opened to navigate it, else in a new tab.
     private func open(_ url: URL) {
         let navigateCurrent = commandPalette.shouldNavigateCurrentTab && windowState.selectedItemID != nil
-        browserManager.tabs.open(url: url, in: windowState, placement: navigateCurrent ? .replaceCurrent : .newTab)
+        let id = browserManager.tabs.open(url: url, in: windowState, placement: navigateCurrent ? .replaceCurrent : .newTab)
+        id.flatMap(browserManager.tabs.session(for:))?.typedVisitPending = true
     }
 
     /// Makes the inline completion the field's text. False when none is showing.
@@ -592,7 +596,7 @@ struct CommandPaletteView: View {
     private func removeSelectedHistoryRow() -> Bool {
         guard selectedSuggestionIndex >= 0, selectedSuggestionIndex < visibleSuggestions.count,
               case .history(let entry) = visibleSuggestions[selectedSuggestionIndex].type else { return false }
-        browserManager.historyManager.deleteHistoryEntry(entry.id)
+        browserManager.historyManager.forget(entry.url)
         selectedSuggestionIndex = -1
         text = userTypedText
         searchManager.searchSuggestions(for: userTypedText)

@@ -39,7 +39,7 @@ struct HistoryRegression {
         precondition(page.entries.first?.title == "Café 1098", "Profile filtering must precede pagination")
         let last = await store.search(query: "Café", profile: profile, offset: 550, limit: 50)
         precondition(last.entries.count == 50 && !last.hasMore)
-        await store.clear(days: 0, profile: profile)
+        await store.clear(before: Date(), profile: profile)
         let otherEntries = await store.history(days: 7, profile: other, offset: 0, limit: 1000)
         precondition(otherEntries.entries.count == 601, "Clearing one profile must preserve another")
         let stale = now.addingTimeInterval(-Double(HistoryManager.retentionDays + 1) * 86_400)
