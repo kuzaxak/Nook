@@ -54,6 +54,13 @@ struct PaletteTextCheck {
         precondition(PaletteText.completion(for: "github.com/glia/infra", candidates: candidates) == nil, "nothing left to complete")
         precondition(PaletteText.completion(for: "git hub", candidates: candidates) == nil)
         precondition(PaletteText.completion(for: "", candidates: candidates) == nil)
+        // Tabs and folders: every word must appear; word-prefix matches in the title rank first.
+        precondition(PaletteText.matchScore(query: "team boa", title: "My Team Boards", detail: nil) == 2)
+        precondition(PaletteText.matchScore(query: "glia", title: "Infra", detail: "https://github.com/glia/infra") == 1)
+        precondition(PaletteText.matchScore(query: "eam", title: "My Team", detail: nil) == 0, "substring still matches")
+        precondition(PaletteText.matchScore(query: "stage 4", title: "Stage 42 dashboard", detail: nil) == 2)
+        precondition(PaletteText.matchScore(query: "boards x", title: "Boards", detail: nil) == nil)
+        precondition(PaletteText.matchScore(query: "", title: "Boards", detail: nil) != nil, "an empty query lists everything")
         print("PaletteTextCheck passed")
     }
 }

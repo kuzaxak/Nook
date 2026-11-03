@@ -59,6 +59,7 @@ struct SpaceView: View {
         let regular = rows.filter { $0.section == .tabs }
         let split = splitPair(in: rows)
 
+        ScrollViewReader { proxy in
         ScrollView(.vertical) {
             VStack(spacing: NookDesign.Spacing.sectionGap) {
                 // An empty pinned section shows a drop slot only while a drag is on.
@@ -76,6 +77,15 @@ struct SpaceView: View {
             .frame(minWidth: 0, maxWidth: innerWidth, alignment: .leading)
             // Inset the rows, not the scroll viewport: the indicator belongs at the sidebar edge.
             .padding(.horizontal, NookDesign.Spacing.sidebarInset)
+        }
+        .onChange(of: windowState.sidebarRevealItemID) { _, itemID in
+            guard isActive, let itemID else { return }
+            // The folders just opened lay out their rows on the next pass.
+            DispatchQueue.main.async {
+                withAnimation(NookDesign.Motion.standard) { proxy.scrollTo(itemID, anchor: .center) }
+                windowState.sidebarRevealItemID = nil
+            }
+        }
         }
         .contentMargins(.trailing, 0, for: .scrollIndicators)
         .scrollIndicators(showsScrollIndicator && !windowState.isSidebarResizeHovered ? .visible : .hidden)

@@ -29,6 +29,38 @@ struct CommandPaletteView: View {
     @State private var activeSiteSearch: SiteSearchEntry? = nil
     /// Held Command shows the highlighted row's full address; Return then opens it in the background.
     @State private var commandHeld = false
+    /// Tabs only, history only, or a folder path; nil searches everything.
+    @State private var scope: PaletteScope?
+    /// Set when Backspace turned a `t ` or `h ` chip back into text, so the same text does not
+    /// become a chip again ("t mobile").
+    @State private var prefixChipSuppressed = false
+
+    private enum PaletteScope: Equatable {
+        case tabs
+        case history
+        case folder([FolderCrumb])
+
+        var searchScope: SearchManager.Scope {
+            switch self {
+            case .tabs: return .tabs
+            case .history: return .history
+            case .folder(let path): return path.last.map { .folder($0.id) } ?? .all
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .tabs: return "Tabs"
+            case .history: return "History"
+            case .folder(let path): return path.map(\.title).joined(separator: " › ")
+            }
+        }
+    }
+
+    private struct FolderCrumb: Equatable {
+        let id: UUID
+        let title: String
+    }
     /// Set by a deletion, so backspacing out of a completion does not bring it straight back.
     @State private var completionSuppressed: Bool = false
 
@@ -47,9 +79,11 @@ struct CommandPaletteView: View {
         (NSApp.keyWindow?.firstResponder as? NSTextInputClient)?.hasMarkedText() ?? false
     }
 
-    /// The Return row first, then what the search found. Index -1 means the Return row.
+    /// The Return row first, then what the search found. Index -1 means the Return row, or the
+    /// first row in a scope, which has no Return row.
     private var visibleSuggestions: [SearchManager.SearchSuggestion] {
         var found = searchManager.suggestions
+        if scope != nil { return Array(found.prefix(SearchManager.scopedLimit)) }
         if activeSiteSearch != nil {
             found = found.filter {
                 if case .search = $0.type { return true }
@@ -59,27 +93,42 @@ struct CommandPaletteView: View {
         guard let primary = primarySuggestion else { return found }
         let rest = found.filter { row in
             switch row.type {
-            case .tab, .history: return true
+            case .tab, .folder, .history: return true
             case .url, .search: return row.text.caseInsensitiveCompare(primary.text) != .orderedSame
             }
         }
-        return [primary] + rest.prefix(4)
+        return [primary] + rest.prefix(8)
     }
 
     /// What Return does with what was typed: the completed address, the address, or a search.
     private var primarySuggestion: SearchManager.SearchSuggestion? {
         let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !typed.isEmpty else { return nil }
+        guard !typed.isEmpty, scope == nil else { return nil }
         if let completion { return SearchManager.SearchSuggestion(text: completion, type: .url) }
         return SearchManager.SearchSuggestion(text: typed, type: activeSiteSearch == nil && isLikelyURL(typed) ? .url : .search)
     }
 
     /// The row Return acts on: the highlighted one, else the Return row.
     private var targetSuggestion: SearchManager.SearchSuggestion? {
+        highlightedRow ?? primarySuggestion
+    }
+
+    /// The row the highlight is on, Return row aside; in a scope the first row starts highlighted.
+    private var highlightedRow: SearchManager.SearchSuggestion? {
         if selectedSuggestionIndex >= 0, selectedSuggestionIndex < visibleSuggestions.count {
             return visibleSuggestions[selectedSuggestionIndex]
         }
-        return primarySuggestion
+        return scope != nil ? visibleSuggestions.first : nil
+    }
+
+    private func search(_ query: String) {
+        searchManager.searchSuggestions(for: query, scope: scope?.searchScope ?? .all)
+    }
+
+    private func setScope(_ newScope: PaletteScope?) {
+        withAnimation(NookDesign.Motion.spring) { scope = newScope }
+        selectedSuggestionIndex = -1
+        search(text)
     }
 
     private var wordStops: Set<Character> {
@@ -136,6 +185,18 @@ struct CommandPaletteView: View {
                                 .foregroundStyle(Color.primary)
                                 .frame(width: 15)
 
+                                if let scope {
+                                    Text(scope.label)
+                                        .font(NookDesign.Font.label)
+                                        .foregroundStyle(Color.primary)
+                                        .lineLimit(1)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(NookDesign.Surface.fillPressed)
+                                        .clipShape(Capsule())
+                                        .transition(.blur(intensity: 8, scale: 0.6).animation(NookDesign.Motion.spring))
+                                }
+
                                 if let site = activeSiteSearch {
                                     Text(site.name)
                                         .font(NookDesign.Font.label)
@@ -152,9 +213,9 @@ struct CommandPaletteView: View {
 
                                 ZStack(alignment: .trailing) {
                                     TextField(
-                                        activeSiteSearch != nil
-                                            ? "Search \(activeSiteSearch!.name)..."
-                                            : "Search or enter URL...",
+                                        activeSiteSearch.map { "Search \($0.name)..." }
+                                            ?? scope.map { "Search \($0.label)..." }
+                                            ?? "Search or enter URL...",
                                         text: $text
                                     )
                                     .textFieldStyle(.plain)
@@ -173,7 +234,16 @@ struct CommandPaletteView: View {
                                     .onKeyPress(phases: .down) { press in handleKey(press) }
                                     .onChange(of: text) { oldValue, newValue in
                                         completionSuppressed = newValue.count < oldValue.count
-                                        searchManager.searchSuggestions(for: newValue)
+                                        if prefixChipSuppressed, !(newValue.hasPrefix("t") || newValue.hasPrefix("h")) {
+                                            prefixChipSuppressed = false
+                                        }
+                                        if scope == nil, activeSiteSearch == nil, !prefixChipSuppressed,
+                                           let prefixScope = Self.prefixScopes[newValue] {
+                                            withAnimation(NookDesign.Motion.spring) { scope = prefixScope }
+                                            text = ""
+                                            return
+                                        }
+                                        search(newValue)
                                         selectedSuggestionIndex = -1
                                     }
 
@@ -240,7 +310,7 @@ struct CommandPaletteView: View {
                     }
                     .frame(
                         width: effectiveCommandPaletteWidth,
-                        height: 328
+                        height: 560
                     )
 
                     Spacer()
@@ -275,6 +345,8 @@ struct CommandPaletteView: View {
                 searchManager.clearSuggestions()
                 text = ""
                 activeSiteSearch = nil
+                scope = nil
+                prefixChipSuppressed = false
                 selectedSuggestionIndex = -1
             }
         }
@@ -310,12 +382,23 @@ struct CommandPaletteView: View {
         let revealsFullURL: Bool
         @Binding var hoveredIndex: Int?
         let onSelect: (SearchManager.SearchSuggestion) -> Void
+        /// A scroll view takes all the height it is offered, so it is sized to its rows.
+        @State private var contentHeight: CGFloat = 0
 
         var body: some View {
-            LazyVStack(spacing: 5) {
+            ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+            LazyVStack(alignment: .leading, spacing: 5) {
                 ForEach(suggestions.indices, id: \.self) { index in
                     let suggestion = suggestions[index]
                     let isHovered = hoveredIndex == index
+                    if let section = suggestion.section, index == 0 || suggestions[index - 1].section != section {
+                        Text(section)
+                            .font(NookDesign.Font.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.top, index == 0 ? 0 : 4)
+                    }
                     // Rows keep the text roles on a neutral fill, so the chosen row reads on any accent.
                     row(for: suggestion, showsFullURL: revealsFullURL && selectedIndex == index)
                         .padding(.horizontal, 10)
@@ -343,7 +426,14 @@ struct CommandPaletteView: View {
                             }
                         }
                         .onTapGesture { onSelect(suggestion) }
+                        .id(index)
                 }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+            }
+            .scrollIndicators(.hidden)
+            .frame(height: min(contentHeight, 470))
+            .onChange(of: selectedIndex) { _, index in proxy.scrollTo(index) }
             }
         }
 
@@ -355,6 +445,8 @@ struct CommandPaletteView: View {
             switch suggestion.type {
             case .tab(let tab):
                 TabSuggestionItem(tab: tab, showsFullURL: showsFullURL)
+            case .folder(let folder):
+                FolderSuggestionItem(folder: folder)
             case .history(let entry):
                 HistorySuggestionItem(entry: entry, showsFullURL: showsFullURL)
             case .url:
@@ -399,14 +491,7 @@ struct CommandPaletteView: View {
             return
         }
 
-        if selectedSuggestionIndex >= 0
-            && selectedSuggestionIndex < visibleSuggestions.count
-        {
-            let suggestion = visibleSuggestions[selectedSuggestionIndex]
-            selectSuggestion(suggestion)
-        } else if let primary = primarySuggestion {
-            selectSuggestion(primary)
-        }
+        if let row = targetSuggestion { selectSuggestion(row) }
     }
 
     private func selectSuggestion(_ suggestion: SearchManager.SearchSuggestion)
@@ -414,6 +499,8 @@ struct CommandPaletteView: View {
         switch suggestion.type {
         case .tab(let match):
             browserManager.tabs.select(match.itemID, in: windowState)
+        case .folder(let folder):
+            browserManager.tabs.reveal(folder.itemID, in: windowState)
         case .history(let historyEntry):
             browserManager.historyManager.recordPick(prefix: text, url: historyEntry.url)
             open(historyEntry.url)
@@ -464,6 +551,10 @@ struct CommandPaletteView: View {
                 withAnimation(NookDesign.Motion.standard) { activeSiteSearch = nil }
                 return .handled
             }
+            if let current = scope, text.isEmpty {
+                leaveScopeOneStep(current)
+                return .handled
+            }
             return .ignored
         }
         switch press.key {
@@ -487,7 +578,9 @@ struct CommandPaletteView: View {
             moveCaretBackOneWord()
             return .handled
         case .escape:
-            if activeSiteSearch != nil {
+            if scope != nil {
+                setScope(nil)
+            } else if activeSiteSearch != nil {
                 withAnimation(NookDesign.Motion.standard) { activeSiteSearch = nil }
             } else {
                 commandPalette.close()
@@ -503,6 +596,13 @@ struct CommandPaletteView: View {
             case "n": navigateSuggestions(direction: 1)
             case "p": navigateSuggestions(direction: -1)
             case "e": return caretIsAtEnd && acceptGhost() ? .handled : .ignored
+            case "r":
+                if scope == .history {
+                    navigateSuggestions(direction: 1)
+                } else {
+                    activeSiteSearch = nil
+                    setScope(.history)
+                }
             default: return .ignored
             }
             return .handled
@@ -530,14 +630,22 @@ struct CommandPaletteView: View {
     /// Tab: a site keyword becomes its chip; a highlighted row puts its host and first path
     /// segment in the field to refine; else the ghost is accepted or the list is entered.
     private func handleTab() -> KeyPress.Result {
-        if selectedSuggestionIndex < 0, let match = siteSearchMatch {
+        if selectedSuggestionIndex < 0, scope == nil, let match = siteSearchMatch {
             withAnimation(NookDesign.Motion.spring) { activeSiteSearch = match }
             text = ""
             return .handled
         }
+        // A folder row, or a folder that is the top match, becomes the chip.
+        let topMatch = selectedSuggestionIndex < 0 && scope == nil && visibleSuggestions.count > 1 ? visibleSuggestions[1] : nil
+        if case .folder(let folder) = (highlightedRow ?? topMatch)?.type {
+            enterFolder(folder)
+            return .handled
+        }
+        if scope != nil { return .handled }
         if selectedSuggestionIndex >= 0, selectedSuggestionIndex < visibleSuggestions.count {
             let row = visibleSuggestions[selectedSuggestionIndex]
             switch row.type {
+            case .folder: break
             case .tab(let match): text = PaletteText.refineText(for: match.url)
             case .history(let entry): text = PaletteText.refineText(for: entry.url)
             case .url: text = URL(string: row.text).flatMap { $0.host == nil ? nil : PaletteText.refineText(for: $0) } ?? row.text
@@ -552,6 +660,34 @@ struct CommandPaletteView: View {
             return .handled
         }
         return .ignored
+    }
+
+    /// Text that turns into a scope chip as it is typed.
+    private static let prefixScopes: [String: PaletteScope] = ["t ": .tabs, "h ": .history]
+
+    /// Tab on a folder: the chip becomes that folder, one level deeper inside a folder scope.
+    private func enterFolder(_ folder: SearchManager.FolderMatch) {
+        var path: [FolderCrumb] = []
+        if case .folder(let current) = scope { path = current }
+        path.append(FolderCrumb(id: folder.itemID, title: folder.title))
+        activeSiteSearch = nil
+        text = ""
+        setScope(.folder(path))
+    }
+
+    /// Backspace on an empty field: a folder goes up one level; a `t ` or `h ` chip turns back
+    /// into its text; any other scope ends.
+    private func leaveScopeOneStep(_ current: PaletteScope) {
+        if case .folder(let path) = current, path.count > 1 {
+            setScope(.folder(Array(path.dropLast())))
+            return
+        }
+        let restored = Self.prefixScopes.first { $0.value == current }?.key
+        setScope(nil)
+        if let restored {
+            prefixChipSuppressed = true
+            text = restored
+        }
     }
 
     /// Makes the whole ghost the field's text. False when none is showing.
@@ -638,7 +774,7 @@ struct CommandPaletteView: View {
     /// The page a row stands for; nil for an open tab, which is switched to instead.
     private func url(for row: SearchManager.SearchSuggestion) -> URL? {
         switch row.type {
-        case .tab: return nil
+        case .tab, .folder: return nil
         case .history(let entry): return entry.url
         case .url, .search:
             if activeSiteSearch != nil, case .search = row.type { return activeSiteSearch?.searchURL(for: row.text) }
@@ -678,7 +814,7 @@ struct CommandPaletteView: View {
             switch row.type {
             case .history(let entry): return entry.url.absoluteString
             case .tab(let match): return match.url.absoluteString
-            case .url, .search: return nil
+            case .url, .search, .folder: return nil
             }
         }
         return PaletteText.completion(for: text, candidates: (searchManager.autofillHost.map { [$0] } ?? []) + pages)
@@ -692,11 +828,10 @@ struct CommandPaletteView: View {
 
     /// Shift-Delete on a history row forgets that page and puts the typed text back.
     private func removeSelectedHistoryRow() -> Bool {
-        guard selectedSuggestionIndex >= 0, selectedSuggestionIndex < visibleSuggestions.count,
-              case .history(let entry) = visibleSuggestions[selectedSuggestionIndex].type else { return false }
+        guard case .history(let entry) = highlightedRow?.type else { return false }
         browserManager.historyManager.forget(entry.url)
         selectedSuggestionIndex = -1
-        searchManager.searchSuggestions(for: text)
+        search(text)
         return true
     }
 }

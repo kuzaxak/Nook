@@ -19,8 +19,9 @@ struct TabSuggestionItem: View {
     var body: some View {
         HStack(alignment: .center, spacing: 9) {
             SuggestionIcon(image: tab.favicon)
-            SuggestionLines(title: tab.title, detail: showsFullURL ? tab.url.absoluteString : PaletteText.shortURL(tab.url))
+            SuggestionLines(title: tab.title, detail: showsFullURL ? tab.url.absoluteString : tab.detail ?? PaletteText.shortURL(tab.url))
             Spacer()
+            if let icon = tab.spaceIcon { SpaceIcon(icon).foregroundStyle(.secondary) }
             Text("Switch to Tab")
                 .font(NookDesign.Font.secondary)
                 .foregroundStyle(.secondary)
@@ -30,6 +31,24 @@ struct TabSuggestionItem: View {
                 .frame(width: 24, height: 24)
                 .background(NookDesign.Surface.fill)
                 .clipShape(NookDesign.Radius.shape(NookDesign.Radius.xs))
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// A sidebar folder in the command bar: Return reveals it, Tab searches inside it.
+struct FolderSuggestionItem: View {
+    let folder: SearchManager.FolderMatch
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 9) {
+            SuggestionIcon(image: Image(systemName: "folder"))
+            SuggestionLines(title: folder.title, detail: folder.detail)
+            Spacer()
+            if let icon = folder.spaceIcon { SpaceIcon(icon).foregroundStyle(.secondary) }
+            Text("Tab to search inside")
+                .font(NookDesign.Font.secondary)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
     }

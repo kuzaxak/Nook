@@ -19,6 +19,8 @@
 - Command bar keys from zsh and fish: → or Ctrl+E takes the grey completion, ⌥→ takes one word, Ctrl+W and ⌥⌫ delete a word, Ctrl+U clears, Ctrl+N/P move
 - Command bar: arrows no longer rewrite what you typed; Tab on a row narrows the field to its site; ⌘↩ opens in the background and keeps the bar open; ⇧↩ opens in split view
 - Command bar rows show the title over a short address; hold ⌘ for the full one
+- Command bar finds sidebar folders and renamed pinned links by word; Tab on a folder searches inside it (sub-folders too), Return shows it in the sidebar
+- Command bar scopes: `t ` lists tabs by space, `h ` or Ctrl+R lists history; sections with headers and up to 8 rows
 
 ## 1.4.0
 

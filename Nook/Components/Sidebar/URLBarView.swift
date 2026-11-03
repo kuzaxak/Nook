@@ -406,7 +406,7 @@ struct URLBarView: View {
         case .history(let entry): return entry.url
         case .tab(let match): return match.url
         case .url: return URL(string: normalizeURL(suggestion.text, queryTemplate: SearchProvider.google.queryTemplate))
-        case .search: return nil
+        case .search, .folder: return nil
         }
     }
 
@@ -414,6 +414,7 @@ struct URLBarView: View {
         switch suggestion.type {
         case .history: return "clock"
         case .search: return "magnifyingglass"
+        case .folder: return "folder"
         case .url, .tab: return "globe"
         }
     }
@@ -421,6 +422,7 @@ struct URLBarView: View {
     private func suggestionTitle(_ suggestion: SearchManager.SearchSuggestion) -> String {
         if case .history(let entry) = suggestion.type { return entry.displayTitle }
         if case .tab(let match) = suggestion.type { return match.title }
+        if case .folder(let folder) = suggestion.type { return folder.title }
         return suggestion.text
     }
 
@@ -461,6 +463,10 @@ struct URLBarView: View {
         }
         let url: URL?
         switch suggestion.type {
+        case .folder(let folder):
+            cancelEditing()
+            browserManager.tabs.reveal(folder.itemID, in: windowState)
+            return
         case .history(let entry): url = entry.url
         case .tab(let match): url = match.url
         case .url, .search:
@@ -589,7 +595,7 @@ private struct AddressSuggestionFavicon: View {
         case .history(let entry): return entry.url
         case .tab(let match): return match.url
         case .url: return URL(string: normalizeURL(suggestion.text, queryTemplate: SearchProvider.google.queryTemplate))
-        case .search: return nil
+        case .search, .folder: return nil
         }
     }
 

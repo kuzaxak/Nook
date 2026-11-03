@@ -8,6 +8,7 @@
 
 import Foundation
 import NookSettings
+import NookTabsCore
 import Observation
 import SwiftUI
 
@@ -37,44 +38,77 @@ public class SearchManager {
     private weak var historyManager: HistoryManager?
     private var currentSpaceId: UUID?
     
+    /// What a query searches: everything, or one kind of row (`t `, `h ` or Ctrl+R, a folder chip).
+    public enum Scope: Equatable {
+        case all
+        case tabs
+        case history
+        case folder(UUID)
+    }
+
+    /// Rows a scope lists at most.
+    public static let scopedLimit = 30
+
     /// An open tab the palette can switch to, captured when the query ran.
     public struct TabMatch {
         public let itemID: UUID
         public let title: String
         public let url: URL
         public let favicon: SwiftUI.Image
+        /// The icon of the tab's space when that is not the window's space.
+        public let spaceIcon: String?
+        /// Replaces the short address on line 2, e.g. the sub-folder a link sits in.
+        public let detail: String?
 
-        public init(itemID: UUID, title: String, url: URL, favicon: SwiftUI.Image) {
+        public init(itemID: UUID, title: String, url: URL, favicon: SwiftUI.Image, spaceIcon: String? = nil, detail: String? = nil) {
             self.itemID = itemID
             self.title = title
             self.url = url
             self.favicon = favicon
+            self.spaceIcon = spaceIcon
+            self.detail = detail
         }
+    }
+
+    /// A sidebar folder: Return reveals it, Tab searches inside it.
+    public struct FolderMatch {
+        public let itemID: UUID
+        public let title: String
+        public let spaceIcon: String?
+        /// What it holds, e.g. "2 folders, 5 links".
+        public let detail: String
     }
 
     public struct SearchSuggestion: Identifiable, Equatable {
         public let id = UUID()
         public let text: String
         public let type: SuggestionType
+        /// The header shown above the first row of each section.
+        public let section: String?
 
-        public init(text: String, type: SuggestionType) {
+        public init(text: String, type: SuggestionType, section: String? = nil) {
             self.text = text
             self.type = type
+            self.section = section
         }
-        
+
         public enum SuggestionType {
             case search
             case url
             case tab(TabMatch)
+            case folder(FolderMatch)
             case history(HistoryEntry)
         }
-        
+
         public static func == (lhs: SearchSuggestion, rhs: SearchSuggestion) -> Bool {
+            guard lhs.section == rhs.section else { return false }
             switch (lhs.type, rhs.type) {
             case (.search, .search), (.url, .url):
                 return lhs.text == rhs.text
             case (.tab(let lhsTab), .tab(let rhsTab)):
                 return lhs.text == rhs.text && lhsTab.itemID == rhsTab.itemID
+            case (.folder(let lhsFolder), .folder(let rhsFolder)):
+                return lhsFolder.itemID == rhsFolder.itemID
             case (.history(let lhsHistory), .history(let rhsHistory)):
                 return lhs.text == rhs.text && lhsHistory.id == rhsHistory.id
             default:
@@ -98,7 +132,7 @@ public class SearchManager {
         currentSpaceId = window?.spaceID
     }
     
-    @MainActor public func searchSuggestions(for query: String, includeWebSuggestions: Bool = true) {
+    @MainActor public func searchSuggestions(for query: String, scope: Scope = .all, includeWebSuggestions: Bool = true) {
         searchTask?.cancel()
         historyTask?.cancel()
         let generation = UUID()
@@ -107,6 +141,10 @@ public class SearchManager {
         if !includeWebSuggestions { webRows = [] }
         updateSpaceContext()
         let space = currentSpaceId
+        if scope != .all {
+            searchScope(scope, query: query, generation: generation, space: space)
+            return
+        }
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             autofillTask?.cancel()
             autofillHost = nil
@@ -127,7 +165,7 @@ public class SearchManager {
             self.autofillHost = host
         }
 
-        let tabs = Array(searchTabs(for: query).prefix(2))
+        let tabs = Array(searchTabsAndFolders(for: query).prefix(3))
         // Paint what is already known for this keystroke, carrying each leg's last rows. The
         // palette puts its own row for the typed text above these.
         compose(tabs: tabs)
@@ -136,8 +174,8 @@ public class SearchManager {
         // in typing. Only the network request is debounced.
         historyTask = Task { [weak self] in
             guard let self else { return }
-            // Two spare rows, for when the first three turn out to be open tabs.
-            let history = Array(await self.searchHistory(for: query).prefix(5))
+            // Spare rows, for when the first three turn out to be open tabs.
+            let history = Array(await self.searchHistory(for: query).prefix(6))
             guard !Task.isCancelled, self.searchGeneration == generation,
                   self.window?.spaceID == space else { return }
             self.historyRows = history
@@ -166,6 +204,38 @@ public class SearchManager {
         }
     }
 
+    /// One kind of row, up to `scopedLimit`: tabs grouped by space, history by rank, or a
+    /// folder's contents (its sub-folders, then links) and, once typing, every link under it.
+    @MainActor private func searchScope(_ scope: Scope, query: String, generation: UUID, space: UUID?) {
+        autofillTask?.cancel()
+        autofillHost = nil
+        historyRows = []
+        textRows = []
+        webRows = []
+        switch scope {
+        case .all:
+            return
+        case .tabs:
+            updateSuggestionsIfNeeded(scopedTabs(for: query))
+        case .folder(let folderID):
+            updateSuggestionsIfNeeded(folderRows(folderID, query: query))
+        case .history:
+            historyTask = Task { [weak self] in
+                guard let self, let historyManager = self.historyManager else { return }
+                let rows: [SearchSuggestion]
+                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    rows = await historyManager.getHistory(days: 7, limit: Self.scopedLimit).entries.map {
+                        SearchSuggestion(text: $0.displayTitle, type: .history($0), section: "History")
+                    }
+                } else {
+                    rows = await self.searchHistory(for: query)
+                }
+                guard !Task.isCancelled, self.searchGeneration == generation, self.window?.spaceID == space else { return }
+                self.updateSuggestionsIfNeeded(Array(rows.prefix(Self.scopedLimit)))
+            }
+        }
+    }
+
     /// Rebuilds the visible list from the query's local rows plus whatever each leg last returned.
     @MainActor private func compose(tabs: [SearchSuggestion]) {
         // A page that is already an open tab shows once, as the tab.
@@ -186,7 +256,7 @@ public class SearchManager {
             if case .history(let entry) = row.type { return !shown.contains(Self.pageKey(entry.url)) }
             return false
         }
-        updateSuggestionsIfNeeded(Array((tabs + history + Array(text.prefix(3)) + webRows).prefix(5)))
+        updateSuggestionsIfNeeded(Array((tabs + history + Array(text.prefix(2)) + webRows).prefix(8)))
     }
 
     /// History rows found by words in the page's text, when that setting is on.
@@ -195,7 +265,7 @@ public class SearchManager {
               query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else { return [] }
         // Spare rows for the ones the dedupe in compose drops.
         return await historyManager.searchPageText(query: query, limit: 8).map {
-            SearchSuggestion(text: $0.displayTitle, type: .history($0))
+            SearchSuggestion(text: $0.displayTitle, type: .history($0), section: "Page Text")
         }
     }
 
@@ -212,37 +282,111 @@ public class SearchManager {
         query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
     }
 
-    @MainActor private func searchTabs(for query: String) -> [SearchSuggestion] {
+    /// A tab row for `item`; nil while it has no address.
+    @MainActor private func tabMatch(_ item: Item, detail: String? = nil) -> TabMatch? {
+        guard let tabs else { return nil }
+        let session = tabs.session(for: item.id)
+        guard let url = session?.url ?? tabs.device.openPages[item.id]?.url ?? item.url else { return nil }
+        let title = item.customTitle.flatMap { $0.isEmpty ? nil : $0 } ?? session?.title ?? item.displayTitle
+        let favicon = session?.favicon
+            ?? url.host.flatMap { FaviconCache.shared.swiftUIImage(for: $0) }
+            ?? SwiftUI.Image(systemName: "globe")
+        return TabMatch(itemID: item.id, title: title, url: url, favicon: favicon, spaceIcon: spaceIcon(of: item.id), detail: detail)
+    }
+
+    @MainActor private func folderMatch(_ item: Item) -> FolderMatch {
+        let children = tabs?.children(of: .folder(itemID: item.id)) ?? []
+        let folders = children.filter(\.isFolder).count, links = children.count - folders
+        var parts: [String] = []
+        if folders > 0 { parts.append(folders == 1 ? "1 folder" : "\(folders) folders") }
+        if links > 0 || folders == 0 { parts.append(links == 1 ? "1 link" : "\(links) links") }
+        return FolderMatch(itemID: item.id, title: item.displayTitle, spaceIcon: spaceIcon(of: item.id), detail: parts.joined(separator: ", "))
+    }
+
+    /// The icon of the space holding `itemID`, when that is not the window's space.
+    @MainActor private func spaceIcon(of itemID: UUID) -> String? {
+        guard let tabs, let spaceID = tabs.spaceID(of: itemID), spaceID != window?.spaceID else { return nil }
+        return tabs.space(spaceID)?.icon
+    }
+
+    /// The spaces a query searches, the window's first. The agent's tabs are not the person's.
+    @MainActor private func searchedSpaces() -> [UUID] {
         guard let tabs, let window, let spaceID = window.spaceID else { return [] }
-        let words = Self.words(of: query)
-        // This space's tabs first, then the other spaces'. The page being looked at is not a
-        // tab to switch to.
-        let spaces = [spaceID] + tabs.spaces(visibleIn: window).map(\.id).filter { $0 != spaceID }
-        // The agent's tabs are not the person's to switch to.
-        let items = spaces.filter { $0 != tabs.agentSpaceID }.flatMap { tabs.items(inSpace: $0) }
-            .filter { $0.id != window.selectedItemID }
-        let here = Set(tabs.items(inSpace: spaceID).map(\.id))
-        let matches: [TabMatch] = items.compactMap { item in
-            let session = tabs.session(for: item.id)
-            guard let url = session?.url ?? tabs.device.openPages[item.id]?.url ?? item.url else { return nil }
-            let title = item.customTitle.flatMap { $0.isEmpty ? nil : $0 } ?? session?.title ?? item.displayTitle
-            let haystack = title.lowercased() + " " + url.absoluteString.lowercased()
-            guard words.allSatisfy(haystack.contains) else { return nil }
-            let favicon = session?.favicon
-                ?? url.host.flatMap { FaviconCache.shared.swiftUIImage(for: $0) }
-                ?? SwiftUI.Image(systemName: "globe")
-            return TabMatch(itemID: item.id, title: title, url: url, favicon: favicon)
+        return ([spaceID] + tabs.spaces(visibleIn: window).map(\.id).filter { $0 != spaceID }).filter { $0 != tabs.agentSpaceID }
+    }
+
+    /// Tabs (open, pinned, favorites, in folders) and folders matching every word: word-prefix
+    /// title matches first, then this space's, then shorter titles. Folders match on their name
+    /// only. The page being looked at is not a tab to switch to.
+    @MainActor private func searchTabsAndFolders(for query: String) -> [SearchSuggestion] {
+        guard let tabs, let window else { return [] }
+        var scored: [(row: SearchSuggestion, score: Int, here: Bool, length: Int)] = []
+        for (index, spaceID) in searchedSpaces().enumerated() {
+            for item in tabs.items(inSpace: spaceID) where item.id != window.selectedItemID {
+                guard let match = tabMatch(item),
+                      let score = PaletteText.matchScore(query: query, title: match.title, detail: match.url.absoluteString) else { continue }
+                scored.append((SearchSuggestion(text: match.title, type: .tab(match), section: "Tabs"), score, index == 0, match.title.count))
+            }
+            for folder in tabs.folders(inSpace: spaceID).map(\.item) {
+                guard let score = PaletteText.matchScore(query: query, title: folder.displayTitle, detail: nil) else { continue }
+                scored.append((SearchSuggestion(text: folder.displayTitle, type: .folder(folderMatch(folder)), section: "Tabs"), score, index == 0, folder.displayTitle.count))
+            }
         }
-        // Title matches first, then shorter titles.
-        let sorted = matches.sorted { lhs, rhs in
-            let lhsTitle = words.allSatisfy(lhs.title.lowercased().contains)
-            let rhsTitle = words.allSatisfy(rhs.title.lowercased().contains)
-            if lhsTitle != rhsTitle { return lhsTitle }
-            let lhsHere = here.contains(lhs.itemID), rhsHere = here.contains(rhs.itemID)
-            if lhsHere != rhsHere { return lhsHere }
-            return lhs.title.count < rhs.title.count
+        return scored.sorted { lhs, rhs in
+            if lhs.score != rhs.score { return lhs.score > rhs.score }
+            if lhs.here != rhs.here { return lhs.here }
+            return lhs.length < rhs.length
+        }.map(\.row)
+    }
+
+    /// The tabs-only scope: matching tabs grouped by space, the window's first.
+    @MainActor private func scopedTabs(for query: String) -> [SearchSuggestion] {
+        guard let tabs, let window else { return [] }
+        var rows: [SearchSuggestion] = []
+        for spaceID in searchedSpaces() where rows.count < Self.scopedLimit {
+            let name = tabs.space(spaceID)?.name ?? "Space"
+            let matches = tabs.items(inSpace: spaceID).compactMap { item -> (match: TabMatch, score: Int)? in
+                guard item.id != window.selectedItemID, let match = tabMatch(item),
+                      let score = PaletteText.matchScore(query: query, title: match.title, detail: match.url.absoluteString) else { return nil }
+                return (match, score)
+            }
+            rows += matches.sorted { $0.score != $1.score ? $0.score > $1.score : $0.match.title < $1.match.title }
+                .map { SearchSuggestion(text: $0.match.title, type: .tab($0.match), section: name) }
         }
-        return sorted.prefix(3).map { SearchSuggestion(text: $0.title, type: .tab($0)) }
+        return Array(rows.prefix(Self.scopedLimit))
+    }
+
+    /// A folder scope. Empty query: its sub-folders, then its links, as the sidebar orders them.
+    /// Otherwise every link at any depth under it, matched by title or address, with the
+    /// sub-folder it sits in on line 2.
+    @MainActor private func folderRows(_ folderID: UUID, query: String) -> [SearchSuggestion] {
+        guard let tabs else { return [] }
+        let parent = Parent.folder(itemID: folderID)
+        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let children = tabs.children(of: parent)
+            let folders = children.filter(\.isFolder).map { SearchSuggestion(text: $0.displayTitle, type: .folder(folderMatch($0))) }
+            let links = children.filter { !$0.isFolder }.compactMap { tabMatch($0) }.map { SearchSuggestion(text: $0.title, type: .tab($0)) }
+            return Array((folders + links).prefix(Self.scopedLimit))
+        }
+        var found: [(row: SearchSuggestion, score: Int)] = []
+        func walk(_ parent: Parent, path: [String]) {
+            for child in tabs.children(of: parent) {
+                if child.isFolder {
+                    walk(.folder(itemID: child.id), path: path + [child.displayTitle])
+                    continue
+                }
+                if let match = tabMatch(child, detail: path.isEmpty ? nil : path.joined(separator: " › ")),
+                   let score = PaletteText.matchScore(query: query, title: match.title, detail: match.url.absoluteString) {
+                    found.append((SearchSuggestion(text: match.title, type: .tab(match)), score))
+                }
+                walk(.folder(itemID: child.id), path: path)
+            }
+        }
+        walk(parent, path: [])
+        let ranked = found.enumerated().sorted { lhs, rhs in
+            lhs.element.score != rhs.element.score ? lhs.element.score > rhs.element.score : lhs.offset < rhs.offset
+        }
+        return ranked.prefix(Self.scopedLimit).map(\.element.row)
     }
 
     @MainActor private func searchHistory(for query: String) async -> [SearchSuggestion] {
@@ -251,7 +395,7 @@ public class SearchManager {
         if let ranked = await historyManager.searchIndex(query: query, limit: 30, isOpen: { url in
             URL(string: url).map { open.contains(Self.pageKey($0)) } ?? false
         }) {
-            return ranked.map { SearchSuggestion(text: $0.displayTitle, type: .history($0)) }
+            return ranked.map { SearchSuggestion(text: $0.displayTitle, type: .history($0), section: "History") }
         }
 
         let words = Self.words(of: query)
@@ -259,7 +403,7 @@ public class SearchManager {
         let historyEntries = await historyManager.searchHistory(query: query, offset: 0, limit: 100)
         
         let matchingHistory = historyEntries.entries.map {
-            SearchSuggestion(text: $0.displayTitle, type: .history($0))
+            SearchSuggestion(text: $0.displayTitle, type: .history($0), section: "History")
         }
 
         // Sort by relevance (title matches first, then URL matches, then by visit count and recency)
@@ -303,7 +447,7 @@ public class SearchManager {
             guard let jsonArray = try JSONSerialization.jsonObject(with: data) as? [Any],
                   jsonArray.count >= 2, let strings = jsonArray[1] as? [String] else { return [] }
             return strings.prefix(5).map {
-                SearchSuggestion(text: $0, type: isLikelyURL($0) ? .url : .search)
+                SearchSuggestion(text: $0, type: isLikelyURL($0) ? .url : .search, section: "Suggestions")
             }
         } catch { return [] }
     }

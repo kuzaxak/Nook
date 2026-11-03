@@ -81,6 +81,20 @@ public enum PaletteText {
         return nil
     }
 
+    /// How well a tab or folder matches `query`: nil unless every word appears in `title` or
+    /// `detail` (its address); 2 when each word starts a title word, 1 when each starts a word of
+    /// either, 0 for a substring match.
+    public static func matchScore(query: String, title: String, detail: String?) -> Int? {
+        let words = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        let titleText = title.lowercased(), detailText = detail?.lowercased() ?? ""
+        guard words.allSatisfy({ titleText.contains($0) || detailText.contains($0) }) else { return nil }
+        let split: (String) -> [Substring] = { $0.split { !$0.isLetter && !$0.isNumber } }
+        let titleWords = split(titleText), allWords = titleWords + split(detailText)
+        if words.allSatisfy({ word in titleWords.contains { $0.hasPrefix(word) } }) { return 2 }
+        if words.allSatisfy({ word in allWords.contains { $0.hasPrefix(word) } }) { return 1 }
+        return 0
+    }
+
     private static func displayHost(_ url: URL) -> String {
         var host = url.host ?? url.absoluteString
         if host.lowercased().hasPrefix("www.") { host.removeFirst(4) }

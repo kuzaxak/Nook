@@ -77,6 +77,8 @@ public class BrowserWindowState {
 
     /// Whether the command palette is visible in this window
     public var isCommandPaletteVisible: Bool = false
+    /// An item the sidebar scrolls to once, then clears.
+    public var sidebarRevealItemID: UUID?
 
     /// Whether the extension library panel is visible in this window
     public var isExtensionLibraryVisible: Bool = false

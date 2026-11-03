@@ -649,6 +649,21 @@ extension TabsController {
         setFolder(folderID, open: true)
     }
 
+    /// Shows an item in the sidebar: its space, every folder above it (and it, when a folder)
+    /// open, and the sidebar scrolled to it.
+    public func reveal(_ itemID: UUID, in window: BrowserWindowState) {
+        let source = tree(owner(of: window))
+        guard let item = source.item(itemID) else { return }
+        if let spaceID = source.spaceID(of: itemID), spaceID != window.spaceID { setSpace(spaceID, in: window) }
+        var parent = item.parent
+        while case .folder(let hostID) = parent, let host = source.item(hostID) {
+            openFolder(hostID)
+            parent = host.parent
+        }
+        if item.isFolder { openFolder(itemID) }
+        window.sidebarRevealItemID = itemID
+    }
+
     // MARK: - Spaces
 
     /// A new space in a new profile with an empty website data store, so it starts logged out.
