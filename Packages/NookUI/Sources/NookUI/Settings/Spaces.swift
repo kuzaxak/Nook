@@ -168,6 +168,8 @@ public struct SpacesSettingsView: View {
                 ))
                 .textFieldStyle(.plain)
             }
+            .frame(minWidth: 140, alignment: .leading)
+            .layoutPriority(1)
             Spacer()
             profilePicker(space)
             if spaces.count > 1 {

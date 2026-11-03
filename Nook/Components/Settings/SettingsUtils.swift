@@ -56,10 +56,10 @@ enum SettingsTabs: String, Hashable, CaseIterable {
     /// Extra search terms, so a pane is findable by what it holds rather than only its name.
     var searchKeywords: [String] {
         switch self {
-        case .general: return ["startup", "search engine", "tabs", "quit", "update"]
+        case .general: return ["startup", "search engine", "tabs", "quit", "update", "archive", "ungrouped", "new tabs", "nest", "link tabs", "url shortcuts", "kagi", "session link", "site search"]
         case .appearance: return ["theme", "dark", "light", "sidebar"]
         case .ai: return ["gemini", "openrouter", "ollama", "mcp"]
-        case .privacy: return ["cookies", "cache", "tracking", "website data"]
+        case .privacy: return ["cookies", "cache", "tracking", "website data", "history", "half-life", "pawl", "vault", "passwords", "passkeys", "autofill"]
         case .adBlocker: return ["ads", "filters", "blocking", "allowlist", "whitelist"]
         case .tweaks: return ["youtube", "shorts", "thumbnails", "sponsorblock", "facebook", "instagram", "reels", "download", "social media"]
         case .airTrafficControl: return ["routing", "rules", "domains"]

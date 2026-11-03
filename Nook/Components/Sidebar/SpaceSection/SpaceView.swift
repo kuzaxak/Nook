@@ -94,7 +94,8 @@ struct SpaceView: View {
         }
         }
         .contentMargins(.trailing, 0, for: .scrollIndicators)
-        .scrollIndicators(showsScrollIndicator && !windowState.isSidebarResizeHovered && NSScroller.preferredScrollerStyle == .overlay ? .visible : .hidden)
+        // `.hidden` still shows a scroller when the system is set to always show them; `.never` does not.
+        .scrollIndicators(showsScrollIndicator && !windowState.isSidebarResizeHovered && NSScroller.preferredScrollerStyle == .overlay ? .visible : .never)
         .onScrollPhaseChange { _, phase in
             // Tracking alone (a finger resting on the pad) is not scrolling.
             isUserScrolling = phase == .interacting || phase == .decelerating

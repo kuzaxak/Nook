@@ -59,6 +59,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
     // MARK: - Application Lifecycle
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Nook has its own tabs; macOS window tabbing would add Show Tab Bar and Show All Tabs.
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupURLEventHandling()
         setupMouseButtonHandling()

@@ -500,6 +500,15 @@ extension TabsController {
 
     public func move(_ itemID: UUID, to parent: Parent, after: UUID?) {
         guard let owner = owner(ofItem: itemID) else { return }
+        // A tab leaving its space leaves every window showing it there on another tab of that space.
+        let source = tree(owner)
+        let newSpace: UUID? = {
+            if case .folder(let hostID) = parent { return source.spaceID(of: hostID) }
+            return parent.spaceID
+        }()
+        if let oldSpace = source.spaceID(of: itemID), let newSpace, oldSpace != newSpace {
+            moveSelectionOff(Set(source.subtree(of: itemID)))
+        }
         let current = session(for: itemID)
         let wasSynced = tree(owner).scope(of: itemID) == .synced
         let currentURL = current?.storableURL ?? (wasSynced ? device.openPages[itemID]?.url : nil)

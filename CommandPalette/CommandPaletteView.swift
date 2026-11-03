@@ -393,6 +393,18 @@ struct CommandPaletteView: View {
                 searchManager.clearSuggestions()
             }
         }
+        // An open tab whose title is exactly what was typed is what Return should switch to, as in Arc.
+        .onChange(of: searchManager.suggestions) { _, _ in
+            guard scope == nil, selectedSuggestionIndex == -1 else { return }
+            let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !typed.isEmpty else { return }
+            if let index = visibleSuggestions.firstIndex(where: { row in
+                if case .tab(let match) = row.type { return match.title.caseInsensitiveCompare(typed) == .orderedSame }
+                return false
+            }) {
+                selectedSuggestionIndex = index
+            }
+        }
         .onChange(of: searchManager.suggestions.count) { _, _ in
             let count = visibleSuggestions.count
             if count == 0 {
