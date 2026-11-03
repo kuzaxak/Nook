@@ -376,6 +376,7 @@ extension PageSession: WKNavigationDelegate {
                 YouTubeTweaks.apply(for: url, in: webView, settings: settings)
                 SocialImageTweaks.apply(for: url, in: webView, settings: settings)
                 FacebookTweaks.apply(for: url, in: webView, settings: settings)
+                ClickUpTweaks.apply(for: url, in: webView)
                 RedditTweaks.apply(in: webView, settings: settings)
                 if let blocker = controller?.blocker { BoostTweaks.apply(for: url, in: webView, settings: settings, blocker: blocker) }
             }

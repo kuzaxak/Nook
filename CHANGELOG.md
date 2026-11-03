@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- ClickUp lists scroll smoothly: Nook rewrites one ClickUp chat style that made WebKit restyle the whole page for every new row
+
 ## 1.5.1
 
 One-time codes from Pawl Vault, an offer to become the default browser, segment-by-segment address completion, editable word stops, and fixes for Peek, the command bar and deleted profiles.
