@@ -45,6 +45,8 @@ import NookWeb
     /// False on iOS, which reads and writes no space files. Menus hide Export Space and
     /// Import Space.
     var supportsSpaceFiles: Bool { get }
+    /// iCloud sync of spaces; nil on iOS, where menus and Settings leave it out.
+    var spaceSync: (any SpaceSyncControls)? { get }
 }
 
 extension TabActions {
@@ -52,6 +54,7 @@ extension TabActions {
     /// `#if os` so the shared protocol file stays platform-free.
     public var supportsMultipleWindows: Bool { true }
     public var supportsSpaceFiles: Bool { true }
+    public var spaceSync: (any SpaceSyncControls)? { nil }
 }
 
 // MARK: - Environment

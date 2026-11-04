@@ -3,7 +3,8 @@
 //  Spaces.swift
 //  Nook
 //
-//  Spaces: name, look and the profile each one uses. Profiles have their own pane.
+//  Spaces: name, look, the profile each one uses and how much of it syncs through iCloud.
+//  Profiles have their own pane.
 //
 
 import NookTabsCore
@@ -24,6 +25,12 @@ public struct SpacesSettingsView: View {
 
     private var spaces: [SpaceRecord] { tabs.orderedSpaces.filter { !$0.isAgent } }
 
+    /// Sync controls when this build can sync; nil on iOS and in an unsigned build.
+    private var sync: (any SpaceSyncControls)? {
+        guard let sync = actions?.spaceSync, sync.status.availability != .needsSignedBuild else { return nil }
+        return sync
+    }
+
     public var body: some View {
         Form {
             Section {
@@ -36,6 +43,10 @@ public struct SpacesSettingsView: View {
             } footer: {
                 Text("Each space uses one profile's logins, cookies and history. Moving a space to another profile signs it in as that profile. Set up profiles in the Profiles pane.")
                     .settingsFooter()
+            }
+
+            if let status = actions?.spaceSync?.status {
+                syncSection(status)
             }
 
             Section {
@@ -136,6 +147,9 @@ public struct SpacesSettingsView: View {
             .labelsHidden()
             .layoutPriority(1)
             Spacer()
+            if let sync {
+                syncMenu(space, sync)
+            }
             profilePicker(space)
             if spaces.count > 1 || actions?.supportsSpaceFiles == true {
                 Menu {
@@ -153,6 +167,73 @@ public struct SpacesSettingsView: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
             }
+        }
+    }
+
+    // MARK: - iCloud Sync
+
+    private func syncMenu(_ space: SpaceRecord, _ sync: any SpaceSyncControls) -> some View {
+        let level = sync.level(of: space.id)
+        return Menu {
+            Picker("iCloud Sync", selection: Binding(get: { level }, set: { sync.setLevel($0, for: space.id) })) {
+                ForEach(SpaceSyncLevel.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Image(systemName: level.symbol)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("iCloud Sync: \(level.title)")
+        .accessibilityLabel("iCloud Sync for \(space.name): \(level.title)")
+    }
+
+    private func syncSection(_ status: SpaceSyncStatus) -> some View {
+        Section {
+            HStack {
+                Text(Self.describe(status.availability))
+                Spacer()
+                if status.isSyncing {
+                    ProgressView().controlSize(.small)
+                }
+                if status.availability != .needsSignedBuild {
+                    Button("Sync Now") { actions?.spaceSync?.syncNow() }
+                        .disabled(status.availability != .available || status.isSyncing)
+                }
+            }
+            if status.availability == .available {
+                LabeledContent("Last synced") {
+                    if let date = status.lastSync {
+                        Text(date, format: .relative(presentation: .named))
+                    } else {
+                        Text("Not yet")
+                    }
+                }
+            }
+            if let error = status.lastError, status.availability != .needsSignedBuild {
+                LabeledContent("Last error") {
+                    Text(error).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                }
+            }
+        } header: {
+            Text("iCloud Sync")
+        } footer: {
+            Text(status.availability == .needsSignedBuild
+                 ? "This copy of Nook is not signed for iCloud, so its spaces stay on this Mac."
+                 : "Pick what each space syncs to your other Macs with the cloud beside it. Favorites & Pinned sends its favorites, pinned tabs and folders; Everything also sends its open tabs. Logins, cookies, history, site data, Boosts, private windows and the Agent space never sync. Off stops this Mac syncing a space and leaves it in iCloud; deleting a space deletes it from iCloud.")
+                .settingsFooter()
+        }
+    }
+
+    private static func describe(_ availability: SpaceSyncAvailability) -> String {
+        switch availability {
+        case .needsSignedBuild: return "Sync needs a signed build"
+        case .readOnlyTabs: return "Sync is paused: Nook could not read its tabs"
+        case .checking: return "Checking iCloud…"
+        case .noAccount: return "Sign in to iCloud in System Settings to sync spaces"
+        case .restricted: return "iCloud is restricted on this Mac"
+        case .unavailable: return "iCloud is not available right now"
+        case .available: return "Syncing with iCloud"
         }
     }
 
