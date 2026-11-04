@@ -3,7 +3,8 @@
 // swiftc $(rg --files Nook/ThirdParty/BigUIPaging -g '*.swift') scripts/tests/SpaceSwitchCheck.swift -o /tmp/space-switch-check && /tmp/space-switch-check
 //
 // The space pager against the Arc behavior in docs/research/arc-teardown/10-sidebar-spaces-paging.md:
-// the pure math, then real AppKit motion with deterministic gesture input. Feel still needs a trackpad.
+// the pure math, then real AppKit motion with deterministic gesture input, then made-up scroll and
+// wheel events dispatched over a page's vertical list. Feel still needs a trackpad.
 
 import AppKit
 import SwiftUI
@@ -16,6 +17,7 @@ struct SpaceSwitchCheck {
     static func main() {
         checkMath()
         checkView()
+        checkEvents()
     }
 
     @MainActor
@@ -51,6 +53,20 @@ struct SpaceSwitchCheck {
         let duration = Double(offsets.count - 1) * Pager.sampleStep
         precondition(duration > 0.2 && duration < 0.6, "Response 0.25 s settles in roughly 0.3 to 0.5 s, got \(duration)")
         print("PASS: rubber band, page choice, velocity window, spring")
+
+        // Wheel: one page per burst, a burst ending after a 0.25 s pause.
+        var wheel = Pager.Wheel()
+        precondition(wheel.step(deltaX: -0.1, precise: false, inverted: false, time: 10) == 1, "The first tick of a burst moves forward, however slow")
+        precondition(wheel.step(deltaX: -5, precise: false, inverted: false, time: 10.1) == 0, "The rest of the burst does not")
+        precondition(wheel.step(deltaX: -5, precise: false, inverted: false, time: 10.3) == 0, "Nor does a spin that keeps going")
+        precondition(wheel.step(deltaX: 1, precise: false, inverted: false, time: 10.6) == -1, "After a pause the next tick moves back")
+        var natural = Pager.Wheel()
+        precondition(natural.step(deltaX: 1, precise: false, inverted: true, time: 0) == 1, "Wheel down moves forward with natural scrolling too")
+        var smooth = Pager.Wheel()
+        precondition(smooth.step(deltaX: -4, precise: true, inverted: false, time: 0) == 0, "Precise points add up first")
+        precondition(smooth.step(deltaX: -4, precise: true, inverted: false, time: 0.01) == 0)
+        precondition(smooth.step(deltaX: -4, precise: true, inverted: false, time: 0.02) == 1, "and move at 10")
+        print("PASS: wheel bursts")
     }
 
     @MainActor
@@ -137,5 +153,131 @@ struct SpaceSwitchCheck {
         precondition(strip.frame.minX == -500 && !pager.isTracking)
         precondition(strip.subviews.allSatisfy { $0.frame.width == 250 })
         print("PASS: resize mid-settle")
+    }
+
+    /// Real scroll events dispatched over a page holding a vertical list, as the sidebar's tabs are.
+    @MainActor
+    static func checkEvents() {
+        typealias ListPager = PlatformPageView<Int, AnyView>
+        var selection = 1
+        let parent = ListPager(
+            selection: Binding(get: { selection }, set: { selection = $0 }),
+            configuration: PlatformPageViewConfiguration(transition: .scroll, orientation: .horizontal, spacing: 0),
+            next: { $0 < 3 ? $0 + 1 : nil }, previous: { $0 > 0 ? $0 - 1 : nil },
+            content: { _ in
+                AnyView(ScrollView(.vertical) {
+                    VStack(spacing: 0) {
+                        ForEach(0..<200) { Text("Tab \($0)").frame(maxWidth: .infinity, minHeight: 20) }
+                    }
+                })
+            })
+        let coordinator = parent.makeCoordinator()
+        let pager = ListPager.SwipePagerView(frame: NSRect(x: 0, y: 0, width: 300, height: 600))
+        let window = NSWindow(contentRect: pager.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = pager
+        window.setFrameOrigin(NSPoint(x: -3000, y: -3000))
+        window.orderFront(nil)
+        coordinator.pager = pager
+        pager.coordinator = coordinator
+        coordinator.show(1)
+        pager.layout()
+        dispatch(in: window, for: 0.3)
+
+        let overList = NSPoint(x: 150, y: 300)
+        func reset() {
+            selection = 1
+            coordinator.refresh(to: 1, animated: false)
+            dispatch(in: window, for: 0.1)
+        }
+        func list() -> NSScrollView? {
+            func find(_ view: NSView) -> NSScrollView? {
+                if let scroll = view as? NSScrollView { return scroll }
+                return view.subviews.lazy.compactMap(find).first
+            }
+            return find(pager)
+        }
+        /// The view AppKit sends `event` to: the one hit while it is the current event.
+        func receiver(of event: NSEvent) -> NSView? {
+            NSApp.postEvent(event, atStart: true)
+            _ = NSApp.nextEvent(matching: .scrollWheel, until: .distantFuture, inMode: .default, dequeue: true)
+            return pager.hitTest(overList)
+        }
+        // CGScrollPhase: began 1, changed 2, ended 4.
+        func swipe(dx: Int32, dy: Int32) {
+            NSApp.postEvent(scroll(dx: dx, dy: dy, precise: true, phase: 1, at: overList), atStart: false)
+            for _ in 0..<12 { NSApp.postEvent(scroll(dx: dx, dy: dy, precise: true, phase: 2, at: overList), atStart: false) }
+            NSApp.postEvent(scroll(dx: 0, dy: 0, precise: true, phase: 4, at: overList), atStart: false)
+            dispatch(in: window, for: 0.8)
+        }
+        func wheel(dx: Int32, dy: Int32 = 0) {
+            NSApp.postEvent(scroll(dx: dx, dy: dy, precise: false, phase: 0, at: overList), atStart: false)
+        }
+
+        typealias View = ListPager.SwipePagerView
+        precondition(View.isWheel(scroll(dx: -1, dy: 0, precise: false, phase: 0, at: overList)), "A wheel tick")
+        precondition(View.isWheel(scroll(dx: -8, dy: 0, precise: true, phase: 0, at: overList)), "Precise deltas with no gesture")
+        precondition(!View.isWheel(scroll(dx: -8, dy: 0, precise: true, phase: 1, at: overList)), "A trackpad gesture")
+
+        let setting = NSEvent.isSwipeTrackingFromScrollEventsEnabled ? "on" : "off"
+        reset()
+        swipe(dx: -40, dy: 0)
+        precondition(selection == 2, "A sideways swipe over the list pages forward with Swipe between pages \(setting), got \(selection)")
+        reset()
+        swipe(dx: 40, dy: 0)
+        precondition(selection == 0, "and back, got \(selection)")
+        reset()
+        precondition(!View.startsDrag(scroll(dx: -6, dy: -20, precise: true, phase: 1, at: overList)),
+                     "A swipe that starts upright is the list's")
+        precondition(View.startsDrag(scroll(dx: -20, dy: -6, precise: true, phase: 1, at: overList)))
+        precondition(!View.startsDrag(scroll(dx: -20, dy: 0, precise: true, phase: 2, at: overList)),
+                     "Only a gesture's first event can start a drag")
+        swipe(dx: 0, dy: -40)
+        precondition(selection == 1 && !pager.isTracking, "A vertical swipe stays on the space")
+        precondition(receiver(of: scroll(dx: 0, dy: -40, precise: true, phase: 1, at: overList))?.isDescendant(of: list()!) == true,
+                     "and goes to the list")
+        print("PASS: trackpad swipes over the list page sideways; upright ones are the list's")
+
+        reset()
+        wheel(dx: -1)
+        dispatch(in: window, for: 0.6)
+        precondition(selection == 2, "One sideways wheel tick over the list moves one space, got \(selection)")
+        reset()
+        for delta: Int32 in [-1, -1, -3, -2] { wheel(dx: delta) }
+        dispatch(in: window, for: 0.6)
+        precondition(selection == 2, "A fast spin moves one space too, got \(selection)")
+        wheel(dx: 1)
+        dispatch(in: window, for: 0.6)
+        precondition(selection == 1, "A tick after a pause moves again, the other way, got \(selection)")
+        wheel(dx: 0, dy: -3)
+        dispatch(in: window, for: 0.6)
+        precondition(selection == 1, "An upright wheel tick stays on the space")
+        precondition(receiver(of: scroll(dx: 0, dy: -3, precise: false, phase: 0, at: overList))?.isDescendant(of: list()!) == true,
+                     "and goes to the list")
+        precondition(receiver(of: scroll(dx: -1, dy: 0, precise: false, phase: 0, at: overList)) === pager,
+                     "A sideways tick goes to the pager, not the list that would keep it")
+        print("PASS: a sideways wheel burst over the list moves one space; upright ticks are the list's")
+    }
+
+    /// A scroll event at `point` in the window. With no window of its own the event's location is
+    /// read as a screen point, so the point goes in as one and the window can stay off screen.
+    @MainActor
+    static func scroll(dx: Int32, dy: Int32, precise: Bool, phase: Int64, at point: NSPoint) -> NSEvent {
+        let event = CGEvent(scrollWheelEvent2Source: nil, units: precise ? .pixel : .line,
+                            wheelCount: 2, wheel1: dy, wheel2: dx, wheel3: 0)!
+        event.setIntegerValueField(.scrollWheelEventIsContinuous, value: precise ? 1 : 0)
+        event.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+        event.location = CGPoint(x: point.x, y: NSScreen.screens[0].frame.height - point.y)
+        // A made-up CGEvent is stamped 0; real ones carry nanoseconds of uptime.
+        event.timestamp = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        return NSEvent(cgEvent: event)!
+    }
+
+    /// Runs the app's event loop, handing scroll events to `window` as AppKit would for one under the pointer.
+    @MainActor
+    static func dispatch(in window: NSWindow, for seconds: TimeInterval) {
+        let until = Date().addingTimeInterval(seconds)
+        while let event = NSApp.nextEvent(matching: .any, until: until, inMode: .default, dequeue: true) {
+            if event.type == .scrollWheel, event.window == nil { window.sendEvent(event) } else { NSApp.sendEvent(event) }
+        }
     }
 }

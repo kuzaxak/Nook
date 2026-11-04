@@ -119,10 +119,30 @@ extension PlatformPageView: NSViewRepresentable {
             let target: CGFloat
         }
 
-        private struct Wheel {
-            var cumulative: CGFloat = 0
-            var lastEvent: CFTimeInterval = 0
-            var lastTrigger: CFTimeInterval = -1
+        /// Sideways wheel movement, one page per burst: a fast spin or a held tilt moves one page,
+        /// and the next burst after a pause moves the next.
+        struct Wheel {
+            private var lastEvent: TimeInterval = -.infinity
+            private var cumulative: CGFloat = 0
+            private var stepped = false
+
+            /// The page step for a sideways wheel event: 1 forward, -1 back, 0 none. Line deltas step
+            /// on the first tick; a precise device's points first add up to `wheelStepPoints`.
+            mutating func step(deltaX: CGFloat, precise: Bool, inverted: Bool, time: TimeInterval) -> Int {
+                if time - lastEvent > SwipePagerView.wheelBurstGap {
+                    cumulative = 0
+                    stepped = false
+                }
+                lastEvent = time
+                guard !stepped else { return 0 }
+
+                cumulative += deltaX
+                guard cumulative != 0, !precise || abs(cumulative) >= SwipePagerView.wheelStepPoints else { return 0 }
+
+                stepped = true
+                // Wheel down or tilt right reports a negative delta unless natural scrolling inverts it.
+                return (cumulative < 0) != inverted ? 1 : -1
+            }
         }
 
         private enum Motion {
@@ -261,19 +281,41 @@ extension PlatformPageView: NSViewRepresentable {
             axis == .horizontal
         }
 
+        // SwiftUI's vertical scroll views keep the sideways wheel ticks they cannot scroll by, though
+        // they pass a sideways gesture on, so the pager takes those ticks before the views inside it.
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard let hit = super.hitTest(point) else { return nil }
+            guard coordinator?.swipeEnabled ?? true, let event = NSApp.currentEvent, event.type == .scrollWheel,
+                  Self.isWheel(event), Self.isSideways(event)
+            else { return hit }
+
+            return self
+        }
+
+        /// A wheel pages a step at a time; a trackpad or Magic Mouse gesture, with its phases, drags the strip.
+        static func isWheel(_ event: NSEvent) -> Bool {
+            !event.hasPreciseScrollingDeltas || (event.phase == [] && event.momentumPhase == [])
+        }
+
+        static func isSideways(_ event: NSEvent) -> Bool {
+            abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
+        }
+
+        /// A gesture drags the strip when its first event is more sideways than upright.
+        static func startsDrag(_ event: NSEvent) -> Bool {
+            event.phase == .began && isSideways(event)
+        }
+
         override func scrollWheel(with event: NSEvent) {
             guard coordinator?.swipeEnabled ?? true else { return super.scrollWheel(with: event) }
-            let horizontal = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
+            let horizontal = Self.isSideways(event)
 
-            if !event.hasPreciseScrollingDeltas || (event.phase == [] && event.momentumPhase == []) {
+            if Self.isWheel(event) {
                 if !(horizontal && wheelPage(event)) { super.scrollWheel(with: event) }
                 return
             }
 
-            guard event.phase == .began, horizontal,
-                  NSEvent.isSwipeTrackingFromScrollEventsEnabled,
-                  beginDrag()
-            else {
+            guard Self.startsDrag(event), beginDrag() else {
                 // The momentum that follows a swipe belongs to the swipe.
                 if horizontal, event.momentumPhase != [] { return }
                 return super.scrollWheel(with: event)
@@ -390,26 +432,16 @@ extension PlatformPageView: NSViewRepresentable {
             }
         }
 
-        /// Wheel paging: a burst of horizontal wheel movement flips one page, with a cooldown.
         private func wheelPage(_ event: NSEvent) -> Bool {
             guard let coordinator else { return false }
             if case .dragging = motion { return true }
 
-            let now = CACurrentMediaTime()
-            guard now - wheel.lastTrigger > 0.25 else { return true }
-
-            if now - wheel.lastEvent > 0.05 { wheel.cumulative = 0 }
-            wheel.lastEvent = now
-            wheel.cumulative += event.scrollingDeltaX
-            guard abs(wheel.cumulative) > 1 else { return true }
-
-            var forward = wheel.cumulative < 0
-            if event.isDirectionInvertedFromDevice { forward.toggle() }
-            wheel.cumulative = 0
-            wheel.lastTrigger = now
+            let step = wheel.step(deltaX: event.scrollingDeltaX, precise: event.hasPreciseScrollingDeltas,
+                                  inverted: event.isDirectionInvertedFromDevice, time: event.timestamp)
+            guard step != 0 else { return true }
 
             pages = coordinator.order()
-            let target = selected + (forward ? 1 : -1)
+            let target = selected + step
             guard pages.indices.contains(target) else { return true }
 
             selected = target
@@ -508,6 +540,13 @@ extension PlatformPageView: NSViewRepresentable {
         static var flingVelocity: CGFloat { 5 }
         static var springResponse: Double { 0.25 }
         static var sampleStep: Double { 1.0 / 240 }
+
+        // MARK: Nook's wheel constants
+
+        /// A pause longer than this ends a wheel burst.
+        static var wheelBurstGap: TimeInterval { 0.25 }
+        /// About one line of a wheel, for a precise device without gesture phases.
+        static var wheelStepPoints: CGFloat { 10 }
 
         /// Arc's end resistance: 255 points at most past either end.
         static func rubberBand(_ raw: CGFloat, max upper: CGFloat) -> CGFloat {
