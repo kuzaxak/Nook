@@ -23,6 +23,8 @@ struct SpaceSyncTests {
         var state = SpaceSyncState()
         var kept: [KeptProfile] = []
         var cursor = 0
+        /// The Mac's name its saves carry.
+        var device: String?
 
         init(_ tree: TabTree) { self.tree = tree }
 
@@ -56,7 +58,7 @@ struct SpaceSyncTests {
                 var saved: [SyncRecord] = []
                 var tags: [UUID: Data] = [:]
                 var refused = false
-                for record in state.outgoing(pending.saves, in: tree, now: now).values {
+                for record in state.outgoing(pending.saves, in: tree, now: now, device: device).values {
                     if let server = cloud.records[record.id], state.systemFields[record.id] != server.tag {
                         state.inbox.add(server.record, systemFields: server.tag)
                         refused = true

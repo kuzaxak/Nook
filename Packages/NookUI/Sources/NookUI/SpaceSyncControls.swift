@@ -15,6 +15,15 @@ import NookTabsCore
     func level(of spaceID: UUID) -> SpaceSyncLevel
     func setLevel(_ level: SpaceSyncLevel, for spaceID: UUID)
     func syncNow()
+    /// Every space record in the account's zone, with its state here.
+    var cloudSpaces: [SpaceSyncCloudSpace] { get }
+    /// The names of the Macs whose changes the account holds.
+    var cloudDevices: [String] { get }
+    /// Deletes the space's records from iCloud, so the Macs that sync it delete it, and turns
+    /// it Off here, where it stays.
+    func removeFromICloud(_ spaceID: UUID)
+    /// What the last fetch did with each record: ids, types, levels and times only.
+    func syncReport() -> String
 }
 
 extension SpaceSyncLevel {

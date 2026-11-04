@@ -38,6 +38,10 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
     public var inbox = Inbox()
     public var lastSync: Date?
     public var lastError: String?
+    /// Every record the zone holds, synced here or not. Nil in a state saved before there was
+    /// one, so the app fetches everything again to build it.
+    public var catalog: SpaceSyncCatalog?
+    public var report: SpaceSyncReport?
 
     /// Records fetched and not yet applied to the tree, kept with the engine's state so a quit
     /// in between loses none.
@@ -69,14 +73,18 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
 
     /// Sets a space's level here. Off and Favorites & Pinned forget what iCloud holds that this
     /// Mac no longer syncs, without deleting any of it. True when the level now takes in records
-    /// this Mac ignored before, so the app fetches everything again.
+    /// this Mac ignored before, so the app fetches everything again. Off is kept even for a space
+    /// with no level yet, so one in iCloud and not on this Mac stays out.
     @discardableResult
     public mutating func setLevel(_ level: SpaceSyncLevel, for spaceID: UUID, now: Date = Date()) -> Bool {
         let old = self.level(of: spaceID)
-        guard level != old else { return false }
+        guard level != old || levels[spaceID] == nil else { return false }
         levels[spaceID] = level
         levelTimes[spaceID] = SpaceSyncCodec.milliseconds(now)
-        guard level == .off else { return old == .off || level == .everything }
+        guard level == .off else {
+            catalog?.removing.remove(spaceID)
+            return old == .off || level == .everything
+        }
         let items = shadow.values.filter { $0.type == .item && $0.uuid(Key.space) == spaceID }.map(\.id)
         for id in items + [spaceID] {
             shadow[id] = nil
@@ -90,15 +98,19 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
     public mutating func fetched(_ record: SyncRecord, systemFields fields: Data?) {
         inbox.add(record, systemFields: fields)
         refetchSeen?.insert(record.id)
+        catalog = catalog ?? SpaceSyncCatalog()
+        catalog?.add(record.normalized())
     }
 
     public mutating func fetchedDeletion(_ id: UUID) {
         inbox.delete(id)
+        catalog?.remove(id)
     }
 
     /// A fetch of every record starts, as an empty engine state makes.
     public mutating func beginRefetch() {
         refetchSeen = []
+        catalog = catalog ?? SpaceSyncCatalog()
     }
 
     /// The fetch of every record finished: records iCloud did not return are no longer agreed
@@ -110,6 +122,11 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
             shadow[id] = nil
             systemFields[id] = nil
         }
+        guard var catalog else { return }
+        for id in Set(catalog.spaces.keys).union(catalog.items.keys) where !seen.contains(id) {
+            catalog.remove(id)
+        }
+        self.catalog = catalog
     }
 
     // MARK: - Sending
@@ -120,20 +137,21 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
     public func pendingChanges(in tree: TabTree) -> (saves: Set<UUID>, deletes: Set<UUID>) {
         let local = records(of: tree)
         let saves = local.compactMap { id, record in shadow[id]?.sameValues(as: record) == true ? nil : id }
-        return (Set(saves), Set(shadow.keys.filter { local[$0] == nil && isGone($0, in: tree) }))
+        let deletes = Set(shadow.keys.filter { local[$0] == nil && isGone($0, in: tree) })
+        return (Set(saves), deletes.union(catalog?.removals.subtracting(saves) ?? []))
     }
 
-    /// The records to save, each group timed after the version it replaces. One saved again
-    /// after it was deleted from iCloud is stamped `now`.
-    public func outgoing(_ ids: Set<UUID>, in tree: TabTree, now: Date = Date()) -> [UUID: SyncRecord] {
+    /// The records to save, each group timed after the version it replaces and naming the Mac
+    /// that saves it. One saved again after it was deleted from iCloud is stamped `now`.
+    public func outgoing(_ ids: Set<UUID>, in tree: TabTree, now: Date = Date(), device: String? = nil) -> [UUID: SyncRecord] {
         let stamp = SpaceSyncCodec.milliseconds(now)
         return records(of: tree).filter { ids.contains($0.key) }.mapValues { record in
-            guard shadow[record.id] == nil, deletedInCloud[record.id] != nil else {
-                return SyncMerge.outgoing(record, shadow: shadow[record.id])
+            var out = SyncMerge.outgoing(record, shadow: shadow[record.id])
+            if shadow[record.id] == nil, deletedInCloud[record.id] != nil {
+                out.times = record.times.mapValues { _ in stamp }
             }
-            var stamped = record
-            stamped.times = record.times.mapValues { _ in stamp }
-            return stamped
+            out.fields[Key.device] = device.map { .string($0) }
+            return out
         }
     }
 
@@ -143,6 +161,9 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
         for record in saved {
             deletedInCloud[record.id] = nil
             refetchSeen?.insert(record.id)
+            catalog = catalog ?? SpaceSyncCatalog()
+            catalog?.add(record.normalized())
+            catalog?.refused[record.id] = nil
             guard syncs(record) else {
                 shadow[record.id] = nil
                 systemFields[record.id] = nil
@@ -155,6 +176,7 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
             shadow[id] = nil
             systemFields[id] = nil
             deletedInCloud[id] = SpaceSyncCodec.milliseconds(now)
+            catalog?.remove(id)
         }
     }
 
@@ -190,24 +212,54 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
             shadow[remote.id] = nil
             systemFields[remote.id] = fetched.systemFields[remote.id]
         }
-        func wait(_ remote: SyncRecord) {
-            guard inbox.records.count < Self.maxWaiting else { return }
+        @discardableResult
+        func wait(_ remote: SyncRecord) -> Bool {
+            guard inbox.records.count < Self.maxWaiting else { return false }
             inbox.records[remote.id] = remote
             inbox.systemFields[remote.id] = fetched.systemFields[remote.id]
+            return true
+        }
+        var decisions = report ?? SpaceSyncReport(started: now)
+        func decide(_ remote: SyncRecord, _ outcome: SpaceSyncReport.Outcome, _ reason: SpaceSyncReport.Reason? = nil, levelHere: SpaceSyncLevel) {
+            decisions.decisions[remote.id] = SpaceSyncReport.Decision(
+                kind: remote.type == .space ? .space : .item, outcome: outcome, reason: reason,
+                space: remote.type == .item ? remote.uuid(Key.space) : nil, levelHere: levelHere,
+                recordLevel: remote.type == .space ? remote.level : nil, time: remote.latestTime)
+        }
+        func decide(deletion id: UUID, _ outcome: SpaceSyncReport.Outcome, _ reason: SpaceSyncReport.Reason? = nil, space: UUID?) {
+            decisions.decisions[id] = SpaceSyncReport.Decision(
+                kind: .deletion, outcome: outcome, reason: reason, space: space == id ? nil : space,
+                levelHere: space.map(level(of:)) ?? .off, recordLevel: nil, time: nil)
         }
         let incoming = fetched.records.values.sorted { $0.id.uuidString < $1.id.uuidString }
 
         for remote in incoming where remote.type == .space {
-            guard levels[remote.id] != .off, !SpaceRecord.isAgentIcon(remote.string(Key.icon) ?? "") else { continue }
+            let here = level(of: remote.id)
+            guard levels[remote.id] != .off else {
+                decide(remote, .skipped, .offHere, levelHere: here)
+                continue
+            }
+            guard !SpaceRecord.isAgentIcon(remote.string(Key.icon) ?? "") else {
+                decide(remote, .skipped, .agentSpace, levelHere: here)
+                continue
+            }
             if let space = working.spaces[remote.id] {
-                guard space.deletedAt == nil, let mine = local[remote.id] else { continue }
+                guard space.deletedAt == nil else {
+                    decide(remote, .skipped, .deletedHere, levelHere: here)
+                    continue
+                }
+                guard let mine = local[remote.id] else {
+                    decide(remote, .skipped, .offHere, levelHere: here)
+                    continue
+                }
                 let merged = SyncMerge.merge(local: mine, shadow: shadow[remote.id], remote: remote)
                 working.spaces[remote.id] = merged.applied(to: space)
                 levels[remote.id] = merged.level
             } else {
                 working.spaces[remote.id] = arriving(remote, in: working, kept: kept)
-                levels[remote.id] = remote.level
+                levels[remote.id] = levels[remote.id] ?? remote.level
             }
+            decide(remote, .applied, levelHere: here)
             keep(remote)
         }
 
@@ -217,22 +269,27 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
             let mine = local[id]
             let merged = mine.map { SyncMerge.merge(local: $0, shadow: shadow[id], remote: remote) } ?? remote
             guard let spaceID = merged.uuid(Key.space), let section = merged.section else {
+                decide(remote, .skipped, .unsupported, levelHere: .off)
                 forget(id)
                 continue
             }
+            let here = level(of: spaceID)
             if working.spaces[spaceID] == nil, levels[spaceID] != .off {
-                wait(remote)
+                let waits = wait(remote)
+                decide(remote, waits ? .waiting : .skipped, waits ? nil : .inboxFull, levelHere: here)
                 continue
             }
             let target = working.space(spaceID)
             let next = merged.item(existing: existing)
-            if let target, !target.isAgent, level(of: spaceID).syncs(section), let next {
+            if let target, !target.isAgent, here.syncs(section), let next {
                 if mine == nil {
                     if shadow[id] != nil {
+                        decide(remote, .skipped, .deletedHere, levelHere: here)
                         if !isGone(id, in: working) { forget(id) }
                         continue
                     }
                     if let existing, SpaceSyncCodec.milliseconds(existing.modifiedAt) >= remote.latestTime {
+                        decide(remote, .skipped, .newerHere, levelHere: here)
                         forget(id)
                         continue
                     }
@@ -240,10 +297,12 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
                 working.items[id] = next
                 positionTimes[id] = merged.times["position"] ?? remote.times["position"] ?? 0
                 touched.append(id)
+                decide(remote, .applied, levelHere: here)
                 keep(remote)
                 continue
             }
             guard let mine, var moved = next, let existing else {
+                decide(remote, .skipped, skipReason(mine: mine, next: next, target: target, spaceID: spaceID, in: working), levelHere: here)
                 if mine != nil { outrank(remote) } else { forget(id) }
                 continue
             }
@@ -251,6 +310,7 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
                 moved.parent = existing.parent
                 moved.order = existing.order
                 working.items[id] = moved
+                decide(remote, .applied, levelHere: here)
                 keep(remote)
             } else if let target, !target.isAgent {
                 if !(working.spaceID(of: id) == spaceID && moved.parent == existing.parent) {
@@ -260,8 +320,10 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
                 }
                 moved.modifiedAt = now
                 working.items[id] = moved
+                decide(remote, .applied, levelHere: here)
                 forget(id)
             } else {
+                decide(remote, .skipped, .newerHere, levelHere: here)
                 outrank(remote)
             }
         }
@@ -269,23 +331,39 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
         let deletions = fetched.deletions.sorted { $0.uuidString < $1.uuidString }
         for id in deletions where working.spaces[id] == nil {
             let lastAgreed = shadow[id]?.latestTime
+            let space = (shadow[id] ?? local[id])?.uuid(Key.space)
             forget(id)
-            guard deletedInCloud[id] == nil else { continue }
+            guard deletedInCloud[id] == nil else {
+                decide(deletion: id, .skipped, .alreadyDeleted, space: space)
+                continue
+            }
             deletedInCloud[id] = SpaceSyncCodec.milliseconds(now)
-            guard local[id] != nil, var item = working.item(id), syncs(id, in: working) else { continue }
+            guard local[id] != nil, var item = working.item(id), syncs(id, in: working) else {
+                decide(deletion: id, .skipped, .notHere, space: space)
+                continue
+            }
             item.deletedAt = now
             item.modifiedAt = lastAgreed.map(SpaceSyncCodec.date) ?? item.modifiedAt
             working.items[id] = item
+            decide(deletion: id, .deleted, space: space)
         }
         for id in deletions where working.spaces[id] != nil {
             forget(id)
-            guard deletedInCloud[id] == nil else { continue }
+            guard deletedInCloud[id] == nil else {
+                decide(deletion: id, .skipped, .alreadyDeleted, space: id)
+                continue
+            }
             deletedInCloud[id] = SpaceSyncCodec.milliseconds(now)
-            guard working.space(id) != nil, levels[id].map({ $0 != .off }) == true else { continue }
+            guard working.space(id) != nil, levels[id].map({ $0 != .off }) == true else {
+                decide(deletion: id, .skipped, .offHere, space: id)
+                continue
+            }
+            decide(deletion: id, .deleted, space: id)
             result.deletedSpaces.append(id)
             levels[id] = nil
             levelTimes[id] = nil
         }
+        report = decisions
 
         func root(of id: UUID) -> Parent? {
             guard let record = shadow[id] ?? local[id], let spaceID = record.uuid(Key.space), let section = record.section,
@@ -321,6 +399,15 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
         for (id, item) in working.items where tree.items[id] != item { result.change.items[id] = .some(item) }
         for id in tree.items.keys where working.items[id] == nil { result.change.items[id] = .some(nil) }
         return result
+    }
+
+    /// Why an item that cannot go where its record puts it is left out.
+    private func skipReason(mine: SyncRecord?, next: Item?, target: SpaceRecord?, spaceID: UUID, in tree: TabTree) -> SpaceSyncReport.Reason {
+        if mine != nil { return .newerHere }
+        if next == nil { return .unsupported }
+        if target?.isAgent == true { return .agentSpace }
+        if target == nil { return tree.spaces[spaceID]?.deletedAt != nil ? .deletedHere : .offHere }
+        return level(of: spaceID) == .off ? .offHere : .sectionOffHere
     }
 
     /// A space from another Mac, in the profile with its profile's name, or a new one by that name.
@@ -406,6 +493,7 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
         forgetRecords()
         deletedInCloud = [:]
         refetchSeen = nil
+        catalog = SpaceSyncCatalog()
         guard !reuploading else { return }
         levels = [:]
         levelTimes = [:]
@@ -415,6 +503,8 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
     /// stopped syncing here without being deleted, and drops deletions older than a tombstone.
     public mutating func prune(against tree: TabTree, now: Date = Date()) {
         for (id, level) in levels where level != .off && tree.space(id) == nil {
+            let arriving = tree.spaces[id] == nil && catalog?.spaces[id] != nil
+            guard !arriving else { continue }
             levels[id] = nil
             levelTimes[id] = nil
         }

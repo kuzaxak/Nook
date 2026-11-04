@@ -17,6 +17,7 @@ import NookUI
 import NookWeb
 import OSLog
 import Security
+import SystemConfiguration
 
 @MainActor
 @Observable
@@ -24,6 +25,8 @@ final class SpaceSyncManager: SpaceSyncControls {
     static let zoneID = CKRecordZone.ID(zoneName: "Spaces", ownerName: CKCurrentUserDefaultName)
 
     private(set) var status: SpaceSyncStatus
+    private(set) var cloudSpaces: [SpaceSyncCloudSpace] = []
+    private(set) var cloudDevices: [String] = []
     private var levels: [UUID: SpaceSyncLevel] = [:]
 
     @ObservationIgnored private let tabs: TabsController
@@ -39,6 +42,8 @@ final class SpaceSyncManager: SpaceSyncControls {
     /// Items already reported as too large for iCloud.
     @ObservationIgnored private var reportedTooLarge: Set<UUID> = []
     @ObservationIgnored private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Nook", category: "SpaceSync")
+    /// This Mac's name as Sharing settings give it, which every save carries.
+    @ObservationIgnored private let deviceName = SCDynamicStoreCopyComputerName(nil, nil) as String? ?? "Mac"
 
     init(tabs: TabsController) {
         self.tabs = tabs
@@ -81,10 +86,22 @@ final class SpaceSyncManager: SpaceSyncControls {
     func level(of spaceID: UUID) -> SpaceSyncLevel { levels[spaceID] ?? .off }
 
     func setLevel(_ level: SpaceSyncLevel, for spaceID: UUID) {
-        guard container != nil, tabs.tree.space(spaceID)?.isAgent == false else { return }
+        let inICloud = cloudSpaces.contains { $0.id == spaceID && $0.canSyncHere }
+        guard container != nil, tabs.tree.space(spaceID).map({ !$0.isAgent }) ?? inICloud else { return }
         if state.setLevel(level, for: spaceID) { restartEngine() }
         queuePending()
         scheduleSave()
+    }
+
+    func removeFromICloud(_ spaceID: UUID) {
+        guard container != nil, state.catalog?.spaces[spaceID] != nil else { return }
+        state.removeFromICloud(spaceID)
+        queuePending()
+        scheduleSave()
+    }
+
+    func syncReport() -> String {
+        state.reportText(account: state.account)
     }
 
     func syncNow() {
@@ -155,7 +172,8 @@ final class SpaceSyncManager: SpaceSyncControls {
             registeredForPushes = true
         }
         guard engine == nil, let container else { return publish() }
-        let serialization = state.engine.flatMap { try? JSONDecoder().decode(CKSyncEngine.State.Serialization.self, from: $0) }
+        let serialization = state.catalog == nil ? nil
+            : state.engine.flatMap { try? JSONDecoder().decode(CKSyncEngine.State.Serialization.self, from: $0) }
         let engine = CKSyncEngine(CKSyncEngine.Configuration(
             database: container.privateCloudDatabase, stateSerialization: serialization, delegate: self))
         if serialization == nil {
@@ -277,6 +295,7 @@ final class SpaceSyncManager: SpaceSyncControls {
             case .batchRequestFailed:
                 resend.insert(id)
             default:
+                state.refused(id, code: failure.error.code.rawValue)
                 note(failure.error)
             }
         }
@@ -310,6 +329,12 @@ final class SpaceSyncManager: SpaceSyncControls {
         if levels != state.levels { levels = state.levels }
         if status.lastSync != state.lastSync { status.lastSync = state.lastSync }
         if status.lastError != state.lastError { status.lastError = state.lastError }
+        let accountID = state.account.map(SpaceSyncCodec.accountID)
+        if status.accountID != accountID { status.accountID = accountID }
+        let spaces = state.cloudSpaces(in: tabs.tree)
+        if cloudSpaces != spaces { cloudSpaces = spaces }
+        let devices = state.cloudDevices
+        if cloudDevices != devices { cloudDevices = devices }
     }
 
     private func note(_ error: Error) {
@@ -409,6 +434,7 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
             fetchFailed = false
             status.isSyncing = true
             state.lastError = nil
+            state.beginReport()
         case .willSendChanges:
             status.isSyncing = true
             state.lastError = nil
@@ -435,7 +461,7 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
             return UUID(uuidString: recordID.recordName)
         })
         var records: [String: CKRecord] = [:]
-        for (id, record) in state.outgoing(ids, in: tabs.tree, now: Date()) {
+        for (id, record) in state.outgoing(ids, in: tabs.tree, now: Date(), device: deviceName) {
             records[id.uuidString] = record.record(in: Self.zoneID, systemFields: state.systemFields[id])
         }
         let gone = changes.filter { change in

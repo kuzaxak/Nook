@@ -83,6 +83,8 @@ public struct SyncRecord: Codable, Equatable, Sendable {
         /// A tab's page title or a folder's name.
         public static let title = "title"
         public static let customTitle = "customTitle"
+        /// The name of the Mac that saved the record, for Settings' list of what iCloud holds.
+        public static let device = "device"
     }
 
     public var type: RecordType
@@ -115,12 +117,13 @@ extension SyncRecord.RecordType {
     }
 
     public var keys: [String] {
-        groups.values.flatMap { $0 } + (self == .space ? [Key.profile] : [])
+        groups.values.flatMap { $0 } + (self == .space ? [Key.profile] : []) + [Key.device]
     }
 
-    /// Fields iCloud encrypts with the person's own keys: names, addresses, titles and looks.
+    /// Fields iCloud encrypts with the person's own keys: names, addresses, titles, looks and
+    /// the Mac's name.
     public var encryptedKeys: Set<String> {
-        Set(keys).intersection([Key.name, Key.icon, Key.accent, Key.theme, Key.profile, Key.url, Key.title, Key.customTitle])
+        Set(keys).intersection([Key.name, Key.icon, Key.accent, Key.theme, Key.profile, Key.url, Key.title, Key.customTitle, Key.device])
     }
 }
 
@@ -172,6 +175,12 @@ public enum SpaceSyncCodec {
     public static func date(_ milliseconds: Int64) -> Date {
         Date(timeIntervalSince1970: TimeInterval(milliseconds) / 1000)
     }
+
+    /// The account as Settings and the sync report name it: the end of its CloudKit user record
+    /// name, which stays the same for the account on every Mac. CloudKit gives no email address.
+    public static func accountID(_ userRecordName: String) -> String {
+        String(userRecordName.suffix(6))
+    }
 }
 
 /// Whether this Mac can sync, as Settings shows it.
@@ -206,11 +215,14 @@ public struct SpaceSyncStatus: Equatable, Sendable {
     public var lastSync: Date?
     public var lastError: String?
     public var isSyncing = false
+    /// The iCloud account this Mac syncs with, as `SpaceSyncCodec.accountID` gives it.
+    public var accountID: String?
 
-    public init(availability: SpaceSyncAvailability, lastSync: Date? = nil, lastError: String? = nil, isSyncing: Bool = false) {
+    public init(availability: SpaceSyncAvailability, lastSync: Date? = nil, lastError: String? = nil, isSyncing: Bool = false, accountID: String? = nil) {
         self.availability = availability
         self.lastSync = lastSync
         self.lastError = lastError
         self.isSyncing = isSyncing
+        self.accountID = accountID
     }
 }

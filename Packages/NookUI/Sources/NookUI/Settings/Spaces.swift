@@ -11,6 +11,9 @@ import NookTabsCore
 import SwiftUI
 import NookDesign
 import NookWeb
+#if os(macOS)
+import AppKit
+#endif
 
 public struct SpacesSettingsView: View {
     @Environment(TabsController.self) private var tabs
@@ -20,6 +23,8 @@ public struct SpacesSettingsView: View {
     @State private var showIconPickerFor: UUID?
     /// A move that would leave its profile with no space, waiting on keep, delete or cancel.
     @State private var pendingMove: (space: UUID, to: UUID?, profile: String)?
+    /// A space in iCloud waiting on Remove or Cancel.
+    @State private var pendingRemoval: SpaceSyncCloudSpace?
 
     public init() {}
 
@@ -56,8 +61,22 @@ public struct SpacesSettingsView: View {
             if let status = actions?.spaceSync?.status {
                 syncSection(status)
             }
+            if let sync, sync.status.availability == .available {
+                cloudSection(sync)
+            }
         }
         .formStyle(.grouped)
+        .alert(
+            "Remove \u{201C}\(pendingRemoval?.name ?? "")\u{201D} from iCloud?",
+            isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } })
+        ) {
+            Button("Remove from iCloud", role: .destructive) {
+                if let space = pendingRemoval { sync?.removeFromICloud(space.id) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Its \(pendingRemoval?.itemCount ?? 0) favorites, pinned tabs, folders and tabs are deleted from iCloud, and every Mac that syncs it deletes it. On this Mac it stays, turned Off.")
+        }
         .alert(
             "Keep the \u{201C}\(pendingMove?.profile ?? "")\u{201D} profile?",
             isPresented: Binding(get: { pendingMove != nil }, set: { if !$0 { pendingMove = nil } })
@@ -186,7 +205,18 @@ public struct SpacesSettingsView: View {
                         .disabled(status.availability != .available)
                 }
             }
+            if status.availability != .needsSignedBuild {
+                Text("Spaces sync between Macs signed in to the same iCloud account (System Settings \u{2192} your name).")
+                    .font(NookDesign.Font.caption)
+                    .foregroundStyle(.secondary)
+            }
             if status.availability == .available {
+                LabeledContent("Account ID") {
+                    Text(status.accountID ?? "Checking\u{2026}")
+                        .font(NookDesign.Font.mono)
+                        .textSelection(.enabled)
+                }
+                .help("The end of this Mac's iCloud account identifier. Macs that sync with each other show the same one.")
                 LabeledContent("Last synced") {
                     if let date = status.lastSync {
                         Text(date, format: .relative(presentation: .named))
@@ -200,6 +230,18 @@ public struct SpacesSettingsView: View {
                     Text(error).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
                 }
             }
+            #if os(macOS)
+            if let sync, status.availability != .needsSignedBuild {
+                HStack {
+                    Spacer()
+                    Button("Copy Sync Report") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(sync.syncReport(), forType: .string)
+                    }
+                    .help("Copies what the last sync did with each record, by id, without names, addresses or titles")
+                }
+            }
+            #endif
         } header: {
             Text("iCloud Sync")
         } footer: {
@@ -207,6 +249,78 @@ public struct SpacesSettingsView: View {
                  ? "This copy of Nook is not signed for iCloud, so its spaces stay on this Mac."
                  : "Pick what each space syncs to your other Macs with the cloud beside it. Favorites & Pinned sends its favorites, pinned tabs and folders; Everything also sends its open tabs. Logins, cookies, history, site data, Boosts, private windows and the Agent space never sync. Off stops this Mac syncing a space and leaves it in iCloud; deleting a space deletes it from iCloud.")
                 .settingsFooter()
+        }
+    }
+
+    // MARK: - In iCloud
+
+    private func cloudSection(_ sync: any SpaceSyncControls) -> some View {
+        Section {
+            if sync.cloudSpaces.isEmpty {
+                Text("No spaces in iCloud yet")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(sync.cloudSpaces) { space in
+                cloudRow(space, sync)
+            }
+        } header: {
+            Text("In iCloud")
+        } footer: {
+            Text(sync.cloudDevices.isEmpty
+                 ? "Every space this iCloud account holds, from any Mac."
+                 : "Changes in this iCloud account come from: \(sync.cloudDevices.formatted(.list(type: .and))).")
+                .settingsFooter()
+        }
+    }
+
+    private func cloudRow(_ space: SpaceSyncCloudSpace, _ sync: any SpaceSyncControls) -> some View {
+        HStack(spacing: NookDesign.Spacing.md) {
+            VStack(alignment: .leading, spacing: NookDesign.Spacing.xs) {
+                Text(space.name.isEmpty ? "Untitled Space" : space.name)
+                Text(Self.details(space))
+                    .font(NookDesign.Font.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(Self.describe(space.state))
+                .foregroundStyle(.secondary)
+                .help(Self.describe(space.state))
+            Menu {
+                if space.canSyncHere {
+                    ForEach([SpaceSyncLevel.pinned, .everything], id: \.self) { level in
+                        Button("Sync \(level.title) Here") { sync.setLevel(level, for: space.id) }
+                            .disabled(space.state == .syncing(level))
+                    }
+                }
+                Button("Stop Syncing Here") { sync.setLevel(.off, for: space.id) }
+                    .disabled(space.state == .offHere)
+                Divider()
+                Button("Remove from iCloud\u{2026}", role: .destructive) { pendingRemoval = space }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .accessibilityLabel("Actions for \(space.name) in iCloud")
+        }
+    }
+
+    /// Profile, item count and the last change, with the Mac that made it.
+    private static func details(_ space: SpaceSyncCloudSpace) -> String {
+        var parts: [String] = []
+        if !space.profile.isEmpty { parts.append(space.profile) }
+        parts.append(space.itemCount == 1 ? "1 item" : "\(space.itemCount) items")
+        let when = space.changedAt.formatted(.relative(presentation: .named))
+        parts.append(space.device.map { "changed \(when) on \($0)" } ?? "changed \(when)")
+        return parts.joined(separator: " \u{00B7} ")
+    }
+
+    private static func describe(_ state: SpaceSyncCloudSpace.State) -> String {
+        switch state {
+        case .syncing(let level): return "Syncing \(level.title)"
+        case .offHere: return "Off on this Mac"
+        case .arriving: return "Arriving"
+        case .error(let reason): return reason
         }
     }
 

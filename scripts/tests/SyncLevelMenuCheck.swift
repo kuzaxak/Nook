@@ -31,6 +31,10 @@ private final class Sync: SpaceSyncControls {
         levels[spaceID] = level
     }
     func syncNow() {}
+    var cloudSpaces: [SpaceSyncCloudSpace] = []
+    var cloudDevices: [String] = []
+    func removeFromICloud(_ spaceID: UUID) {}
+    func syncReport() -> String { "" }
 }
 
 /// SettingsWindow's switch style.
