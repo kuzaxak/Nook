@@ -39,6 +39,13 @@ public struct SpacesSettingsView: View {
                 ForEach(spaces) { space in
                     row(space)
                 }
+                HStack {
+                    Button("New Space…", systemImage: "plus", action: showCreateDialog)
+                    if actions?.supportsSpaceFiles == true {
+                        Button("Import Space…", systemImage: "square.and.arrow.down") { actions?.importSpace() }
+                    }
+                    Spacer()
+                }
             } header: {
                 Text("Spaces")
             } footer: {
@@ -48,13 +55,6 @@ public struct SpacesSettingsView: View {
 
             if let status = actions?.spaceSync?.status {
                 syncSection(status)
-            }
-
-            Section {
-                Button("New Space…", systemImage: "plus", action: showCreateDialog)
-                if actions?.supportsSpaceFiles == true {
-                    Button("Import Space…", systemImage: "square.and.arrow.down") { actions?.importSpace() }
-                }
             }
         }
         .formStyle(.grouped)
