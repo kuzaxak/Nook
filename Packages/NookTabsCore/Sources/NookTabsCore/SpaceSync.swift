@@ -85,6 +85,9 @@ public struct SyncRecord: Codable, Equatable, Sendable {
         public static let customTitle = "customTitle"
         /// The name of the Mac that saved the record, for Settings' list of what iCloud holds.
         public static let device = "device"
+        /// On a space record in an account's own zone: the CloudKit user record name of the
+        /// account whose shared zone a Mac moved the space into.
+        public static let movedTo = "movedTo"
     }
 
     public var type: RecordType
@@ -120,6 +123,10 @@ extension SyncRecord.RecordType {
         groups.values.flatMap { $0 } + (self == .space ? [Key.profile] : []) + [Key.device]
     }
 
+    /// Fields a save sets but never clears, so a Mac that does not know of them, or did not
+    /// write them, leaves them as they are.
+    public var markerKeys: [String] { self == .space ? [Key.movedTo] : [] }
+
     /// Fields iCloud encrypts with the person's own keys: names, addresses, titles, looks and
     /// the Mac's name.
     public var encryptedKeys: Set<String> {
@@ -139,6 +146,9 @@ extension SyncRecord {
     }
 
     public func uuid(_ key: String) -> UUID? { string(key).flatMap(UUID.init(uuidString:)) }
+
+    /// The owner of the shared zone a Mac moved this space into, from its record in the old zone.
+    var movedTo: String? { string(Key.movedTo).flatMap { $0.isEmpty ? nil : $0 } }
 
     var latestTime: Int64 { times.values.max() ?? 0 }
 
@@ -222,6 +232,8 @@ public struct SpaceSyncStatus: Equatable, Sendable {
     public var mode: SpaceSyncMode = .own
     /// The people this account's zone is shared with, its owner left out.
     public var participants: [SpaceSyncParticipant] = []
+    /// The old copies of spaces this Mac moved into the zone it joined.
+    public var oldCopies: SpaceSyncLeftBehind?
 
     public init(availability: SpaceSyncAvailability, lastSync: Date? = nil, lastError: String? = nil, isSyncing: Bool = false, accountID: String? = nil) {
         self.availability = availability

@@ -36,8 +36,6 @@ final class SpaceSyncManager: SpaceSyncControls {
     @ObservationIgnored private var queueTask: Task<Void, Never>?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var registeredForPushes = false
-    /// Records of spaces moved into a joined zone are being deleted from this account's zone.
-    @ObservationIgnored private var deletingPrivate = false
     @ObservationIgnored private var sharingPicker: NSSharingServicePicker?
     /// A zone fetch in the current fetch failed, so a fetch of everything is not complete yet.
     @ObservationIgnored private var fetchFailed = false
@@ -168,9 +166,8 @@ final class SpaceSyncManager: SpaceSyncControls {
                     if metadata.participantStatus != .accepted {
                         _ = try await container.accept([metadata])[metadata]?.get()
                     }
-                    state.join(owner: owner, ownerName: metadata.ownerIdentity.nameComponents.flatMap(Self.name))
-                    restartEngine()
-                    scheduleSave()
+                    try await markMoved(state.markedOnMove(in: tabs.tree), to: owner, in: container)
+                    join(owner: owner, ownerName: metadata.ownerIdentity.nameComponents.flatMap(Self.name), moving: true)
                 } catch {
                     note(error)
                 }
@@ -200,6 +197,67 @@ final class SpaceSyncManager: SpaceSyncControls {
             state.leaveSharedZone()
             restartEngine()
             scheduleSave()
+        }
+    }
+
+    func removeOldCopies() {
+        guard let container, state.database == .shared else { return }
+        let ids = state.oldCopyRecords
+        guard !ids.isEmpty else { return }
+        let zone = CKRecordZone.ID(zoneName: SpaceSyncAvailability.zoneName, ownerName: CKCurrentUserDefaultName)
+        Task {
+            do {
+                let results = try await container.privateCloudDatabase.modifyRecords(
+                    saving: [], deleting: ids.map { CKRecord.ID(recordName: $0.uuidString, zoneID: zone) }, atomically: false).deleteResults
+                var removed: Set<UUID> = []
+                for (recordID, result) in results {
+                    guard let id = UUID(uuidString: recordID.recordName) else { continue }
+                    switch result {
+                    case .success:
+                        removed.insert(id)
+                    case .failure(let error as CKError) where error.code == .unknownItem:
+                        removed.insert(id)
+                    case .failure(let error):
+                        note(error)
+                    }
+                }
+                state.removedOldCopies(removed)
+            } catch let error as CKError where error.code == .zoneNotFound {
+                state.removedOldCopies(ids)
+            } catch {
+                note(error)
+            }
+            publish()
+            scheduleSave()
+        }
+    }
+
+    private func join(owner: String, ownerName: String?, moving: Bool) {
+        apply(state.join(owner: owner, ownerName: ownerName, moving: moving, tree: tabs.tree, kept: tabs.device.keptProfiles ?? []))
+        restartEngine()
+        scheduleSave()
+    }
+
+    /// Marks each moved space's record in this account's zone with the owner of the zone it moves
+    /// into, so this account's other Macs turn the space Off and keep it.
+    private func markMoved(_ ids: Set<UUID>, to owner: String, in container: CKContainer) async throws {
+        guard !ids.isEmpty else { return }
+        let database = container.privateCloudDatabase
+        let zone = CKRecordZone.ID(zoneName: SpaceSyncAvailability.zoneName, ownerName: CKCurrentUserDefaultName)
+        var marked: [CKRecord] = []
+        for (_, result) in try await database.records(for: ids.map { CKRecord.ID(recordName: $0.uuidString, zoneID: zone) }) {
+            switch result {
+            case .success(let record):
+                record[SyncRecord.Key.movedTo] = owner as NSString
+                marked.append(record)
+            case .failure(let error as CKError) where error.code == .unknownItem:
+                continue
+            case .failure(let error):
+                throw error
+            }
+        }
+        for (_, result) in try await database.modifyRecords(saving: marked, deleting: [], atomically: false).saveResults {
+            _ = try result.get()
         }
     }
 
@@ -270,40 +328,6 @@ final class SpaceSyncManager: SpaceSyncControls {
         case .accepted: return .accepted
         case .removed: return .removed
         default: return .unknown
-        }
-    }
-
-    /// Once the joined zone holds a moved space's records, deletes them from this account's zone.
-    private func deleteMovedPrivateRecords() {
-        guard let container, !deletingPrivate else { return }
-        let ids = state.privateDeletions(in: tabs.tree)
-        guard !ids.isEmpty else { return }
-        deletingPrivate = true
-        let zone = CKRecordZone.ID(zoneName: SpaceSyncAvailability.zoneName, ownerName: CKCurrentUserDefaultName)
-        Task {
-            defer { deletingPrivate = false }
-            do {
-                let results = try await container.privateCloudDatabase.modifyRecords(
-                    saving: [], deleting: ids.map { CKRecord.ID(recordName: $0.uuidString, zoneID: zone) }, atomically: false).deleteResults
-                var deleted: Set<UUID> = []
-                for (recordID, result) in results {
-                    guard let id = UUID(uuidString: recordID.recordName) else { continue }
-                    switch result {
-                    case .success:
-                        deleted.insert(id)
-                    case .failure(let error as CKError) where error.code == .unknownItem:
-                        deleted.insert(id)
-                    case .failure(let error):
-                        note(error)
-                    }
-                }
-                state.deletedFromPrivateZone(deleted)
-            } catch let error as CKError where error.code == .zoneNotFound {
-                state.deletedFromPrivateZone(ids)
-            } catch {
-                note(error)
-            }
-            scheduleSave()
         }
     }
 
@@ -464,7 +488,10 @@ final class SpaceSyncManager: SpaceSyncControls {
     /// state on disk is never ahead of the tabs.
     private func applyInbox() {
         guard !state.inbox.isEmpty else { return }
-        let inbound = state.receive(into: tabs.tree, kept: tabs.device.keptProfiles ?? [])
+        apply(state.receive(into: tabs.tree, kept: tabs.device.keptProfiles ?? []))
+    }
+
+    private func apply(_ inbound: SpaceSyncInbound) {
         if !inbound.change.isEmpty { tabs.apply(inbound.change) }
         for id in inbound.deletedSpaces {
             tabs.deleteSpace(id, keepingLeftProfile: true)
@@ -514,7 +541,6 @@ final class SpaceSyncManager: SpaceSyncControls {
         state.didSend(saved: saved, systemFields: fields, deleted: deleted)
         applyInbox()
         queuePending(only: resend)
-        deleteMovedPrivateRecords()
         scheduleSave()
     }
 
@@ -552,6 +578,7 @@ final class SpaceSyncManager: SpaceSyncControls {
         if status.mode != state.mode { status.mode = state.mode }
         let participants = state.sharing?.participants?.filter { !$0.isOwner } ?? []
         if status.participants != participants { status.participants = participants }
+        if status.oldCopies != state.oldCopies { status.oldCopies = state.oldCopies }
     }
 
     private func note(_ error: Error) {
@@ -655,7 +682,6 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
             applyInbox()
             if !fetchFailed { state.endRefetch() }
             queuePending()
-            deleteMovedPrivateRecords()
             finished()
         case .didSendChanges:
             finished()

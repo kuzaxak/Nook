@@ -60,6 +60,8 @@ public struct SpaceSyncCloudSpace: Identifiable, Equatable, Sendable {
         case offHere
         /// Fetched, or asked for, and not in the tree yet.
         case arriving
+        /// Moved by a Mac on this account into another account's shared zone; Off here.
+        case moved
         case error(String)
     }
 
@@ -99,6 +101,9 @@ public struct SpaceSyncReport: Codable, Equatable, Sendable {
         case alreadyDeleted
         /// A deletion of something this Mac does not sync.
         case notHere
+        /// Another Mac on this account moved the space into a shared zone: it turns Off here,
+        /// and deletions of its old copy leave it here.
+        case movedAway
     }
 
     public struct Decision: Codable, Equatable, Sendable {
@@ -143,6 +148,8 @@ extension SpaceSyncState {
             let refused = ([record.id] + own.map(\.id)).compactMap { catalog.refused[$0] }.first
             if SpaceRecord.isAgentIcon(record.string(Key.icon) ?? "") {
                 state = .error("The Agent space does not sync")
+            } else if record.movedTo != nil, level == .off {
+                state = .moved
             } else if catalog.removing.contains(record.id) || local?.deletedAt != nil || levels[record.id] == .off
                         || (local != nil && level == .off) {
                 state = .offHere
@@ -199,8 +206,11 @@ extension SpaceSyncState {
         case .sharing(let people): lines.append("Zone: this account's, shared, participants: \(people)")
         case .joined: lines.append("Zone: joined, owner account ID \(zoneOwner.map(SpaceSyncCodec.accountID) ?? "unknown")")
         }
-        if let moving = sharing?.moving, !moving.isEmpty {
-            lines.append("Moving from this account's zone: \(moving.count) spaces, \(moving.values.map(\.count).reduce(0, +)) records left there")
+        if let copies = sharing?.oldCopies, !copies.isEmpty {
+            lines.append("Old copies in this account's zone: \(copies.count) spaces, \(oldCopyRecords.count) records")
+        }
+        if let moved = sharing?.moved, !moved.isEmpty {
+            lines.append("Moved to a shared zone by another Mac: " + moved.keys.map(\.uuidString).sorted().joined(separator: ", "))
         }
         if let catalog {
             lines.append("In iCloud: \(catalog.spaces.count) spaces, \(catalog.items.count) items, from \(cloudDevices.count) Macs")

@@ -17,7 +17,7 @@ struct SpaceSyncSharingTests {
 
     private func later(_ seconds: TimeInterval) -> Date { fixedNow.addingTimeInterval(seconds) }
 
-    /// The owner's zone, which it shares, and the guest's own zone.
+    /// The owner's zone, which it shares, and the guest account's own zone.
     struct Zones {
         var owner = Cloud()
         var guest = Cloud()
@@ -31,19 +31,22 @@ struct SpaceSyncSharingTests {
             }
         }
 
-        /// Deletes what the guest may now delete from its own zone, as the app does after a send.
-        mutating func deletePrivate(_ mac: inout Mac) {
-            let ids = mac.state.privateDeletions(in: mac.tree)
-            for id in ids {
-                guest.records[id] = nil
+        /// Writes the move marker on these space records in the guest's zone, as the app does
+        /// before a Mac joins and moves its spaces.
+        mutating func mark(_ spaces: Set<UUID>, movedTo owner: String) {
+            for id in spaces {
+                guard var entry = guest.records[id] else { continue }
+                entry.record.fields[Key.movedTo] = .string(owner)
+                entry.tag = Data("\(guest.nextTag)".utf8)
+                guest.nextTag += 1
+                guest.records[id] = entry
                 guest.journal.append(id)
             }
-            mac.state.deletedFromPrivateZone(ids)
         }
     }
 
-    /// The owner syncs Work in its zone and shares it; the guest syncs its own Side space in its
-    /// own zone.
+    /// The owner syncs Work in its zone and shares it; the guest Mac ("MacBook") syncs its own
+    /// Side space in the guest account's zone.
     private func setUp() throws -> (owner: Mac, guest: Mac, work: Work, side: UUID, sideTab: UUID, zones: Zones) {
         let work = try Work()
         var zones = Zones()
@@ -70,13 +73,25 @@ struct SpaceSyncSharingTests {
         return (owner, guest, work, side, sideTab, zones)
     }
 
-    /// The guest joins the owner's zone, as accepting the owner's share does, and fetches
-    /// everything there.
-    private func join(_ guest: inout Mac, _ zones: inout Zones, now: Date) {
+    /// A second Mac ("Mac mini") on the guest's account, which takes in Side.
+    private func secondGuestMac(_ zones: inout Zones) -> Mac {
+        var mac = Mac(TabTree.firstLaunch(homeURL: url("home"), now: fixedNow))
+        mac.device = "Mac mini"
+        mac.state.account = Self.guestAccount
+        zones.sync(&mac, now: fixedNow)
+        return mac
+    }
+
+    /// The guest joins the owner's zone as the app does once the person agrees: it marks the
+    /// spaces it moves in its own zone, joins, writes what was still waiting, and fetches
+    /// everything in the owner's zone.
+    private func join(_ guest: inout Mac, _ zones: inout Zones, moving: Bool = true, now: Date) {
         let decision = guest.state.acceptance(containerID: SpaceSyncAvailability.containerID, zoneName: SpaceSyncAvailability.zoneName,
                                               zoneOwner: Self.ownerAccount, isOwner: false)
         #expect(decision == .join(owner: Self.ownerAccount))
-        guest.state.join(owner: Self.ownerAccount, ownerName: "Vladimir")
+        if moving { zones.mark(guest.state.markedOnMove(in: guest.tree), movedTo: Self.ownerAccount) }
+        let inbound = guest.state.join(owner: Self.ownerAccount, ownerName: "Vladimir", moving: moving, tree: guest.tree, now: now)
+        guest.tree.apply(inbound.change)
         guest.cursor = 0
         guest.state.beginRefetch()
     }
@@ -117,19 +132,17 @@ struct SpaceSyncSharingTests {
 
     // MARK: - Joining
 
-    @Test func joiningMovesTheGuestsSpacesInAndBringsTheOwnersSpacesBothWays() throws {
+    @Test func joiningMovesTheGuestsSpacesInBothWaysAndDeletesNothingFromTheGuestsZone() throws {
         var (owner, guest, work, side, sideTab, zones) = try setUp()
         join(&guest, &zones, now: later(10))
         zones.sync(&guest, now: later(10))
         guest.state.endRefetch()
-        zones.deletePrivate(&guest)
 
         #expect(guest.tree.space(work.space)?.name == "Work")
         #expect(zones.owner.records[side] != nil)
         #expect(zones.owner.records[sideTab] != nil)
-        #expect(zones.guest.records[side] == nil)
-        #expect(zones.guest.records[sideTab] == nil)
-        #expect(guest.state.sharing?.moving.isEmpty == true)
+        #expect(zones.guest.records[side]?.record.string(Key.movedTo) == Self.ownerAccount)
+        #expect(zones.guest.records[sideTab] != nil)
 
         owner.sync(&zones.owner, now: later(20))
         #expect(owner.tree.space(side)?.name == "Side")
@@ -148,36 +161,87 @@ struct SpaceSyncSharingTests {
         #expect(guest.state.cloudDevices == ["iMac", "MacBook"])
     }
 
-    @Test func aSharedUploadThatStopsMidwayDeletesNothingFromTheGuestsZone() throws {
+    @Test func anotherMacOnTheGuestsAccountTurnsAMovedSpaceOffAndKeepsIt() throws {
         var (_, guest, _, side, sideTab, zones) = try setUp()
+        var mini = secondGuestMac(&zones)
+        #expect(mini.tree.item(sideTab) != nil)
+
         join(&guest, &zones, now: later(10))
-        #expect(guest.pending.saves.isSuperset(of: [side, sideTab]))
-        #expect(guest.state.privateDeletions(in: guest.tree).isEmpty)
+        mini.sync(&zones.guest, now: later(20))
 
-        let first = guest.state.outgoing([side], in: guest.tree, now: later(10), device: guest.device)
-        guest.state.didSend(saved: Array(first.values), systemFields: [side: Data("tag".utf8)], deleted: [], now: later(10))
-        #expect(guest.state.privateDeletions(in: guest.tree).isEmpty)
-
-        let reopened = try JSONDecoder().decode(SpaceSyncState.self, from: JSONEncoder().encode(guest.state))
-        #expect(reopened.sharing?.moving[side] == [side, sideTab])
-        #expect(reopened.privateDeletions(in: guest.tree).isEmpty)
+        #expect(mini.tree.space(side)?.name == "Side")
+        #expect(mini.tree.item(sideTab)?.displayTitle == "Side tab")
+        #expect(mini.state.level(of: side) == .off)
+        #expect(mini.state.sharing?.moved[side] == Self.ownerAccount)
+        #expect(mini.state.report?.decisions[side]?.reason == .movedAway)
+        #expect(mini.state.cloudSpaces(in: mini.tree).first { $0.id == side }?.state == .moved)
+        #expect(mini.pending == ([], []))
         #expect(zones.guest.records[side] != nil)
         #expect(zones.guest.records[sideTab] != nil)
-
-        guest.state = reopened
-        let rest = guest.state.outgoing([sideTab], in: guest.tree, now: later(20), device: guest.device)
-        guest.state.didSend(saved: Array(rest.values), systemFields: [sideTab: Data("tag".utf8)], deleted: [], now: later(20))
-        #expect(guest.state.privateDeletions(in: guest.tree) == [side, sideTab])
     }
 
-    @Test func aSpaceTurnedOffBeforeItReachedTheSharedZoneKeepsItsRecordsInTheGuestsZone() throws {
-        var (_, guest, _, side, _, zones) = try setUp()
-        join(&guest, &zones, now: later(10))
-        guest.state.setLevel(.off, for: side, now: later(11))
-        guest.state.prune(against: guest.tree)
+    @Test func theOldCopyGoesOnlyWhenRemovedAndTheOtherGuestMacKeepsTheSpace() throws {
+        var (_, guest, _, side, sideTab, zones) = try setUp()
+        var mini = secondGuestMac(&zones)
+        try mini.tree.rename(sideTab, customTitle: "Renamed on the mini", now: later(5))
+        mini.state.setLevel(.pinned, for: side, now: later(5))
+        mini.sync(&zones.guest, now: later(5))
+        zones.sync(&guest, now: later(6))
 
-        #expect(guest.state.privateDeletions(in: guest.tree).isEmpty)
-        #expect(guest.state.sharing?.moving[side] == nil)
+        join(&guest, &zones, now: later(10))
+        zones.sync(&guest, now: later(10))
+        mini.sync(&zones.guest, now: later(15))
+        #expect(guest.state.oldCopies == SpaceSyncLeftBehind(spaces: 1, devices: ["Mac mini", "MacBook"]))
+        #expect(zones.guest.records[side] != nil)
+
+        let ids = guest.state.oldCopyRecords
+        #expect(ids == [side, sideTab])
+        for id in ids {
+            zones.guest.records[id] = nil
+            zones.guest.journal.append(id)
+        }
+        guest.state.removedOldCopies(ids)
+        mini.state.setLevel(.pinned, for: side, now: later(16))
+        mini.sync(&zones.guest, now: later(20))
+
+        #expect(guest.state.oldCopies == nil)
+        #expect(mini.tree.space(side) != nil)
+        #expect(mini.tree.item(sideTab)?.customTitle == "Renamed on the mini")
+        #expect(mini.state.report?.decisions[side]?.reason == .movedAway)
+    }
+
+    @Test func joiningWritesChangesFetchedButNotYetAppliedFirst() throws {
+        var (_, guest, _, side, sideTab, zones) = try setUp()
+        var mini = secondGuestMac(&zones)
+        mini.state.setLevel(.pinned, for: side, now: later(4))
+        try mini.tree.rename(sideTab, customTitle: "Waiting", now: later(5))
+        mini.sync(&zones.guest, now: later(5))
+        let waiting = try #require(zones.guest.records[sideTab])
+        guest.state.fetched(waiting.record, systemFields: waiting.tag)
+
+        join(&guest, &zones, now: later(10))
+        zones.sync(&guest, now: later(10))
+
+        #expect(guest.tree.item(sideTab)?.customTitle == "Waiting")
+        #expect(zones.owner.records[sideTab]?.record.string(Key.customTitle) == "Waiting")
+    }
+
+    @Test func joiningWithoutMovingTurnsThisMacsSpacesOffAndLeavesThemToItsAccount() throws {
+        var (_, guest, work, side, sideTab, zones) = try setUp()
+        var mini = secondGuestMac(&zones)
+        #expect(guest.state.markedOnMove(in: guest.tree) == [side])
+
+        join(&guest, &zones, moving: false, now: later(10))
+        zones.sync(&guest, now: later(10))
+        mini.sync(&zones.guest, now: later(20))
+
+        #expect(guest.state.level(of: side) == .off)
+        #expect(guest.tree.item(sideTab) != nil)
+        #expect(guest.tree.space(work.space) != nil)
+        #expect(zones.owner.records[side] == nil)
+        #expect(zones.guest.records[side]?.record.string(Key.movedTo) == nil)
+        #expect(guest.state.oldCopies == nil)
+        #expect(mini.state.level(of: side) == .pinned)
     }
 
     // MARK: - Ending
@@ -236,7 +300,9 @@ struct SpaceSyncSharingTests {
         join(&guest, &zones, now: later(10))
         let joined = guest.state.reportText(account: Self.guestAccount)
         #expect(joined.contains("Zone: joined, owner account ID e62a57"))
+        #expect(joined.contains("Old copies in this account's zone: 1 spaces, 2 records"))
         #expect(!joined.contains("Vladimir"))
+        #expect(!joined.contains("MacBook"))
         #expect(!joined.contains(Self.ownerAccount))
     }
 

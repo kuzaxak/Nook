@@ -25,6 +25,7 @@ DEFINE SCHEMA
         "theme"         ENCRYPTED BYTES,
         "profile"       ENCRYPTED STRING,
         "device"        ENCRYPTED STRING,
+        "movedTo"       STRING,
         "level"         STRING,
         "order"         STRING,
         "nameAt"        INT64,

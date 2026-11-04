@@ -32,6 +32,8 @@ import NookTabsCore
     func joinSharedSync(link: String)
     /// Leaves the joined zone: the spaces stay here, every one Off, back on this account's zone.
     func leaveSharedSync()
+    /// Deletes the old copies of moved spaces from this account's own zone.
+    func removeOldCopies()
 }
 
 extension SpaceSyncLevel {

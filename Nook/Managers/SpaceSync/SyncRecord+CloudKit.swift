@@ -17,7 +17,7 @@ extension SyncRecord {
     init?(_ record: CKRecord) {
         guard let type = RecordType(rawValue: record.recordType), let id = UUID(uuidString: record.recordID.recordName) else { return nil }
         var fields: [String: SyncValue] = [:]
-        for key in type.keys {
+        for key in type.keys + type.markerKeys {
             let value = type.encryptedKeys.contains(key) ? record.encryptedValues[key] : record[key]
             if let text = value as? String {
                 fields[key] = .string(text)
@@ -55,6 +55,9 @@ extension SyncRecord {
         }
         for group in type.groups.keys {
             record[Self.timeKey(group)] = times[group].map { NSNumber(value: $0) }
+        }
+        for key in type.markerKeys {
+            if case .string(let text)? = fields[key] { record[key] = text as NSString }
         }
         return record
     }

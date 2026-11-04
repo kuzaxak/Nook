@@ -238,8 +238,15 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
 
         for remote in incoming where remote.type == .space {
             let here = level(of: remote.id)
+            if database == .private, let owner = remote.movedTo, sharing?.moved[remote.id] == nil {
+                if sharing == nil { sharing = SpaceSyncSharing() }
+                sharing?.moved[remote.id] = owner
+                setLevel(.off, for: remote.id, now: now)
+                decide(remote, .skipped, .movedAway, levelHere: here)
+                continue
+            }
             guard levels[remote.id] != .off else {
-                decide(remote, .skipped, .offHere, levelHere: here)
+                decide(remote, .skipped, sharing?.moved[remote.id] != nil ? .movedAway : .offHere, levelHere: here)
                 continue
             }
             guard !SpaceRecord.isAgentIcon(remote.string(Key.icon) ?? "") else {
@@ -341,6 +348,10 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
                 continue
             }
             deletedInCloud[id] = SpaceSyncCodec.milliseconds(now)
+            if let space, sharing?.moved[space] != nil {
+                decide(deletion: id, .skipped, .movedAway, space: space)
+                continue
+            }
             guard local[id] != nil, var item = working.item(id), syncs(id, in: working) else {
                 decide(deletion: id, .skipped, .notHere, space: space)
                 continue
@@ -357,6 +368,10 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
                 continue
             }
             deletedInCloud[id] = SpaceSyncCodec.milliseconds(now)
+            if sharing?.moved[id] != nil {
+                decide(deletion: id, .skipped, .movedAway, space: id)
+                continue
+            }
             guard working.space(id) != nil, levels[id].map({ $0 != .off }) == true else {
                 decide(deletion: id, .skipped, .offHere, space: id)
                 continue
@@ -522,10 +537,6 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
         }
         let cutoff = SpaceSyncCodec.milliseconds(now.addingTimeInterval(-TabTree.tombstoneLifetime))
         deletedInCloud = deletedInCloud.filter { $0.value >= cutoff }
-        if let moving = sharing?.moving {
-            let kept = moving.filter { level(of: $0.key) != .off && tree.space($0.key) != nil }
-            sharing?.moving = kept
-        }
     }
 }
 

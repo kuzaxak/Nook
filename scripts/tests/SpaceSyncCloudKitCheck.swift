@@ -129,12 +129,23 @@ struct SpaceSyncCloudKitCheck {
         check(c.row(work)?.state == .offHere, "Mac C's list shows Work Off on this Mac")
         check(c.row(work)?.name == "Work 2", "Mac C's list names the space as iCloud has it")
 
+        // A move marker on Work's record in the old zone reads back, and a save of Work that does
+        // not know of it never clears it, as with a build from before shared sync.
+        let marked = transported(first.first { $0.recordType == "Space" }!)
+        marked["movedTo"] = "_owner" as NSString
+        let markedRecord = SyncRecord(transported(marked))
+        check(markedRecord?.string(SyncRecord.Key.movedTo) == "_owner", "the move marker reads back")
+        check(marked["movedTo"] as? String == "_owner" && marked.encryptedValues["movedTo"] == nil, "the move marker is a plain field")
+        let resave = a.state.outgoing([work], in: a.tree, now: later, device: a.device)[work]!
+            .record(in: zone, systemFields: marked.archivedSystemFields)
+        check(!resave.changedKeys().contains("movedTo"), "a save that does not know of the marker leaves it alone")
+
         // Mac C joins Mac A's zone from another account: it sends to and fetches from the shared
         // database, in the zone A's account owns, and goes back to its own zone when it leaves.
         let ownerAccount = "_48e607c1179693a062ca0aefa4e62a57"
         check(c.state.databaseScope == .private, "Mac C syncs its own account's database before joining")
         check(c.state.zoneID.ownerName == CKCurrentUserDefaultName, "Mac C syncs its own zone before joining")
-        c.state.join(owner: ownerAccount, ownerName: "Vladimir")
+        _ = c.state.join(owner: ownerAccount, ownerName: "Vladimir", moving: true, tree: c.tree, now: later.addingTimeInterval(3))
         check(c.state.databaseScope == .shared, "a joined Mac syncs through the shared database")
         check(c.state.zoneID == CKRecordZone.ID(zoneName: "Spaces", ownerName: ownerAccount), "a joined Mac syncs the owner's Spaces zone")
         check(c.state.shareRecordID.recordName == CKRecordNameZoneWideShare && c.state.shareRecordID.zoneID == c.state.zoneID,

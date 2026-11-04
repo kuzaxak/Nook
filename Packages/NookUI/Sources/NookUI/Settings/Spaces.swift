@@ -29,6 +29,7 @@ public struct SpacesSettingsView: View {
     @State private var joinLink = ""
     @State private var confirmingStopSharing = false
     @State private var confirmingLeave = false
+    @State private var confirmingOldCopyRemoval = false
 
     public init() {}
 
@@ -94,6 +95,12 @@ public struct SpacesSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The people you shared with stop syncing them. Their Macs keep every space, turned Off.")
+        }
+        .alert("Remove the old copy from this iCloud account?", isPresented: $confirmingOldCopyRemoval) {
+            Button("Remove Old Copy", role: .destructive) { sync?.removeOldCopies() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(Self.oldCopyWarning(actions?.spaceSync?.status.oldCopies))
         }
         .alert("Leave the shared sync?", isPresented: $confirmingLeave) {
             Button("Leave", role: .destructive) { sync?.leaveSharedSync() }
@@ -303,6 +310,23 @@ public struct SpacesSettingsView: View {
             }
             Spacer()
         }
+        if let old = status.oldCopies {
+            LabeledContent("Old copy in this iCloud account") {
+                Text(old.spaces == 1 ? "1 space" : "\(old.spaces) spaces").foregroundStyle(.secondary)
+            }
+            HStack {
+                Button("Remove Old Copy from This iCloud Account\u{2026}", role: .destructive) { confirmingOldCopyRemoval = true }
+                Spacer()
+            }
+        }
+    }
+
+    /// Names the Macs that synced the old copy, since one running a version of Nook from before
+    /// shared sync deletes the spaces when their records go.
+    private static func oldCopyWarning(_ old: SpaceSyncLeftBehind?) -> String {
+        let spaces = old?.spaces == 1 ? "The space stays" : "The \(old?.spaces ?? 0) spaces stay"
+        let macs = old.map { $0.devices.isEmpty ? "" : " It was synced there by \($0.devices.formatted(.list(type: .and)))." } ?? ""
+        return "\(spaces) in the shared sync and on this Mac; only the copy in this iCloud account's own sync is deleted.\(macs) Those Macs keep them if they run this version of Nook or later; an earlier version deletes them."
     }
 
     private static func describe(_ mode: SpaceSyncMode) -> String {
@@ -391,6 +415,7 @@ public struct SpacesSettingsView: View {
         case .syncing(let level): return "Syncing \(level.title)"
         case .offHere: return "Off on this Mac"
         case .arriving: return "Arriving"
+        case .moved: return "Moved to a shared sync"
         case .error(let reason): return reason
         }
     }

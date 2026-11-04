@@ -5,8 +5,10 @@
 //
 //  Sync between two iCloud accounts. The owner shares its zone with a zone-wide share; a Mac on
 //  another account that accepts it syncs that zone through its shared database instead of its
-//  own zone, after moving its synced spaces in. Leaving, or the owner ending the share, takes
-//  that Mac back to its own zone with every space Off and nothing deleted.
+//  own zone, and can move its synced spaces in. A moved space keeps its records in the old zone,
+//  marked with where it went, so the account's other Macs turn it Off instead of losing it; only
+//  the person removes that old copy. Leaving, or the owner ending the share, takes that Mac back
+//  to its own zone with every space Off and nothing deleted.
 //
 
 import Foundation
@@ -49,15 +51,34 @@ public struct SpaceSyncSharing: Codable, Equatable, Sendable {
     public var ownerName: String?
     /// Everyone this account's zone is shared with, its owner included; nil while not shared.
     public var participants: [SpaceSyncParticipant]?
-    /// Spaces moved from this account's zone into the joined one, each with its records still in
-    /// this account's zone. They are deleted there only once the joined zone holds every record of
-    /// the space as this Mac has it.
-    public var moving: [UUID: Set<UUID>] = [:]
+    /// Spaces another Mac on this account moved into a shared zone, by the CloudKit user record
+    /// name of that zone's owner, as their marked records in this account's zone say.
+    public var moved: [UUID: String] = [:]
+    /// On a Mac that joined and moved its spaces: each moved space's records left in this
+    /// account's own zone, and the Macs that synced them there.
+    public var oldCopies: [UUID: SpaceSyncOldCopy] = [:]
 
     public init(joinedOwner: String? = nil, ownerName: String? = nil, participants: [SpaceSyncParticipant]? = nil) {
         self.joinedOwner = joinedOwner
         self.ownerName = ownerName
         self.participants = participants
+    }
+}
+
+public struct SpaceSyncOldCopy: Codable, Equatable, Sendable {
+    public var records: Set<UUID>
+    public var devices: [String]
+}
+
+/// The old copies of moved spaces, as Settings names them before removing them.
+public struct SpaceSyncLeftBehind: Equatable, Sendable {
+    public let spaces: Int
+    /// The Macs that synced them in this account's zone.
+    public let devices: [String]
+
+    public init(spaces: Int, devices: [String]) {
+        self.spaces = spaces
+        self.devices = devices
     }
 }
 
@@ -110,18 +131,37 @@ extension SpaceSyncState {
         return .join(owner: zoneOwner)
     }
 
-    /// Joins another account's zone. What this Mac knows of its own zone goes, the levels stay,
-    /// so every space syncing here goes up into the joined zone, and each one's records in this
-    /// account's zone are kept until `privateDeletions` lets them go.
-    public mutating func join(owner: String, ownerName: String?) {
-        var moving: [UUID: Set<UUID>] = [:]
-        for (space, level) in levels where level != .off {
-            var ids = Set(shadow.values.filter { $0.id == space || $0.uuid(Key.space) == space }.map(\.id))
-            if let catalog {
-                if catalog.spaces[space] != nil { ids.insert(space) }
-                ids.formUnion(catalog.items.filter { $0.value.space == space }.keys)
+    /// The spaces syncing here, which joining can move into the shared zone.
+    public func spacesToMove(in tree: TabTree) -> Set<UUID> {
+        Set(tree.orderedSpaces.filter { !$0.isAgent && level(of: $0.id) != .off }.map(\.id))
+    }
+
+    /// The spaces to move whose records this account's zone holds: the app marks each one there
+    /// with where it went before joining.
+    public func markedOnMove(in tree: TabTree) -> Set<UUID> {
+        spacesToMove(in: tree).filter { catalog?.spaces[$0] != nil }
+    }
+
+    /// Joins another account's zone. Fetched changes still waiting are applied first; the app
+    /// writes the returned change. Moving keeps the levels, so every space syncing here goes up
+    /// into the joined zone, and its records stay in this account's zone as an old copy. Without
+    /// moving, those spaces turn Off and stay in this account's zone for its other Macs.
+    public mutating func join(owner: String, ownerName: String?, moving: Bool, tree: TabTree, kept: [KeptProfile] = [],
+                              now: Date = Date()) -> SpaceSyncInbound {
+        let inbound = receive(into: tree, kept: kept, now: now)
+        var after = tree
+        after.apply(inbound.change)
+        var oldCopies: [UUID: SpaceSyncOldCopy] = [:]
+        for space in spacesToMove(in: after) {
+            if moving {
+                let items = catalog?.items.filter { $0.value.space == space } ?? [:]
+                guard let record = catalog?.spaces[space] else { continue }
+                let devices = Set([record.string(Key.device)].compactMap { $0 } + items.values.compactMap(\.device))
+                oldCopies[space] = SpaceSyncOldCopy(records: Set(items.keys).union([space]),
+                                                    devices: devices.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
+            } else {
+                setLevel(.off, for: space, now: now)
             }
-            if !ids.isEmpty { moving[space] = ids }
         }
         forgetRecords()
         deletedInCloud = [:]
@@ -130,7 +170,30 @@ extension SpaceSyncState {
         catalog = SpaceSyncCatalog()
         report = nil
         sharing = SpaceSyncSharing(joinedOwner: owner, ownerName: ownerName)
-        sharing?.moving = moving
+        sharing?.oldCopies = oldCopies
+        return inbound
+    }
+
+    /// The old copies of moved spaces still in this account's own zone.
+    public var oldCopies: SpaceSyncLeftBehind? {
+        guard let copies = sharing?.oldCopies, !copies.isEmpty else { return nil }
+        let devices = Set(copies.values.flatMap(\.devices)).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        return SpaceSyncLeftBehind(spaces: copies.count, devices: devices)
+    }
+
+    /// The records of every old copy, for the app to delete from this account's zone when the
+    /// person removes them.
+    public var oldCopyRecords: Set<UUID> {
+        Set(sharing?.oldCopies.values.flatMap(\.records) ?? [])
+    }
+
+    public mutating func removedOldCopies(_ ids: Set<UUID>) {
+        guard let copies = sharing?.oldCopies else { return }
+        sharing?.oldCopies = copies.compactMapValues { copy in
+            var left = copy
+            left.records.subtract(ids)
+            return left.records.isEmpty ? nil : left
+        }
     }
 
     /// Back to this account's own zone with every space Off, after leaving the joined zone or
@@ -142,33 +205,12 @@ extension SpaceSyncState {
     /// This account's zone is shared with these people.
     public mutating func shared(participants: [SpaceSyncParticipant]) {
         guard sharing?.joinedOwner == nil else { return }
-        sharing = SpaceSyncSharing(participants: participants)
+        if sharing == nil { sharing = SpaceSyncSharing() }
+        sharing?.participants = participants
     }
 
     public mutating func stoppedSharing() {
         guard sharing?.joinedOwner == nil else { return }
-        sharing = nil
-    }
-
-    /// Records of moved spaces this Mac may delete from its own account's zone: those of every
-    /// space whose records the joined zone now holds as this Mac has them.
-    public func privateDeletions(in tree: TabTree) -> Set<UUID> {
-        guard let moving = sharing?.moving, !moving.isEmpty else { return [] }
-        let local = records(of: tree).values
-        var out: Set<UUID> = []
-        for (space, ids) in moving where level(of: space) != .off {
-            let own = local.filter { $0.id == space || $0.uuid(Key.space) == space }
-            guard !own.isEmpty, own.allSatisfy({ shadow[$0.id]?.sameValues(as: $0) == true }) else { continue }
-            out.formUnion(ids)
-        }
-        return out
-    }
-
-    public mutating func deletedFromPrivateZone(_ ids: Set<UUID>) {
-        guard let moving = sharing?.moving else { return }
-        sharing?.moving = moving.compactMapValues { records in
-            let left = records.subtracting(ids)
-            return left.isEmpty ? nil : left
-        }
+        sharing?.participants = nil
     }
 }

@@ -39,6 +39,7 @@ private final class Sync: SpaceSyncControls {
     func stopSharing() {}
     func joinSharedSync(link: String) {}
     func leaveSharedSync() {}
+    func removeOldCopies() {}
 }
 
 /// SettingsWindow's switch style.
