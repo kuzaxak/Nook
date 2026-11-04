@@ -352,14 +352,17 @@ struct KeyCombination: Hashable, Codable {
         if event.modifierFlags.contains(.shift) { modifiers.insert(.shift) }
 
         let isShortcut = !modifiers.isDisjoint(with: [.command, .control])
-        self.key = isShortcut ? Self.latinKey(typed: typed, characters: event.characters, keyCode: event.keyCode) : typed
+        self.key = isShortcut
+            ? Self.latinKey(typed: typed, characters: modifiers.contains(.option) ? nil : event.characters, keyCode: event.keyCode)
+            : typed
         self.modifiers = modifiers
     }
 
     /// A layout without Latin letters (Russian) reports its own letter in `charactersIgnoringModifiers`
     /// even with ⌘ or Control held, while macOS menus match ⌘ shortcuts by the Latin character the
     /// layout's ⌘ keymap types, which `characters` holds. Control types a control character there,
-    /// so the US letter at the key's position stands in.
+    /// and with Option held `characters` comes from the layout's Option layer (⌥⌘A types d on
+    /// Russian – PC), so the US letter at the key's position stands in.
     static func latinKey(typed: String, characters: String?, keyCode: UInt16) -> String {
         guard !typed.unicodeScalars.allSatisfy(\.isASCII) else { return typed }
         if let characters = characters?.lowercased(), !characters.isEmpty,

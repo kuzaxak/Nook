@@ -41,6 +41,8 @@ struct CloseShortcutCheck {
         precondition(key("ц", "w", 13, [.command, .shift]) == "cmd+shift+w", "⇧⌘W on a Russian layout")
         precondition(key("х", "[", 33, [.command]) == "cmd+[", "⌘[ on a Russian layout, as its ⌘ keymap types it")
         precondition(key("в", "\u{4}", 2, [.control]) == "ctrl+d", "Control-D on a Russian layout, by key position")
+        precondition(key("ф", "d", 0, [.command, .option]) == "cmd+opt+a", "⌥⌘A on Russian – PC, whose Option layer types d there")
+        precondition(key("ш", "^", 34, [.command, .option]) == "cmd+opt+i", "⌥⌘I on a Cyrillic layout whose Option layer types ^")
         precondition(key("в", "ѓ", 2, [.option]) == "opt+в", "Option alone keeps what the layout types")
         precondition(key("w", "w", 13, [.command]) == "cmd+w", "⌘W on a Latin layout")
         precondition(key(",", ",", 13, [.command]) == "cmd+,", "Dvorak matches by the character it types")
