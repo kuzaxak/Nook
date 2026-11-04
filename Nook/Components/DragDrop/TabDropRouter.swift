@@ -23,11 +23,19 @@ import AppKit
     nonisolated static let tabType = NSPasteboard.PasteboardType("com.nook.tab-drag-item")
 
     private weak var current: TabDropTarget?
+    /// The window in front at a point on the screen.
+    private let windowAt: (NSPoint) -> NSWindow?
+
+    init(windowAt: ((NSPoint) -> NSWindow?)? = nil) {
+        self.windowAt = windowAt ?? { point in
+            NSApp.orderedWindows.first { $0.isVisible && !$0.ignoresMouseEvents && $0.frame.contains(point) }
+        }
+    }
 
     /// `draggingEntered:` and `draggingUpdated:` of `receiver`.
     func updated(_ sender: NSDraggingInfo, at receiver: TabDropTarget) -> NSDragOperation {
         guard Self.isTabDrag(sender) else { return [] }
-        let owner = Self.owner(of: sender, at: receiver)
+        let owner = owner(of: sender, at: receiver)
         if owner !== current {
             current?.tabDragExited()
             current = owner
@@ -39,7 +47,7 @@ import AppKit
     /// from, to the view under the pointer, leaves the drag with that view.
     func exited(_ sender: NSDraggingInfo?, at receiver: TabDropTarget) {
         if let sender, !Self.isTabDrag(sender) { return }
-        if let sender, let current, current !== receiver, Self.owner(of: sender, at: receiver) === current { return }
+        if let sender, let current, current !== receiver, owner(of: sender, at: receiver) === current { return }
         end()
     }
 
@@ -52,7 +60,7 @@ import AppKit
     /// `performDragOperation:` of `receiver`.
     func perform(_ sender: NSDraggingInfo, at receiver: TabDropTarget) -> Bool {
         guard Self.isTabDrag(sender) else { return false }
-        let owner = Self.owner(of: sender, at: receiver)
+        let owner = owner(of: sender, at: receiver)
         if owner !== current { current?.tabDragExited() }
         current = nil
         return owner?.tabDragPerform(sender) ?? false
@@ -62,10 +70,14 @@ import AppKit
         sender.draggingPasteboard.availableType(from: [tabType]) != nil
     }
 
-    private static func owner(of sender: NSDraggingInfo, at receiver: NSView) -> TabDropTarget? {
-        var root = receiver
-        while let superview = root.superview { root = superview }
-        return target(at: root.convert(sender.draggingLocation, from: nil), in: root)
+    /// The drop view under the pointer, in the window in front there. `draggingLocation` is in
+    /// the coordinates of the window AppKit sends the drag to.
+    private func owner(of sender: NSDraggingInfo, at receiver: NSView) -> TabDropTarget? {
+        guard let window = receiver.window else { return nil }
+        let screenPoint = window.convertPoint(toScreen: sender.draggingLocation)
+        guard let front = windowAt(screenPoint), let content = front.contentView else { return nil }
+        let root = content.superview ?? content
+        return Self.target(at: root.convert(front.convertPoint(fromScreen: screenPoint), from: nil), in: root)
     }
 
     /// The drop view a tab drag at `point` belongs to, as AppKit finds one: the frontmost view

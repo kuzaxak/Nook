@@ -63,8 +63,21 @@ struct TabDropRoutingCheck {
         precondition(TabDropRouter.target(at: besideSidebar, in: window) === page, "the next space's zones stay clipped to the sidebar")
         precondition(TabDropRouter.target(at: header, in: window) == nil)
 
-        let router = TabDropRouter.shared
-        func reset() { for target in [page, tabs, favorites] { target.log = [] } }
+        // The tree as a window's content, and a second Nook window over the page's right side.
+        _ = NSApplication.shared
+        func make(_ frame: NSRect, content: NSView) -> NSWindow {
+            let made = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: true)
+            made.isReleasedWhenClosed = false
+            made.contentView = content
+            return made
+        }
+        let main = make(window.frame, content: window)
+        let otherContent = Plain(NSRect(x: 0, y: 0, width: 400, height: 700))
+        let otherTabs = Target("other window's tabs", NSRect(x: 0, y: 300, width: 200, height: 200))
+        otherContent.addSubview(otherTabs)
+        let other = make(NSRect(x: 650, y: 0, width: 400, height: 700), content: otherContent)
+        let router = TabDropRouter { point in [other, main].first { $0.frame.contains(point) } }
+        func reset() { for target in [page, tabs, favorites, otherTabs] { target.log = [] } }
 
         // A drag from a sidebar row to the page. AppKit entered the tabs zone where the drag began
         // and keeps sending it every update and the drop: the page target gets them all.
@@ -140,6 +153,21 @@ struct TabDropRoutingCheck {
         precondition(tabs.log == ["updated"] && page.log.isEmpty)
         router.end()
         precondition(tabs.log == ["updated", "exited"])
+        reset()
+
+        // Over another Nook window in front, the drag is that window's, whichever view AppKit holds.
+        _ = router.updated(Info(row), at: tabs)
+        precondition(router.updated(Info(NSPoint(x: 700, y: 400)), at: tabs) == .move)
+        precondition(otherTabs.log == ["updated"] && tabs.log == ["updated", "exited"])
+        precondition(router.perform(Info(NSPoint(x: 700, y: 400)), at: tabs))
+        precondition(otherTabs.log == ["updated", "performed"] && page.log.isEmpty, "the page under the other window takes nothing")
+        reset()
+
+        // A view out of every window, such as a row a relayout took away, takes no drag.
+        let gone = Target("gone", NSRect(x: 0, y: 0, width: 100, height: 100))
+        precondition(router.updated(Info(NSPoint(x: 50, y: 50)), at: gone) == [])
+        precondition(!router.perform(Info(NSPoint(x: 50, y: 50)), at: gone))
+        precondition(gone.log.isEmpty && tabs.log.isEmpty)
         print("TabDropRoutingCheck passed")
     }
 
@@ -175,7 +203,7 @@ struct TabDropRoutingCheck {
         }
     }
 
-    /// A drag at `draggingLocation`, in the coordinates of the check's root view.
+    /// A drag at `draggingLocation`, in the coordinates of the window AppKit sends it to.
     final class Info: NSObject, NSDraggingInfo {
         let draggingLocation: NSPoint
         let draggingPasteboard = NSPasteboard.withUniqueName()
