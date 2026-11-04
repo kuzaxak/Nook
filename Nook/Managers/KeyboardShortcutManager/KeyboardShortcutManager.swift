@@ -19,7 +19,7 @@ class KeyboardShortcutManager {
     private let userDefaults = UserDefaults.standard
     private let shortcutsKey = "keyboard.shortcuts"
     private let shortcutsVersionKey = "keyboard.shortcuts.version"
-    private let currentVersion = 15 // 15 added Add Split View (Ctrl+Shift+=); 14 added the Developer Mode bar's tools; Increment when adding new shortcuts; 10 added Go to Space 1-9 (Ctrl+1-9) and moved Next/Previous Space to Cmd+Opt+arrows; 11 added Bookmark Tab (Cmd+D); 12 listed the command bar actions unbound; 13 moved the top bar to Cmd+Shift+D and bound Developer Mode to Ctrl+D
+    private let currentVersion = 16 // 16 matched Add Split View by key position as Ctrl+Shift+=; 15 added Add Split View (Ctrl+Shift+=); 14 added the Developer Mode bar's tools; Increment when adding new shortcuts; 10 added Go to Space 1-9 (Ctrl+1-9) and moved Next/Previous Space to Cmd+Opt+arrows; 11 added Bookmark Tab (Cmd+D); 12 listed the command bar actions unbound; 13 moved the top bar to Cmd+Shift+D and bound Developer Mode to Ctrl+D
 
     /// Defaults that changed key: a user still on the old key gets the new one.
     private let movedDefaults: [(action: ShortcutAction, from: KeyCombination, version: Int)] = [
@@ -27,6 +27,7 @@ class KeyboardShortcutManager {
         (.previousSpace, KeyCombination(key: "[", modifiers: [.command, .control]), 10),
         (.toggleTopBarAddressView, KeyCombination(key: "t", modifiers: [.command, .option]), 13),
         (.toggleDeveloperMode, KeyCombination(key: ""), 13),
+        (.addSplitView, KeyCombination(key: "+", modifiers: [.control, .shift]), 16),
     ]
 
     /// Hash-based storage for O(1) lookup: ["cmd+t": KeyboardShortcut]
@@ -262,7 +263,7 @@ class KeyboardShortcutManager {
         }
         
 
-        guard let shortcut = shortcutMap[keyCombination.lookupKey],
+        guard let shortcut = KeyCombination.lookupKeys(for: event).lazy.compactMap({ self.shortcutMap[$0] }).first,
               shortcut.isEnabled else {
             return false
         }

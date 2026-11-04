@@ -358,6 +358,20 @@ struct KeyCombination: Hashable, Codable {
         self.modifiers = modifiers
     }
 
+    /// What a press can be bound as, first match wins: what it types, then for ⌘ and Control a key
+    /// matched by where it sits (`positionalKeys`).
+    static func lookupKeys(for event: NSEvent) -> [String] {
+        guard let typed = KeyCombination(from: event) else { return [] }
+        guard !typed.modifiers.isDisjoint(with: [.command, .control]),
+              let key = positionalKeys[event.keyCode], key != typed.key else { return [typed.lookupKey] }
+        return [typed.lookupKey, KeyCombination(key: key, modifiers: typed.modifiers).lookupKey]
+    }
+
+    /// Keys also matched by position, named by their US character. Arc's ⌃⇧= is the key right of 0
+    /// on a US keyboard (kVK_ANSI_Equal), which types + with Shift and an accent or ¿ on German,
+    /// Nordic and Spanish layouts.
+    private static let positionalKeys: [UInt16: String] = [24: "="]
+
     /// A layout without Latin letters (Russian) reports its own letter in `charactersIgnoringModifiers`
     /// even with ⌘ or Control held, while macOS menus match ⌘ shortcuts by the Latin character the
     /// layout's ⌘ keymap types, which `characters` holds. Control types a control character there,
@@ -457,8 +471,7 @@ extension KeyboardShortcut {
             KeyboardShortcut(action: .closeWindow, keyCombination: KeyCombination(key: "w", modifiers: [.command, .shift])),
             KeyboardShortcut(action: .closeBrowser, keyCombination: KeyCombination(key: "q", modifiers: [.command])),
             KeyboardShortcut(action: .toggleFullScreen, keyCombination: KeyCombination(key: "f", modifiers: [.command, .control])),
-            // Arc's Control-Shift-=; with Shift held the key reads "+".
-            KeyboardShortcut(action: .addSplitView, keyCombination: KeyCombination(key: "+", modifiers: [.control, .shift])),
+            KeyboardShortcut(action: .addSplitView, keyCombination: KeyCombination(key: "=", modifiers: [.control, .shift])),
 
             // Tools & Features
             KeyboardShortcut(action: .openCommandPalette, keyCombination: KeyCombination(key: "p", modifiers: [.command, .shift])),
