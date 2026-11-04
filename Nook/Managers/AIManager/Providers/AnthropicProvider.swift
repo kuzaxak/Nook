@@ -186,8 +186,10 @@ struct AnthropicProvider: AIProviderProtocol {
 
     /// The error for a reply other than 200, worded from the API's own error message when it sent one.
     static func failure(status: Int, body: Data) -> AIProviderError {
-        if status == 429 {
-            return .rateLimited
+        switch status {
+        case 401: return .invalidAPIKey
+        case 429: return .rateLimited
+        default: break
         }
         let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
         let message = (json?["error"] as? [String: Any])?["message"] as? String

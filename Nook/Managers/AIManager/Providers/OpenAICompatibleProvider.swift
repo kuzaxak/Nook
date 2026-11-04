@@ -122,14 +122,18 @@ struct OpenAICompatibleProvider: AIProviderProtocol {
             }
 
             guard httpResponse.statusCode == 200 else {
-                if httpResponse.statusCode == 429 {
-                    throw AIProviderError.rateLimited
-                }
-                let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-                throw AIProviderError.httpError(httpResponse.statusCode, errorBody)
+                throw Self.failure(status: httpResponse.statusCode, body: data)
             }
 
             return try parseResponse(data)
+        }
+    }
+
+    static func failure(status: Int, body: Data) -> AIProviderError {
+        switch status {
+        case 401: return .invalidAPIKey
+        case 429: return .rateLimited
+        default: return .httpError(status, String(data: body, encoding: .utf8) ?? "Unknown error")
         }
     }
 

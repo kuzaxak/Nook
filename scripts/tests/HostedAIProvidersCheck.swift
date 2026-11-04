@@ -159,7 +159,11 @@ struct HostedAIProvidersCheck {
 
     static func failures() {
         let badKey = Data(#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"},"request_id":"req_1"}"#.utf8)
-        precondition(AnthropicProvider.failure(status: 401, body: badKey).errorDescription == "HTTP 401: invalid x-api-key")
+        if case .invalidAPIKey = AnthropicProvider.failure(status: 401, body: badKey) {} else { preconditionFailure("401 reads as a bad key") }
+        let openAIBadKey = Data(#"{"error":{"message":"Incorrect API key provided: sk-ab***yz","type":"invalid_request_error","code":"invalid_api_key"}}"#.utf8)
+        if case .invalidAPIKey = OpenAICompatibleProvider.failure(status: 401, body: openAIBadKey) {} else { preconditionFailure("401 reads as a bad key") }
+        if case .rateLimited = OpenAICompatibleProvider.failure(status: 429, body: Data()) {} else { preconditionFailure("429 reads as a rate limit") }
+        precondition(OpenAICompatibleProvider.failure(status: 500, body: Data("upstream".utf8)).errorDescription == "HTTP 500: upstream")
         let limited = Data(#"{"type":"error","error":{"type":"rate_limit_error","message":"Number of request tokens has exceeded your rate limit"}}"#.utf8)
         if case .rateLimited = AnthropicProvider.failure(status: 429, body: limited) {} else { preconditionFailure("429 reads as a rate limit") }
         let busy = Data(#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#.utf8)
