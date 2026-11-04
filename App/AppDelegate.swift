@@ -234,6 +234,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         let start = CFAbsoluteTimeGetCurrent()
         if let manager = browserManager {
             manager.tabs.flushSync()
+            manager.spaceSyncManager.flush()
             manager.nookSettings?.flushBoosts()
             do {
                 try manager.modelContext.save()
@@ -257,6 +258,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
         // Stop MCP child processes synchronously (blocking up to 5 seconds)
         mcpManager?.stopAllSync()
+    }
+
+    // MARK: - Remote Notifications
+
+    /// CloudKit's push for a change another Mac made to a synced space.
+    func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]) {
+        browserManager?.spaceSyncManager.remoteNotification(userInfo)
+    }
+
+    func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        AppDelegate.log.error("Remote notifications unavailable: \(String(describing: error), privacy: .public)")
     }
 
     // MARK: - External URL Handling

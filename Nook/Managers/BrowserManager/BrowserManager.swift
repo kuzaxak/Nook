@@ -397,6 +397,8 @@ class BrowserManager: ObservableObject {
     var modelContext: ModelContext
     /// The tab model: tree, device state, window selection and live pages.
     let tabs: TabsController
+    /// iCloud sync of spaces between the person's Macs.
+    let spaceSyncManager: SpaceSyncManager
     var dialogManager: DialogManager
     var downloadManager: DownloadManager
     var authenticationManager: AuthenticationManager
@@ -460,6 +462,7 @@ class BrowserManager: ObservableObject {
             legacyProfiles: Self.legacyProfileRecords(in: modelContext),
             legacyTree: { [modelContext] in LegacyTabImport.tree(from: modelContext) })
         self.tabs = tabs
+        self.spaceSyncManager = SpaceSyncManager(tabs: tabs)
         // The first space's data store is the one the app starts on.
         let initialProfile = tabs.orderedSpaces.first.flatMap { tabs.profile(forSpace: $0.id) }
         self.currentProfileSubject = CurrentValueSubject(initialProfile)
