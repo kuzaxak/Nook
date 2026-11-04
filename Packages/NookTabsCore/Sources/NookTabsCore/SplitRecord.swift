@@ -90,13 +90,14 @@ public struct SplitRecord: Hashable, Sendable {
         return record
     }
 
-    /// Moves divider `index` toward `position`, leaving every pane at least `minimum` of the page.
+    /// Moves divider `index` toward `position`, leaving both panes beside it at least `minimum` of
+    /// the page, or as much as they have between them.
     public mutating func moveDivider(_ index: Int, to position: Double, minimum: Double) {
         guard dividers.indices.contains(index) else { return }
-        let lower = (index == 0 ? 0 : dividers[index - 1]) + minimum
-        let upper = (index == dividers.count - 1 ? 1 : dividers[index + 1]) - minimum
-        guard lower <= upper else { return }
-        dividers[index] = min(upper, max(lower, position))
+        let previous = index == 0 ? 0 : dividers[index - 1]
+        let next = index == dividers.count - 1 ? 1 : dividers[index + 1]
+        let room = min(minimum, (next - previous) / 2)
+        dividers[index] = min(next - room, max(previous + room, position))
     }
 }
 

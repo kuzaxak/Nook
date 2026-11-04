@@ -86,6 +86,18 @@ struct SplitRecordTests {
         #expect(three.dividers.count == 2)
     }
 
+    @Test func aDividerSqueezedByANarrowerWindowStillMoves() throws {
+        var three = try #require(SplitRecord([a, b, c]))
+        three.moveDivider(0, to: 0.05, minimum: 0.05)
+        three.moveDivider(1, to: 0.2, minimum: 0.05)
+        #expect(three.dividers == [0.05, 0.2])
+        // The window narrowed: a pane now needs 0.3 of it, more than these two have.
+        three.moveDivider(0, to: 0, minimum: 0.3)
+        #expect(abs(three.dividers[0] - 0.1) < 1e-9, "as far from both neighbours as they allow")
+        three.moveDivider(1, to: 0.25, minimum: 0.3)
+        #expect(abs(three.dividers[1] - 0.4) < 1e-9)
+    }
+
     @Test func readsTheTwoPaneRecordOfEarlierBuilds() throws {
         let json = #"{"leftItemID":"\#(a.uuidString)","rightItemID":"\#(b.uuidString)","fraction":0.3}"#
         let record = try JSONDecoder().decode(SplitRecord.self, from: Data(json.utf8))
