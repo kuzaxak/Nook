@@ -110,7 +110,8 @@ struct CommandPaletteView: View {
             case .url, .search: return row.text.caseInsensitiveCompare(primary.text) != .orderedSame
             }
         }
-        let actions = activeSiteSearch == nil && text.count >= 2 ? Array(actionRows(matching: text, wordPrefixOnly: true).prefix(2)) : []
+        let actions = activeSiteSearch == nil && commandPalette.addSplit == nil && text.count >= 2
+            ? Array(actionRows(matching: text, wordPrefixOnly: true).prefix(2)) : []
         return [primary] + actions + rest.prefix(8 - actions.count)
     }
 
@@ -183,9 +184,21 @@ struct CommandPaletteView: View {
         }
     }
 
+    /// Where the palette itself sits in global coordinates, to place the bar over the empty pane.
+    @State private var paletteFrame: CGRect = .zero
+
+    /// Add Split View's empty pane in global coordinates; nil while the bar is not filling one.
+    private var emptyPane: CGRect? {
+        guard commandPalette.addSplit != nil else { return nil }
+        return SplitViewManager.paneFrames(in: commandPalette.pageFrame, fraction: 0.5).right
+    }
+
     var body: some View {
         let isVisible = commandPalette.isVisible
         let textFieldColor: Color = text.isEmpty ? .secondary : .primary
+        let pane = emptyPane
+        let barWidth = pane.map { max(200, min(effectiveCommandPaletteWidth, $0.width - commandPaletteHorizontalPadding * 2)) }
+            ?? effectiveCommandPaletteWidth
 
         return ZStack {
             Color.clear
@@ -197,8 +210,12 @@ struct CommandPaletteView: View {
 
             VStack {
                 Spacer()
-                HStack {
-                    Spacer()
+                HStack(spacing: 0) {
+                    if let pane {
+                        Spacer().frame(width: max(0, pane.midX - barWidth / 2 - paletteFrame.minX))
+                    } else {
+                        Spacer()
+                    }
                     VStack {
                         VStack(alignment: .center,spacing: 6) {
                             HStack(spacing: 15) {
@@ -330,7 +347,7 @@ struct CommandPaletteView: View {
                         }
                         .padding(10)
                         .frame(maxWidth: .infinity)
-                        .frame(width: effectiveCommandPaletteWidth)
+                        .frame(width: barWidth)
                         .nookFloatingSurface(in: NookDesign.Radius.shape(NookDesign.Radius.xxl))
                         // Arc's glow: grey that fades out a short way past the bar, not over the window.
                         .background {
@@ -347,7 +364,7 @@ struct CommandPaletteView: View {
                         Spacer()
                     }
                     .frame(
-                        width: effectiveCommandPaletteWidth,
+                        width: barWidth,
                         height: 560
                     )
 
@@ -357,6 +374,7 @@ struct CommandPaletteView: View {
             }
 
         }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { paletteFrame = $0 }
         .allowsHitTesting(isVisible)
         .opacity(isVisible ? 1.0 : 0.0)
         .onModifierKeysChanged(mask: .command) { _, keys in commandHeld = keys.contains(.command) }
@@ -400,6 +418,9 @@ struct CommandPaletteView: View {
                 searchManager.updateSpaceContext()
                 searchManager.clearSuggestions()
             }
+        }
+        .onChange(of: commandPalette.addSplit?.shows(selectedItemID: windowState.selectedItemID, isSplit: windowState.split != nil)) { _, shows in
+            if shows == false { commandPalette.close() }
         }
         // An open tab whose title is exactly what was typed is what Return should switch to, as in Arc.
         .onChange(of: searchManager.suggestions) { _, _ in
@@ -529,6 +550,7 @@ struct CommandPaletteView: View {
     }
 
     private var returnPlacement: String {
+        if commandPalette.addSplit != nil { return "the right pane" }
         if commandPalette.shouldNavigateCurrentTab, browserManager.tabs.controllableSession(in: windowState) != nil {
             return "this tab"
         }
@@ -575,7 +597,11 @@ struct CommandPaletteView: View {
         case .action:
             break
         case .tab(let match):
-            browserManager.tabs.select(match.itemID, in: windowState)
+            if commandPalette.addSplit != nil {
+                fillEmptyPane(with: match.itemID)
+            } else {
+                browserManager.tabs.select(match.itemID, in: windowState)
+            }
         case .folder(let folder):
             browserManager.tabs.reveal(folder.itemID, in: windowState)
         case .history(let historyEntry):
@@ -591,10 +617,7 @@ struct CommandPaletteView: View {
                 // the correct URL so the webview loads it directly without a race.
                 let template = browserManager.tabs.searchTemplate(forSpace: windowState.spaceID)
                 let resolved = normalizeURL(suggestion.text, queryTemplate: template)
-                if let url = URL(string: resolved) {
-                    let id = browserManager.tabs.open(url: url, in: windowState, placement: .newTab)
-                    id.flatMap(browserManager.tabs.session(for:))?.typedVisitPending = true
-                }
+                if let url = URL(string: resolved) { openInNewTab(url) }
             }
         }
 
@@ -606,9 +629,25 @@ struct CommandPaletteView: View {
 
     /// Loads `url` in the selected page when the palette was opened to navigate it, else in a new tab.
     private func open(_ url: URL) {
-        let navigateCurrent = commandPalette.shouldNavigateCurrentTab && windowState.selectedItemID != nil
-        let id = browserManager.tabs.open(url: url, in: windowState, placement: navigateCurrent ? .replaceCurrent : .newTab)
+        guard commandPalette.shouldNavigateCurrentTab, windowState.selectedItemID != nil else { return openInNewTab(url) }
+        let id = browserManager.tabs.open(url: url, in: windowState, placement: .replaceCurrent)
         id.flatMap(browserManager.tabs.session(for:))?.typedVisitPending = true
+    }
+
+    /// A new tab for `url`, which fills Add Split View's empty pane while the bar is open for one.
+    private func openInNewTab(_ url: URL) {
+        let fillsPane = commandPalette.addSplit != nil
+        let id = browserManager.tabs.open(url: url, in: windowState, placement: fillsPane ? .background : .newTab)
+        id.flatMap(browserManager.tabs.session(for:))?.typedVisitPending = true
+        if fillsPane, let id { fillEmptyPane(with: id) }
+    }
+
+    /// Add Split View: `itemID` takes the right pane and becomes the selection.
+    private func fillEmptyPane(with itemID: UUID) {
+        guard let right = commandPalette.addSplit?.rightItem(
+            choosing: itemID, selectedItemID: windowState.selectedItemID, isSplit: windowState.split != nil) else { return }
+        browserManager.enterSplit(with: right, placeOnRight: true, in: windowState)
+        browserManager.tabs.select(right, in: windowState)
     }
 
     // MARK: - Keys
@@ -772,7 +811,8 @@ struct CommandPaletteView: View {
     /// when each word starts a word of the name; the `> ` scope lists substring matches too.
     private func actionRows(matching query: String, wordPrefixOnly: Bool) -> [SearchManager.SearchSuggestion] {
         let manager = browserManager.keyboardShortcutManager
-        let scored = Self.barActions.compactMap { action -> (row: SearchManager.SearchSuggestion, score: Int)? in
+        let canAddSplit = windowState.split == nil && commandPalette.addSplit == nil
+        let scored = Self.barActions.filter { $0 != .addSplitView || canAddSplit }.compactMap { action -> (row: SearchManager.SearchSuggestion, score: Int)? in
             guard let score = PaletteText.matchScore(query: query, title: action.displayName, detail: nil),
                   !wordPrefixOnly || score == 2 else { return nil }
             let shortcut = manager?.shortcut(for: action).flatMap { $0.isEnabled && !$0.keyCombination.key.isEmpty ? $0.keyCombination.displayString : nil }
@@ -945,7 +985,11 @@ struct CommandPaletteView: View {
             itemID = nil
         }
         guard let itemID else { return }
-        browserManager.enterSplit(with: itemID, placeOnRight: true, in: windowState)
+        if commandPalette.addSplit != nil {
+            fillEmptyPane(with: itemID)
+        } else {
+            browserManager.enterSplit(with: itemID, placeOnRight: true, in: windowState)
+        }
         commandPalette.close()
     }
 

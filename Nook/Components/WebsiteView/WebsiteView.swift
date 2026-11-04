@@ -172,6 +172,7 @@ struct WebsiteView: View {
     @EnvironmentObject var browserManager: BrowserManager
     @Environment(BrowserWindowState.self) private var windowState
     @EnvironmentObject var splitManager: SplitViewManager
+    @Environment(CommandPalette.self) private var commandPalette
     @Environment(\.nookSettings) var nookSettings
     @State private var hoveredLink: String?
     @State private var isCommandPressed: Bool = false
@@ -216,6 +217,7 @@ struct WebsiteView: View {
                             isSplit: splitManager.isSplit(for: windowState.id),
                             leftId: splitManager.leftTabId(for: windowState.id),
                             rightId: splitManager.rightTabId(for: windowState.id),
+                            addSplitLeftId: showsAddSplit ? commandPalette.addSplit?.leftItemID : nil,
                             windowState: windowState,
                             compositorVersion: windowState.compositorVersion,
                             selectedItemID: windowState.selectedItemID,
@@ -223,6 +225,7 @@ struct WebsiteView: View {
                             squareTopCorners: nookSettings.topBarAddressView || browserManager.showsDeveloperBar(in: windowState)
                         )
                         .coordinateSpace(name: dragCoordinateSpace)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { commandPalette.pageFrame = $0 }
                         // The page-frame shadow is drawn separately by WindowView, and the
                         // corners come from the container layer's cornerRadius. A clipShape mask,
                         // shadow or compositingGroup on this branch recomposites the
@@ -421,6 +424,7 @@ struct TabCompositorWrapper: NSViewRepresentable {
     var isSplit: Bool
     var leftId: UUID?
     var rightId: UUID?
+    var addSplitLeftId: UUID?
     let windowState: BrowserWindowState
     var compositorVersion: Int
     var selectedItemID: UUID?
@@ -450,6 +454,7 @@ struct TabCompositorWrapper: NSViewRepresentable {
         var lastIsSplit: Bool = false
         var lastLeftId: UUID? = nil
         var lastRightId: UUID? = nil
+        var lastAddSplitLeftId: UUID? = nil
         var lastCurrentId: UUID? = nil
         var lastFraction: CGFloat = -1
         var lastSize: CGSize = .zero
@@ -525,6 +530,7 @@ struct TabCompositorWrapper: NSViewRepresentable {
             context.coordinator.lastIsSplit != isSplit ||
             context.coordinator.lastLeftId != leftId ||
             context.coordinator.lastRightId != rightId ||
+            context.coordinator.lastAddSplitLeftId != addSplitLeftId ||
             context.coordinator.lastCurrentId != currentId ||
             abs(CGFloat(context.coordinator.lastFraction) - CGFloat(splitFraction)) > 0.0001 ||
             context.coordinator.lastSize != size ||
@@ -536,6 +542,7 @@ struct TabCompositorWrapper: NSViewRepresentable {
             context.coordinator.lastIsSplit = isSplit
             context.coordinator.lastLeftId = leftId
             context.coordinator.lastRightId = rightId
+            context.coordinator.lastAddSplitLeftId = addSplitLeftId
             context.coordinator.lastCurrentId = currentId
             context.coordinator.lastFraction = splitFraction
             context.coordinator.lastSize = size
@@ -601,18 +608,16 @@ struct TabCompositorWrapper: NSViewRepresentable {
         let leftId = split.leftTabId(for: windowState.id)
         let rightId = split.rightTabId(for: windowState.id)
         let isCurrentPane = (currentId != nil) && (currentId == leftId || currentId == rightId)
+        let adding = windowState.commandPalette?.addSplit.flatMap {
+            $0.shows(selectedItemID: currentId, isSplit: windowState.split != nil) ? $0 : nil
+        }
 
         if isCurrentPane, let leftId, let rightId,
            let leftSession = tabs.ensureSession(for: leftId),
            let rightSession = tabs.ensureSession(for: rightId) {
             (containerView as? ContainerView)?.showsSplit = true
-            let gap = NookDesign.Chrome.splitGap
             let total = containerView.bounds
-            let leftWidth = floor(total.width * split.dividerFraction(for: windowState.id))
-            let leftRect = NSRect(x: total.minX, y: total.minY,
-                                  width: max(1, leftWidth - gap/2), height: total.height)
-            let rightRect = NSRect(x: total.minX + leftWidth + gap/2, y: total.minY,
-                                   width: max(1, total.width - leftWidth - gap/2), height: total.height)
+            let (leftRect, rightRect) = SplitViewManager.paneFrames(in: total, fraction: split.dividerFraction(for: windowState.id))
 
             let divider: SplitDividerView
             if let existing = containerView.subviews.compactMap({ $0 as? SplitDividerView }).first {
@@ -622,8 +627,8 @@ struct TabCompositorWrapper: NSViewRepresentable {
                 containerView.addSubview(divider)
             }
             divider.isHidden = false
-            divider.frame = NSRect(x: total.minX + leftWidth - gap/2, y: total.minY,
-                                   width: gap, height: total.height)
+            divider.frame = NSRect(x: leftRect.maxX, y: total.minY,
+                                   width: rightRect.minX - leftRect.maxX, height: total.height)
             divider.fraction = split.dividerFraction(for: windowState.id)
             divider.onResize = { [weak windowState] fraction in
                 guard let windowState, var record = windowState.split else { return }
@@ -635,23 +640,36 @@ struct TabCompositorWrapper: NSViewRepresentable {
                 browserManager?.tabs.mirror(windowState)
             }
 
-            // Panes stay while the pair holds: taking a WKWebView out of its superview
-            // drops its video surface, so a selection change leaves the panes alone.
-            var panes = contentSubviews.compactMap { $0 as? SplitPaneView }
-            if panes.map(\.itemID) == [leftId, rightId] {
-                removeContentViews(contentSubviews.filter { !($0 is SplitPaneView) })
-            } else {
-                removeContentViews(contentSubviews)
-                panes = [(SplitViewManager.Side.left, leftId, leftRect), (.right, rightId, rightRect)].map { side, id, rect in
-                    SplitPaneView(frame: rect, side: side, itemID: id, browserManager: browserManager, windowState: windowState, hoverManager: hoverManager)
-                }
-                panes.forEach { containerView.addSubview($0) }
+            // A pane stays while its side keeps its tab: taking a WKWebView out of its superview
+            // drops its video surface, so a selection change, or filling Add Split View's empty
+            // pane, leaves the page in place.
+            let existing = contentSubviews.compactMap { $0 as? SplitPaneView }
+            let panes = [(SplitViewManager.Side.left, leftId, leftRect), (.right, rightId, rightRect)].map { side, id, rect in
+                existing.first { $0.side == side && $0.itemID == id }
+                    ?? SplitPaneView(frame: rect, side: side, itemID: id, browserManager: browserManager, windowState: windowState, hoverManager: hoverManager)
             }
+            removeContentViews(contentSubviews.filter { view in !panes.contains { $0 === view } })
+            for pane in panes where pane.superview !== containerView { containerView.addSubview(pane) }
 
             for (pane, session, rect) in [(panes[0], leftSession, leftRect), (panes[1], rightSession, rightRect)] {
                 pane.frame = rect
                 pane.show(pageView(for: session, reusing: pane.content.subviews))
             }
+        } else if let adding, let session = tabs.ensureSession(for: adding.leftItemID) {
+            (containerView as? ContainerView)?.showsSplit = true
+            containerView.subviews.compactMap { $0 as? SplitDividerView }.forEach { $0.isHidden = true }
+            let (leftRect, rightRect) = SplitViewManager.paneFrames(in: containerView.bounds, fraction: 0.5)
+            let left = contentSubviews.compactMap { $0 as? SplitPaneView }.first { $0.side == .left && $0.itemID == adding.leftItemID }
+                ?? SplitPaneView(frame: leftRect, side: .left, itemID: adding.leftItemID, browserManager: browserManager, windowState: windowState, hoverManager: hoverManager)
+            let empty = contentSubviews.compactMap { $0 as? EmptySplitPaneView }.first
+                ?? EmptySplitPaneView(frame: rightRect, settings: browserManager.nookSettings) { [weak windowState] in
+                    windowState?.commandPalette?.close()
+                }
+            removeContentViews(contentSubviews.filter { $0 !== left && $0 !== empty })
+            for pane in [left, empty] where pane.superview !== containerView { containerView.addSubview(pane) }
+            left.frame = leftRect
+            empty.frame = rightRect
+            left.show(pageView(for: session, reusing: left.content.subviews))
         } else {
             (containerView as? ContainerView)?.showsSplit = false
             containerView.subviews.compactMap { $0 as? SplitDividerView }.forEach { $0.isHidden = true }
@@ -789,7 +807,12 @@ struct TabCompositorWrapper: NSViewRepresentable {
 // MARK: - WebsiteView Extensions
 
 private extension WebsiteView {
+    var showsAddSplit: Bool {
+        commandPalette.addSplit?.shows(selectedItemID: windowState.selectedItemID, isSplit: windowState.split != nil) == true
+    }
+
     var shouldShowSplit: Bool {
+        if showsAddSplit { return true }
         guard splitManager.isSplit(for: windowState.id) else { return false }
         guard let current = windowState.selectedItemID else { return false }
         return current == splitManager.leftTabId(for: windowState.id) || current == splitManager.rightTabId(for: windowState.id)

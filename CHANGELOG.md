@@ -4,8 +4,6 @@
 
 ### Added
 
-- Press and hold Back or Forward to list the pages that way, as in Safari and Arc
-
 ### Fixed
 
 - Cmd+W closes the tab instead of the window on Russian and other non-Latin keyboard layouts, and in any window with a tab; it closes the command bar when that is open, a held Cmd+W stops at the empty window, and the File menu lists Close Tab and Close Window

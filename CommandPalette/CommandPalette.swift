@@ -21,12 +21,19 @@ class CommandPalette {
     /// Whether pressing Return should navigate the current tab (vs creating new tab)
     var shouldNavigateCurrentTab: Bool = false
 
+    /// The empty right pane the bar fills, while it is open for Add Split View.
+    var addSplit: AddSplit?
+
+    /// The page area in global coordinates, so the bar can sit over the empty pane.
+    var pageFrame: CGRect = .zero
+
     // MARK: - Actions
 
     /// Open the command palette with optional prefill text
-    func open(prefill: String = "", navigateCurrentTab: Bool = false) {
+    func open(prefill: String = "", navigateCurrentTab: Bool = false, addSplit: AddSplit? = nil) {
         prefilledText = prefill
         self.shouldNavigateCurrentTab = navigateCurrentTab
+        self.addSplit = addSplit
         DispatchQueue.main.async {
             self.isVisible = true
         }
@@ -42,6 +49,7 @@ class CommandPalette {
         isVisible = false
         shouldNavigateCurrentTab = false
         prefilledText = ""
+        addSplit = nil
     }
 
     /// Toggle the command palette visibility

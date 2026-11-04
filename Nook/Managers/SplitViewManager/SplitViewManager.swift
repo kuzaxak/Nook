@@ -1,5 +1,6 @@
 // Licensed under GPL-3.0. See LICENSE.
 import SwiftUI
+import NookDesign
 import NookTabsCore
 import NookWeb
 
@@ -63,6 +64,15 @@ final class SplitViewManager: ObservableObject {
 
     func side(for itemID: UUID, in windowId: UUID) -> Side? {
         window(windowId)?.split.flatMap { side(for: itemID, in: $0) }
+    }
+
+    /// Each pane's frame in the page area `bounds`, with the gutter between them.
+    static func paneFrames(in bounds: CGRect, fraction: CGFloat) -> (left: CGRect, right: CGRect) {
+        let gap = NookDesign.Chrome.splitGap
+        let leftWidth = floor(bounds.width * fraction)
+        return (CGRect(x: bounds.minX, y: bounds.minY, width: max(1, leftWidth - gap / 2), height: bounds.height),
+                CGRect(x: bounds.minX + leftWidth + gap / 2, y: bounds.minY,
+                       width: max(1, bounds.width - leftWidth - gap / 2), height: bounds.height))
     }
 
     private func side(for itemID: UUID?, in split: SplitRecord) -> Side? {

@@ -19,7 +19,7 @@ class KeyboardShortcutManager {
     private let userDefaults = UserDefaults.standard
     private let shortcutsKey = "keyboard.shortcuts"
     private let shortcutsVersionKey = "keyboard.shortcuts.version"
-    private let currentVersion = 14 // 14 added the Developer Mode bar's tools; Increment when adding new shortcuts; 10 added Go to Space 1-9 (Ctrl+1-9) and moved Next/Previous Space to Cmd+Opt+arrows; 11 added Bookmark Tab (Cmd+D); 12 listed the command bar actions unbound; 13 moved the top bar to Cmd+Shift+D and bound Developer Mode to Ctrl+D
+    private let currentVersion = 15 // 15 added Add Split View (Ctrl+Shift+=); 14 added the Developer Mode bar's tools; Increment when adding new shortcuts; 10 added Go to Space 1-9 (Ctrl+1-9) and moved Next/Previous Space to Cmd+Opt+arrows; 11 added Bookmark Tab (Cmd+D); 12 listed the command bar actions unbound; 13 moved the top bar to Cmd+Shift+D and bound Developer Mode to Ctrl+D
 
     /// Defaults that changed key: a user still on the old key gets the new one.
     private let movedDefaults: [(action: ShortcutAction, from: KeyCombination, version: Int)] = [
@@ -580,6 +580,9 @@ class KeyboardShortcutManager {
                 browserManager.showQuitDialog()
             case .toggleFullScreen:
                 browserManager.toggleFullScreenForActiveWindow()
+            case .addSplitView:
+                guard let window, let addSplit = AddSplit.start(selectedItemID: window.selectedItemID, isSplit: window.split != nil) else { break }
+                window.commandPalette?.open(addSplit: addSplit)
 
             // Tools & Features
             case .openCommandPalette:

@@ -76,6 +76,7 @@ enum ShortcutAction: String, CaseIterable, Hashable, Codable {
     case closeWindow = "close_window"
     case closeBrowser = "close_browser"
     case toggleFullScreen = "toggle_full_screen"
+    case addSplitView = "add_split_view"
 
     // Tools & Features
     case openCommandPalette = "open_command_palette"
@@ -169,6 +170,7 @@ enum ShortcutAction: String, CaseIterable, Hashable, Codable {
         case .closeWindow: return "Close Window"
         case .closeBrowser: return "Close Browser"
         case .toggleFullScreen: return "Toggle Full Screen"
+        case .addSplitView: return "Add Split View"
         case .openCommandPalette: return "Open Command Palette"
         case .openDevTools: return "Developer Tools"
         case .openDevPanel: return "Developer Panel"
@@ -212,7 +214,7 @@ enum ShortcutAction: String, CaseIterable, Hashable, Codable {
             return .tabs
         case .nextSpace, .previousSpace, .goToSpace1, .goToSpace2, .goToSpace3, .goToSpace4, .goToSpace5, .goToSpace6, .goToSpace7, .goToSpace8, .goToSpace9:
             return .spaces
-        case .newWindow, .closeWindow, .closeBrowser, .toggleFullScreen:
+        case .newWindow, .closeWindow, .closeBrowser, .toggleFullScreen, .addSplitView:
             return .window
         case .openCommandPalette, .openDevTools, .openDevPanel, .pickElement, .openNetworkPanel, .openPerformancePanel,
              .copyScreenshot, .capturePortrait, .viewDownloads, .viewHistory, .expandAllFolders,
@@ -452,6 +454,8 @@ extension KeyboardShortcut {
             KeyboardShortcut(action: .closeWindow, keyCombination: KeyCombination(key: "w", modifiers: [.command, .shift])),
             KeyboardShortcut(action: .closeBrowser, keyCombination: KeyCombination(key: "q", modifiers: [.command])),
             KeyboardShortcut(action: .toggleFullScreen, keyCombination: KeyCombination(key: "f", modifiers: [.command, .control])),
+            // Arc's Control-Shift-=; with Shift held the key reads "+".
+            KeyboardShortcut(action: .addSplitView, keyCombination: KeyCombination(key: "+", modifiers: [.control, .shift])),
 
             // Tools & Features
             KeyboardShortcut(action: .openCommandPalette, keyCombination: KeyCombination(key: "p", modifiers: [.command, .shift])),

@@ -93,16 +93,75 @@ final class SplitPaneView: NSView {
     }
 
     private func updateMask() {
-        let radius = NookDesign.Radius.page
         // Toggling the border resizes the pane, so this reruns through setFrameSize.
+        maskLayer.path = Self.maskPath(side: side, bounds: bounds, settings: settings)
+    }
+
+    static func maskPath(side: SplitViewManager.Side, bounds: CGRect, settings: NookSettingsService?) -> CGPath {
+        let radius = NookDesign.Radius.page
         let outer = settings?.hideWebContentBorder == true ? 0 : radius
-        maskLayer.path = TabCompositorWrapper.createUnevenRoundedRectPath(
+        return TabCompositorWrapper.createUnevenRoundedRectPath(
             rect: bounds,
             topLeadingRadius: side == .left ? 0 : radius,
             bottomLeadingRadius: side == .left ? outer : radius,
             bottomTrailingRadius: side == .right ? outer : radius,
             topTrailingRadius: side == .right ? 0 : radius
         )
+    }
+}
+
+/// Add Split View's right pane until the command bar fills it. Not a tab, so there is no page:
+/// only the strip, with the bar's placeholder and a close button.
+final class EmptySplitPaneView: NSView {
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        }
+    }
+
+    private let maskLayer = CAShapeLayer()
+    private weak var settings: NookSettingsService?
+
+    init(frame: NSRect, settings: NookSettingsService?, onClose: @escaping () -> Void) {
+        self.settings = settings
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.mask = maskLayer
+        viewDidChangeEffectiveAppearance()
+        let strip = NSHostingView(rootView: EmptySplitPaneStrip(onClose: onClose))
+        strip.translatesAutoresizingMaskIntoConstraints = false
+        strip.safeAreaRegions = []
+        addSubview(strip)
+        let inset = NookDesign.Spacing.sm
+        NSLayoutConstraint.activate([
+            strip.topAnchor.constraint(equalTo: topAnchor, constant: inset),
+            strip.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            strip.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
+        ])
+        maskLayer.path = SplitPaneView.maskPath(side: .right, bounds: bounds, settings: settings)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        maskLayer.path = SplitPaneView.maskPath(side: .right, bounds: bounds, settings: settings)
+    }
+}
+
+private struct EmptySplitPaneStrip: View {
+    let onClose: () -> Void
+
+    var body: some View {
+        Text("Search or Enter URL…")
+            .font(NookDesign.Font.secondary)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .trailing) {
+                SplitPaneButton(systemImage: "xmark", help: "Close Split View", action: onClose)
+            }
+            .frame(height: NookDesign.Size.navRow)
     }
 }
 
