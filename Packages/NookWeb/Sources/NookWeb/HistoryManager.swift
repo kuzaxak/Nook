@@ -36,6 +36,9 @@ public final class HistoryManager {
     /// falls back to scanning the history store.
     @ObservationIgnored private let index: HistoryIndex?
     public var currentProfileId: UUID?
+    /// Someone cleared a profile's history (nil: every profile's) from a date back, so what was
+    /// kept alongside it can go too.
+    @ObservationIgnored public var onHistoryCleared: ((_ profile: UUID?, _ before: Date) -> Void)?
     private var wordStops: Set<Character>
     /// Visits older than this are pruned at launch, so "All time" in the history panel means this.
     nonisolated public static let retentionDays = 100
@@ -130,13 +133,19 @@ public final class HistoryManager {
     }
 
     public func clearHistory(olderThan days: Int = 0, profileId: UUID? = nil) {
-        clear(days: days, profile: profileId ?? currentProfileId, includingIndex: true)
+        let profile = profileId ?? currentProfileId
+        clear(days: days, profile: profile, includingIndex: true)
+        onHistoryCleared?(profile, Self.cutoff(days: days))
+    }
+
+    private static func cutoff(days: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
     }
 
     private func clear(days: Int, profile: UUID?, includingIndex: Bool) {
         let pageText = pageText
         let index = includingIndex ? index : nil
-        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        let cutoff = Self.cutoff(days: days)
         enqueue { store in
             await store.clear(before: cutoff, profile: profile)
             await index?.clear(before: cutoff, profile: profile)
@@ -147,6 +156,7 @@ public final class HistoryManager {
 
     /// A profile was deleted: its history goes with its cookies and logins.
     public func deleteHistory(forProfile profile: UUID) {
+        onHistoryCleared?(profile, .distantFuture)
         let pageText = pageText
         let index = index
         enqueue { store in

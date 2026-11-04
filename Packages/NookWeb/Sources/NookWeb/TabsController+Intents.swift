@@ -801,7 +801,7 @@ extension TabsController {
                 keepProfile(left)
             } else {
                 forgetProfile(old.id)
-                Task { await old.clearAllData() }
+                Task { await clearData(of: old) }
             }
         }
     }
@@ -811,7 +811,7 @@ extension TabsController {
         guard device.keptProfiles?.contains(where: { $0.id == storeID }) == true,
               let store = profile(forStore: storeID) else { return }
         forgetProfile(storeID)
-        Task { await store.clearAllData() }
+        Task { await clearData(of: store) }
     }
 
     public func renameProfile(_ storeID: UUID, to name: String) {
@@ -877,7 +877,7 @@ extension TabsController {
            !tree.orderedSpaces.contains(where: { tree.dataStoreID(for: $0.id) == profile.id }) {
             // Its cookies and logins go with it, since no other space uses this data store.
             forgetProfile(profile.id)
-            Task { await profile.clearAllData() }
+            Task { await clearData(of: profile) }
             // The Agent space may have borrowed its logins from this one.
             if let agent = agentSpaceID { unloadPagesOnWrongDataStore(items(inSpace: agent).map(\.id)) }
         }

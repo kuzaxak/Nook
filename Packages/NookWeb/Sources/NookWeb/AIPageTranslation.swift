@@ -10,9 +10,19 @@
 
 import Foundation
 
-/// Sends the instructions and one request to the model Settings chose for page translation and
-/// returns the reply's text. The app builds it, since it owns the AI providers.
-public typealias AITranslationModel = @Sendable (_ instructions: String, _ request: String) async throws -> String
+/// The model Settings chose for page translation. `send` takes the instructions and one request
+/// and returns the reply's text; the app builds it, since it owns the AI providers.
+public struct AITranslationModel: Sendable {
+    public let providerId: String
+    public let modelId: String
+    public let send: @Sendable (_ instructions: String, _ request: String) async throws -> String
+
+    public init(providerId: String, modelId: String, send: @escaping @Sendable (_ instructions: String, _ request: String) async throws -> String) {
+        self.providerId = providerId
+        self.modelId = modelId
+        self.send = send
+    }
+}
 
 /// The engine Settings chose for page translation.
 public enum PageTranslationSetting {
@@ -203,9 +213,9 @@ enum AIPageTranslation {
     }
 
     /// The model's reply, or `timedOut` once `timeout` passes, which cancels the request.
-    static func reply(from model: @escaping AITranslationModel, request: String, timeout: Duration) async throws -> String {
+    static func reply(from model: AITranslationModel, request: String, timeout: Duration) async throws -> String {
         try await withThrowingTaskGroup(of: String.self) { group in
-            group.addTask { try await model(instructions, request) }
+            group.addTask { try await model.send(instructions, request) }
             group.addTask {
                 try await Task.sleep(for: timeout)
                 throw AITranslationFailure.timedOut
@@ -229,39 +239,54 @@ enum AIPageTranslation {
 @MainActor
 final class AIPageTranslator {
     typealias Translate = ([TranslationNode]) async throws -> [String: String]
+    /// Translations by text node id, in page order.
+    typealias Pairs = [(id: String, text: String)]
 
     private let model: AITranslationModel
     private let context: AITranslationContext
     private let characterLimit: Int
+    private let cache: TranslationCache?
     private let timeout: (Int) -> Duration
     private let onNotice: (PageTranslationNotice) -> Void
     private var remainingCharacters: Int
     private var limitReached = false
     private var pending: [TranslationNode] = []
+    /// Taken from the page but not yet looked up in the cache.
+    private var unchecked: [TranslationNode] = []
     /// Set once the model cannot be reached at all, so the rest of the page goes on device.
     private var modelFailure: String?
     private var onDeviceFailed = false
     private var lastNotice: PageTranslationNotice?
 
     init(
-        model: @escaping AITranslationModel,
+        model: AITranslationModel,
         context: AITranslationContext,
         characterLimit: Int = AIPageTranslation.pageCharacterLimit,
+        cache: TranslationCache? = nil,
         timeout: @escaping (Int) -> Duration = AIPageTranslation.replyTimeout(forCharacters:),
         onNotice: @escaping (PageTranslationNotice) -> Void
     ) {
         self.model = model
         self.context = context
         self.characterLimit = characterLimit
+        self.cache = cache
         self.timeout = timeout
         self.onNotice = onNotice
         remainingCharacters = characterLimit
     }
 
     /// Translates `nodes` and whatever an earlier, cancelled run left pending, calling `apply` with
-    /// each batch's translations as it lands. Returns early when the task is cancelled.
-    func translate(_ nodes: [TranslationNode], onDevice: Translate?, apply: @escaping ([String: String]) async -> Void) async {
-        admit(nodes)
+    /// the cached translations first and then each batch's as it lands. Returns early when the
+    /// task is cancelled.
+    func translate(_ nodes: [TranslationNode], onDevice: Translate?, apply: @escaping (Pairs) async -> Void) async {
+        unchecked += nodes
+        let checking = unchecked
+        let cached = await cachedTranslations(for: checking)
+        guard !Task.isCancelled else { return }
+        unchecked = []
+        admit(checking.filter { cached[$0.id] == nil })
+        let hits = Self.inPageOrder(cached, of: checking)
+        if !hits.isEmpty { await apply(hits) }
         let batches = AIPageTranslation.batches(pending)
         let model = model
         await withTaskGroup(of: (Int, Result<String, Error>).self) { group in
@@ -312,7 +337,7 @@ final class AIPageTranslator {
         }
     }
 
-    private func land(_ batch: [TranslationNode], reply: Result<String, Error>, onDevice: Translate?, apply: ([String: String]) async -> Void) async {
+    private func land(_ batch: [TranslationNode], reply: Result<String, Error>, onDevice: Translate?, apply: (Pairs) async -> Void) async {
         switch reply {
         case .failure(let error):
             let reason = AIPageTranslation.reason(for: error)
@@ -320,9 +345,13 @@ final class AIPageTranslator {
             await translateOnDevice(batch, reason: reason, onDevice: onDevice, apply: apply)
         case .success(let text):
             do {
-                let pairs = try AIPageTranslation.translations(fromReply: text, ids: batch.map(\.id))
+                let translations = try AIPageTranslation.translations(fromReply: text, ids: batch.map(\.id))
                 finish(batch)
-                await apply(pairs)
+                await cache?.store(Dictionary(
+                    batch.compactMap { node in translations[node.id].map { (cacheKey(for: node), $0) } },
+                    uniquingKeysWith: { first, _ in first }
+                ))
+                await apply(Self.inPageOrder(translations, of: batch))
             } catch {
                 await translateOnDevice(batch, reason: AIPageTranslation.reason(for: error), onDevice: onDevice, apply: apply)
             }
@@ -331,14 +360,14 @@ final class AIPageTranslator {
 
     /// After the model failed on `batch`. With no on-device translator, or one that failed, the
     /// batch stays in the original.
-    private func translateOnDevice(_ batch: [TranslationNode], reason: String, onDevice: Translate?, apply: ([String: String]) async -> Void) async {
+    private func translateOnDevice(_ batch: [TranslationNode], reason: String, onDevice: Translate?, apply: (Pairs) async -> Void) async {
         if let onDevice, !onDeviceFailed {
             do {
-                let pairs = try await onDevice(batch)
+                let translations = try await onDevice(batch)
                 guard !Task.isCancelled else { return }
                 finish(batch)
                 report(.aiFailed(reason: reason, onDevice: true))
-                await apply(pairs)
+                await apply(Self.inPageOrder(translations, of: batch))
                 return
             } catch {
                 guard !Task.isCancelled else { return }
@@ -352,6 +381,28 @@ final class AIPageTranslator {
     private func finish(_ batch: [TranslationNode]) {
         let ids = Set(batch.map(\.id))
         pending.removeAll { ids.contains($0.id) }
+    }
+
+    /// The cache's translation for each node that has one, by node id.
+    private func cachedTranslations(for nodes: [TranslationNode]) async -> [String: String] {
+        guard let cache, !nodes.isEmpty else { return [:] }
+        let keys = nodes.map(cacheKey(for:))
+        let found = await cache.translations(for: keys)
+        return Dictionary(zip(nodes, keys).compactMap { node, key in found[key].map { (node.id, $0) } }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private func cacheKey(for node: TranslationNode) -> String {
+        TranslationCache.key(
+            provider: model.providerId,
+            model: model.modelId,
+            source: context.source.minimalIdentifier,
+            target: context.target.minimalIdentifier,
+            text: node.text
+        )
+    }
+
+    private static func inPageOrder(_ translations: [String: String], of nodes: [TranslationNode]) -> Pairs {
+        nodes.compactMap { node in translations[node.id].map { (id: node.id, text: $0) } }
     }
 
     private func report(_ notice: PageTranslationNotice) {

@@ -91,6 +91,8 @@ public final class TabsController {
     /// The engine Settings chose for page translation. Set by the app, which owns the AI
     /// providers; pages translate on device without it.
     @ObservationIgnored public var pageTranslation: (() -> PageTranslationSetting)?
+    /// AI page translations, one store per profile, beside the tab state.
+    @ObservationIgnored public let translationCaches: TranslationCaches
     /// A page started loading with no window showing it: a link opened in the background.
     @ObservationIgnored public var onPageLoadedInBackground: ((PageSession) -> Void)?
 
@@ -133,6 +135,7 @@ public final class TabsController {
         self.siteRouting = siteRouting
         self.history = history
         self.directory = directory
+        translationCaches = TranslationCaches(directory: directory.deletingLastPathComponent().appendingPathComponent("TranslationCache", isDirectory: true))
         let store = TabStore(directory: directory)
         self.store = store
         let loaded = store.load()
@@ -524,6 +527,12 @@ public final class TabsController {
         history?.deleteHistory(forProfile: storeID)
         device.dropKeptProfile(storeID)
         save()
+    }
+
+    /// Clears a profile's website data, and with it the translations made on its pages.
+    public func clearData(of profile: Profile) async {
+        await profile.clearAllData()
+        await translationCaches.erase(profile: profile.id)
     }
 
     /// Keeps a data store no space uses any more, with its history, for a space to use again.

@@ -419,6 +419,7 @@ struct NookCommands: Commands {
                         for dataStore in dataStores {
                             await dataStore.removeData(ofTypes: dataTypes, modifiedSince: Date.distantPast)
                         }
+                        await tabs.translationCaches.eraseAll()
                     }
                 }
             }

@@ -7,6 +7,7 @@
 //
 
 import NookSettings
+import NookWeb
 import SwiftUI
 import NookDesign
 
@@ -14,6 +15,7 @@ struct SettingsAITab: View {
     @Environment(\.nookSettings) var nookSettings
     @Environment(AIConfigService.self) var configService
     @Environment(MCPManager.self) var mcpManager
+    @Environment(TabsController.self) private var tabs
 
     @State private var openRouterSearch: String = ""
     @State private var connectionTests = ProviderConnectionTests()
@@ -469,6 +471,16 @@ struct SettingsAITab: View {
                         .font(NookDesign.Font.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            LabeledContent {
+                Button("Clear Translation Cache") {
+                    Task { await tabs.translationCaches.eraseAll() }
+                }
+            } label: {
+                Text("Translations are kept for 30 days, so text a site repeats is not sent again.")
+                    .font(NookDesign.Font.caption)
+                    .foregroundStyle(.secondary)
             }
         } header: {
             Text("Translation")

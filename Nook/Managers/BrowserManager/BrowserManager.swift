@@ -491,6 +491,9 @@ class BrowserManager: ObservableObject {
         self.windowRegistry = windowRegistry
         // Note: settingsManager will be injected later, so we skip initialization here
         self.tabs.history = self.historyManager
+        self.historyManager.onHistoryCleared = { [caches = tabs.translationCaches] profile, cutoff in
+            Task { await caches.erase(profile: profile, usedBefore: cutoff) }
+        }
         self.tabs.webViews = self
         self.tabs.sessionDelegate = self
         self.tabs.tabEvents = self

@@ -5,7 +5,7 @@
 ### Added
 
 - OpenAI and Anthropic providers for the AI assistant: Settings → AI → Providers takes each one's API key, kept in the Keychain, and Models fetches the models it offers
-- Pages can translate with an AI model instead of Apple's on-device translation: Settings → AI → Translation picks the provider and model, a few batches go at once, text the model fails on is translated on this Mac with a line saying why, and private windows always translate on this Mac
+- Pages can translate with an AI model instead of Apple's on-device translation: Settings → AI → Translation picks the provider and model, a few batches go at once, text the model fails on is translated on this Mac with a line saying why, and private windows always translate on this Mac. Translations are kept per profile for 30 days, so menus and footers a site repeats are not sent again; clearing history or website data, or Clear Translation Cache, removes them
 - The sidebar's address shows "Translation Available" under the URL when a page is in another language, as in Arc; click it to translate
 - Spaces can be exported to a `.nookspace` file and imported as a new space in any profile: Export Space… in a space's right-click menu or Settings → Spaces, Import Space… in the File menu or Settings → Spaces, or open the file from Finder; the file holds the space's look, favorites, pinned tabs and open tabs, never logins, cookies or history, only web links come in, and imported tabs load when you open them
 - Press and hold Back or Forward to list the pages that way, as in Safari and Arc

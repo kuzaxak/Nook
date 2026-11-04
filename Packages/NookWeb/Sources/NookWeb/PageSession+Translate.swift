@@ -112,6 +112,7 @@ extension PageSession {
             aiTranslator = AIPageTranslator(
                 model: model,
                 context: AITranslationContext(target: target, source: source, title: title, host: url.host ?? ""),
+                cache: profile.flatMap { controller?.translationCaches.cache(forProfile: $0.id, isPrivate: isPrivate || $0.isEphemeral) },
                 onNotice: { [weak self] notice in
                     guard let self, generation == self.translationGeneration else { return }
                     self.showTranslationNotice(notice)
@@ -206,7 +207,7 @@ extension PageSession {
         let work = Task {
             await ai.translate(nodes, onDevice: onDevice) { [weak self] pairs in
                 guard let self, generation == self.translationGeneration else { return }
-                _ = await self.callTranslateScript("apply(pairs)", arguments: ["pairs": pairs.map { [$0.key, $0.value] }])
+                _ = await self.callTranslateScript("apply(pairs)", arguments: ["pairs": pairs.map { [$0.id, $0.text] }])
             }
         }
         aiTranslationWork = work

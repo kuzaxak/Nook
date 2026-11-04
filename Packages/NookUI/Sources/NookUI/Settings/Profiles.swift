@@ -308,7 +308,7 @@ struct ProfileDetailForm: View {
 
     private func clearData() async {
         guard let store = tabs.profile(forStore: profile.id) else { return }
-        await store.clearAllData()
+        await tabs.clearData(of: store)
         dataSize = store.estimatedDataSize
     }
 }

@@ -344,6 +344,7 @@ struct PrivacySettingsView: View {
         isClearing = true
         Task {
             await removeWebsiteData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes())
+            await browserManager.tabs.translationCaches.eraseAll()
             await cookieManager.loadCookies()
             await cacheManager.loadCacheData()
             await MainActor.run {

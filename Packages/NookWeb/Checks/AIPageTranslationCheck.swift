@@ -8,6 +8,7 @@
 //  to the network. Compiles the shipped source directly:
 //
 //    swiftc Packages/NookWeb/Sources/NookWeb/AIPageTranslation.swift \
+//           Packages/NookWeb/Sources/NookWeb/TranslationCache.swift \
 //           Packages/NookWeb/Checks/AIPageTranslationCheck.swift -o /tmp/ai-page-translation-check && /tmp/ai-page-translation-check
 //
 
@@ -25,6 +26,7 @@ struct AIPageTranslationCheck {
         await modelFailure()
         await timeout()
         await batching()
+        await caching()
         await parallel()
         await cancellation()
         print("AIPageTranslationCheck passed")
@@ -89,7 +91,7 @@ struct AIPageTranslationCheck {
     }
 
     static func engineChoice() {
-        let model: AITranslationModel = { _, _ in "" }
+        let model = AITranslationModel(providerId: "openai", modelId: "gpt-6-luna") { _, _ in "" }
         func choice(_ setting: PageTranslationSetting?, isPrivate: Bool = false) -> String {
             switch TranslationEngineChoice.choose(setting, isPrivate: isPrivate) {
             case .onDevice: return "on device"
@@ -238,6 +240,51 @@ struct AIPageTranslationCheck {
     }
 
     @MainActor
+    static func caching() async {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = TranslationCache(fileURL: directory.appendingPathComponent("profile.sqlite"))
+        func key(_ text: String) -> String {
+            TranslationCache.key(provider: "openai", model: "gpt-6-luna", source: "de", target: "en", text: text)
+        }
+        await cache.store([key("Text 2"): "Two", key("Text 5"): "Five", key("Text 7"): "Seven"])
+
+        let model = FakeModel()
+        let first = FakePage()
+        let translator = AIPageTranslator(model: model.model, context: context, cache: cache, onNotice: first.note)
+        await translator.translate(nodes(10), onDevice: first.onDevice, apply: first.apply)
+        let sent = await model.requests()
+        precondition(sent == [["0", "1", "3", "4", "6", "8", "9"]], "only text the cache lacks goes to the model")
+        precondition(first.writes.first == ["2", "5", "7"], "hits land first, in page order")
+        precondition(first.applied["5"] == "Five" && first.applied["0"] == "EN Text 0" && first.applied.count == 10)
+
+        // The site's next page repeats the text under new ids: none of it goes to the model.
+        let next = (0..<10).map { TranslationNode(id: "n\($0)", text: "Text \($0)") }
+        let second = FakePage()
+        let repeated = AIPageTranslator(model: model.model, context: context, cache: cache, onNotice: second.note)
+        await repeated.translate(next, onDevice: second.onDevice, apply: second.apply)
+        let sentAgain = await model.requests()
+        precondition(sentAgain.count == 1 && second.writes == [next.map(\.id)], "the model's validated replies were kept")
+        precondition(second.applied["n0"] == "EN Text 0")
+
+        // Cached text is not sent, so it does not count toward the page's limit.
+        let limited = FakePage()
+        let small = AIPageTranslator(model: model.model, context: context, characterLimit: 5, cache: cache, onNotice: limited.note)
+        await small.translate(next, onDevice: limited.onDevice, apply: limited.apply)
+        precondition(limited.applied.count == 10 && limited.notices.isEmpty)
+
+        // A reply that fails validation is not kept, nor is the on-device translation in its place.
+        let failing = FakeModel { ids in ids.first == "b0" ? .invalidJSON : .dropFirst }
+        let fresh = (0..<80).map { TranslationNode(id: "b\($0)", text: "Fresh \($0)") }
+        let third = FakePage()
+        let bad = AIPageTranslator(model: failing.model, context: context, cache: cache, onNotice: third.note)
+        await bad.translate(fresh, onDevice: third.onDevice, apply: third.apply)
+        precondition(third.applied["b0"] == "ON Fresh 0" && third.applied["b41"] == "ON Fresh 41")
+        let stored = await cache.translations(for: fresh.map { key($0.text) })
+        precondition(stored.isEmpty, "a bad or partial reply and Apple's fallback are not cached")
+    }
+
+    @MainActor
     static func parallel() async {
         let model = FakeModel()
         let page = FakePage()
@@ -303,7 +350,7 @@ actor FakeModel {
     func cancelled() -> Int { cancellations }
 
     nonisolated var model: AITranslationModel {
-        { _, request in try await self.reply(to: request) }
+        AITranslationModel(providerId: "openai", modelId: "gpt-6-luna") { _, request in try await self.reply(to: request) }
     }
 
     private func reply(to request: String) async throws -> String {
@@ -344,10 +391,13 @@ actor FakeModel {
 final class FakePage {
     var applied: [String: String] = [:]
     var appliedTwice = false
+    /// The ids of each apply call, in the order they were written to the page.
+    var writes: [[String]] = []
     var onDeviceBatches: [[String]] = []
     var notices: [PageTranslationNotice] = []
 
-    func apply(_ pairs: [String: String]) async {
+    func apply(_ pairs: [(id: String, text: String)]) async {
+        writes.append(pairs.map(\.id))
         for (id, text) in pairs {
             if applied[id] != nil { appliedTwice = true }
             applied[id] = text

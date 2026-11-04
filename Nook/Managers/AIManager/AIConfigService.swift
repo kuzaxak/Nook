@@ -260,7 +260,7 @@ class AIConfigService {
               let client = AIService.hostedProvider(for: target.provider)
         else { return .ai(nil) }
         let modelId = target.model.id
-        let model: AITranslationModel = { instructions, request in
+        let model = AITranslationModel(providerId: target.provider.id, modelId: modelId) { instructions, request in
             do {
                 return try await client.sendMessage(
                     messages: [AIMessage(role: .system, content: instructions), AIMessage(role: .user, content: request)],
