@@ -144,6 +144,11 @@ final class NookDragSessionManager: ObservableObject {
     }
 
     private func handleMonitoredEventOnMain(_ event: NSEvent) -> NSEvent? {
+        switch event.type {
+        case .leftMouseDown: RowPress.current.down(at: event.locationInWindow)
+        case .leftMouseUp: RowPress.current.up()
+        default: break
+        }
         // Don't interfere if we're already in a drag session
         if isDragging { return event }
 
@@ -152,7 +157,6 @@ final class NookDragSessionManager: ObservableObject {
             // Check if mouseDown is within any registered drag source
             activeDragSourceId = nil
             mouseDownEvent = nil
-            RowPress.current.down(at: event.locationInWindow)
 
             if dragBarriers.allObjects.contains(where: { barrier in
                 barrier.window === event.window && !barrier.isHiddenOrHasHiddenAncestor
@@ -183,7 +187,6 @@ final class NookDragSessionManager: ObservableObject {
         case .leftMouseUp:
             activeDragSourceId = nil
             mouseDownEvent = nil
-            RowPress.current.up()
             return event
 
         default:
