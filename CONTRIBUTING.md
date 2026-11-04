@@ -49,6 +49,8 @@ You need an Apple Silicon Mac and Xcode 26 or later.
    ```
    On another Mac, remove the quarantine from a copy of it (`xattr -dr com.apple.quarantine Nook.app`), since it is not notarized. Both copies use the Production CloudKit environment, as every Developer ID build does.
 
+   Space sync's record types live in `scripts/cloudkit/schema.ckdb`. CloudKit refuses a save that carries a field the Production environment lacks, so before every release run `scripts/cloudkit/check-production-schema.sh path/to/management-token` (a CloudKit management token from CloudKit Console → Settings → Tokens & Keys). It lists what Production lacks and fails; then import the schema with `scripts/cloudkit/import-schema.sh path/to/management-token`, deploy it to Production in CloudKit Console, and run the check again.
+
 There is no app test target. Logic with its own checks lives in `Checks/` folders beside each package's sources and in `scripts/tests/`; each file says how to run it. `Packages/NookTabsCore` and `Packages/NookWeb` also have `swift test` suites.
 
 ## Code Style & Standards

@@ -623,6 +623,7 @@ final class SpaceSyncManager: SpaceSyncControls {
                 note(error)
             }
         }
+        if sent.failedRecordSaves.contains(where: { Self.isOutdatedSchema($0.error) }) { resend = [] }
         state.didSend(saved: saved, systemFields: fields, deleted: deleted)
         applyInbox()
         queuePending(only: resend)
@@ -675,10 +676,17 @@ final class SpaceSyncManager: SpaceSyncControls {
         case .networkUnavailable?, .networkFailure?: state.lastError = "No network connection. Nook syncs when it is back."
         case .requestRateLimited?, .zoneBusy?, .serviceUnavailable?: state.lastError = "iCloud is busy. Nook tries again shortly."
         case .notAuthenticated?: state.lastError = "Sign in to iCloud to sync spaces."
-        default: state.lastError = error.localizedDescription
+        default: state.lastError = Self.isOutdatedSchema(error) ? SpaceSyncErrorText.outdatedSchema : error.localizedDescription
         }
         publish()
         scheduleSave()
+    }
+
+    /// A save refused because iCloud's production schema lacks a field this build writes.
+    private static func isOutdatedSchema(_ error: Error) -> Bool {
+        guard let error = error as? CKError else { return false }
+        let messages = [error.localizedDescription] + error.userInfo.values.compactMap { $0 as? String }
+        return SpaceSyncErrorText.isOutdatedSchema(code: error.code.rawValue, message: messages.joined(separator: " "))
     }
 
     private func finished() {

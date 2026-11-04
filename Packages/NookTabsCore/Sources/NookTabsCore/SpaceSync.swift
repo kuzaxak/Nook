@@ -193,6 +193,20 @@ public enum SpaceSyncCodec {
     }
 }
 
+/// CloudKit refusals Settings words for the person.
+public enum SpaceSyncErrorText {
+    public static let outdatedSchema = "iCloud hasn't been updated for this version of Nook yet; sync resumes once it is."
+
+    /// Whether CloudKit refused a save because its production schema lacks a record type or field
+    /// the save carries, or defines one differently. It answers Invalid Arguments (12), or Server
+    /// Rejected Request (15), with a server message that says so.
+    public static func isOutdatedSchema(code: Int, message: String) -> Bool {
+        guard code == 12 || code == 15 else { return false }
+        let text = message.lowercased()
+        return ["production schema", "unknown field", "defined to be"].contains { text.contains($0) }
+    }
+}
+
 /// Whether this Mac can sync, as Settings shows it.
 public enum SpaceSyncAvailability: Equatable, Sendable {
     /// An unsigned build, or one signed without the iCloud container. CloudKit is never touched.

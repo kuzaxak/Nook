@@ -185,6 +185,21 @@ struct SpaceSyncCatalogTests {
         #expect(SpaceSyncCodec.accountID("abc") == "abc")
     }
 
+    // MARK: - Errors
+
+    @Test func aSaveRefusedForAFieldProductionLacksIsTold() {
+        for message in ["Cannot create or modify field 'device' in record 'Space' in production schema",
+                        "Cannot create new type Space in production schema",
+                        "invalid attempt to set value type STRING for field 'level' for type 'Space', defined to be: INT64"] {
+            #expect(SpaceSyncErrorText.isOutdatedSchema(code: 12, message: message), "\(message)")
+        }
+        #expect(SpaceSyncErrorText.isOutdatedSchema(code: 15, message: "Cannot create new type Item in production schema"))
+        #expect(!SpaceSyncErrorText.isOutdatedSchema(code: 12, message: "Record ID is missing"))
+        #expect(!SpaceSyncErrorText.isOutdatedSchema(code: 15, message: "Invalid bundle ID for container"))
+        #expect(!SpaceSyncErrorText.isOutdatedSchema(code: 9, message: "Cannot create new type Space in production schema"))
+        #expect(SpaceSyncErrorText.outdatedSchema == "iCloud hasn't been updated for this version of Nook yet; sync resumes once it is.")
+    }
+
     // MARK: - Stored state
 
     @Test func aStateSavedBeforeTheListStillLoadsWithItsLevels() throws {
