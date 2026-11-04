@@ -198,7 +198,7 @@ public struct SpacesSettingsView: View {
                 }
                 if status.availability != .needsSignedBuild {
                     Button("Sync Now") { actions?.spaceSync?.syncNow() }
-                        .disabled(status.availability != .available || status.isSyncing)
+                        .disabled(status.availability != .available)
                 }
             }
             if status.availability == .available {

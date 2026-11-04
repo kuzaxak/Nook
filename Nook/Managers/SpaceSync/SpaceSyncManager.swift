@@ -431,7 +431,16 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
         for (id, record) in state.outgoing(ids, in: tabs.tree) {
             records[id.uuidString] = record.record(in: Self.zoneID, systemFields: state.systemFields[id])
         }
+        let gone = changes.filter { change in
+            guard case .saveRecord(let recordID) = change else { return false }
+            return records[recordID.recordName] == nil
+        }
+        syncEngine.state.remove(pendingRecordZoneChanges: gone)
         let batch = records
-        return await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: changes) { batch[$0.recordName] }
+        let sending = changes.filter { change in
+            guard case .saveRecord(let recordID) = change else { return true }
+            return batch[recordID.recordName] != nil
+        }
+        return await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: sending) { batch[$0.recordName] }
     }
 }
