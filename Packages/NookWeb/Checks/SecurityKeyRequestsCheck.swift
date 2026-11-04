@@ -105,6 +105,10 @@ struct SecurityKeyRequestsCheck {
         precondition(value(create(with(creation, ["authenticatorSelection": ["authenticatorAttachment": "cross-platform"]]))).rpId == "example.com")
         precondition(error(create(with(creation, ["authenticatorSelection": ["authenticatorAttachment": "platform"]]))) == .notAllowed)
         precondition(value(create(with(creation, ["pubKeyCredParams": [Int]()]))).algorithms == [-7, -257])
+        precondition(value(create(creation.filter { $0.key != "pubKeyCredParams" })).algorithms == [-7, -257])
+        for malformed: Any in [[-7, "x"] as [Any], "-7", [NSNull()], ["alg": -7]] {
+            precondition(error(create(with(creation, ["pubKeyCredParams": malformed]))) == .notSupported, "\(malformed)")
+        }
 
         // Malformed input from the page.
         for broken: [String: Any] in [

@@ -150,7 +150,7 @@
         challenge: encode(key.challenge),
         rp: { id: key.rp && typeof key.rp.id === 'string' ? key.rp.id : null, name: (key.rp && key.rp.name) || '' },
         user: { id: encode(key.user.id), name: key.user.name || '', displayName: key.user.displayName || '' },
-        pubKeyCredParams: (key.pubKeyCredParams || []).map(p => p.alg),
+        pubKeyCredParams: algorithms(key.pubKeyCredParams),
         excludeCredentials: (key.excludeCredentials || []).map(c => encode(c.id)),
         authenticatorSelection: selection(key.authenticatorSelection),
         credProps: !!(key.extensions && key.extensions.credProps),
@@ -161,6 +161,24 @@
     }
     return request('create', payload, options.signal).then(attestation);
   };
+
+  // WebIDL: each entry needs a string type and an integer alg; types other than public-key
+  // are skipped, and a list left with none is not supported.
+  function algorithms(list) {
+    if (list === undefined) return [];
+    if (!Array.isArray(list)) throw new TypeError('pubKeyCredParams must be a sequence.');
+    const out = [];
+    for (const entry of list) {
+      if (!entry || typeof entry !== 'object' || typeof entry.type !== 'string' || !Number.isInteger(entry.alg)) {
+        throw new TypeError('Each pubKeyCredParams entry needs a type and an integer alg.');
+      }
+      if (entry.type === 'public-key') out.push(entry.alg);
+    }
+    if (list.length && !out.length) {
+      throw new DOMException('None of the requested credential types is supported.', 'NotSupportedError');
+    }
+    return out;
+  }
 
   function selection(value) {
     const out = {};

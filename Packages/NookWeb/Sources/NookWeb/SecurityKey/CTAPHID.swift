@@ -101,7 +101,7 @@ public enum CTAPHID {
                 let length = Int(bytes[5]) << 8 | Int(bytes[6])
                 switch command {
                 case Command.keepalive.rawValue, Command.error.rawValue:
-                    guard length >= 1 else { throw Failure.malformed }
+                    guard length >= 1, bytes.count > 7 else { throw Failure.malformed }
                     assembling = false
                     return command == Command.keepalive.rawValue ? .keepalive(bytes[7]) : .error(bytes[7])
                 default:

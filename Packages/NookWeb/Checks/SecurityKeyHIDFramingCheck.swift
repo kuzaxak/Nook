@@ -83,6 +83,11 @@ struct SecurityKeyHIDFramingCheck {
         precondition(failure { try short.add(Data([0, 0, 0, 1, 0x90])) } == .malformed)
         var oversize = CTAPHID.Assembler(channel: 1)
         precondition(failure { try oversize.add(hex("0000000190ffff" + zeros(57))) } == .malformed)
+        // A keepalive or error that ends before its status byte is malformed, not a crash.
+        var shortKeepalive = CTAPHID.Assembler(channel: 1)
+        precondition(failure { try shortKeepalive.add(hex("00000001bb0001")) } == .malformed)
+        var shortError = CTAPHID.Assembler(channel: 1)
+        precondition(failure { try shortError.add(hex("00000001bf0001")) } == .malformed)
 
         // INIT reply: our nonce, the new channel, protocol 2, version 5.4.3, CBOR and WINK.
         let nonce = hex("0102030405060708")

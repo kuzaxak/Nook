@@ -88,7 +88,12 @@ public enum SecurityKeyOptions {
         guard selection["authenticatorAttachment"] as? String != "platform" else { return .failure(.notAllowed) }
         let residentKey = requirement(selection["residentKey"])
             ?? (selection["requireResidentKey"] as? Bool == true ? .required : .discouraged)
-        let algorithms = (body["pubKeyCredParams"] as? [Int]) ?? []
+        let algorithms: [Int]
+        switch body["pubKeyCredParams"] {
+        case nil: algorithms = []
+        case let list as [Int]: algorithms = list
+        default: return .failure(.notSupported)
+        }
         return .success(SecurityKeyCreateRequest(
             rpId: rpId, rpName: rp["name"] as? String ?? "", userID: userID,
             userName: user["name"] as? String ?? "", userDisplayName: user["displayName"] as? String ?? "",

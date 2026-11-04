@@ -122,6 +122,22 @@ struct SecurityKeyShimCheck {
         js.evaluateScript("\(created).getTransports().push('nfc'); results.created.value.getClientExtensionResults().credProps.rk = false")
         precondition(text("[\(created).getTransports(), results.created.value.getClientExtensionResults()]") == #"[["usb"],{"credProps":{"rk":true}}]"#)
 
+        // pubKeyCredParams: entries need a type and an integer alg; types other than public-key
+        // are skipped, and a list with none left is not supported. Nothing reaches Nook.
+        let sentBefore = value("posted.length").toInt32()
+        for (name, params, expected) in [
+            ("noAlg", "[{ type: 'public-key' }]", "TypeError"), ("textAlg", "[{ type: 'public-key', alg: '-7' }]", "TypeError"),
+            ("noType", "[{ alg: -7 }]", "TypeError"), ("notObject", "[-7]", "TypeError"), ("notList", "{ alg: -7 }", "TypeError"),
+            ("otherType", "[{ type: 'password', alg: -7 }]", "NotSupportedError"),
+        ] {
+            js.evaluateScript("keep('\(name)', navigator.credentials.create({ publicKey: { challenge: new Uint8Array(1), rp: {}, user: { id: new Uint8Array(1) }, pubKeyCredParams: \(params) } }))")
+            precondition(text("results.\(name).error.name") == "\"\(expected)\"", "\(name): \(text("results.\(name).error"))")
+        }
+        precondition(value("posted.length").toInt32() == sentBefore)
+        js.evaluateScript("keep('mixed', navigator.credentials.create({ publicKey: { challenge: new Uint8Array(1), rp: {}, user: { id: new Uint8Array(1) }, pubKeyCredParams: [{ type: 'password', alg: -8 }, { type: 'public-key', alg: -7 }] } }))")
+        precondition(text("posted[posted.length - 1].pubKeyCredParams") == "[-7]")
+        js.evaluateScript("answer({ error: 'NotAllowedError' })")
+
         // A key whose algorithm Nook cannot express as SPKI: getPublicKey() is null.
         js.evaluateScript("keep('rsa', navigator.credentials.create({ publicKey: { challenge: new Uint8Array(1), rp: {}, user: { id: new Uint8Array(1) } } }))")
         let rsa = SecurityKeyCreated(credentialID: Data([1]), authenticatorData: Data([2]), attestationObject: Data([3]),
@@ -135,7 +151,7 @@ struct SecurityKeyShimCheck {
             keep('got', navigator.credentials.get({ publicKey: { challenge: new Uint8Array([0, 1, 2]), rpId: 'example.com',
                 allowCredentials: [{ type: 'public-key', id: new Uint8Array([1]) }], userVerification: 'discouraged', timeout: 30000 } }));
             """)
-        precondition(text("posted[2]") == #"{"op":"get","requestId":3,"challenge":"AAEC","rpId":"example.com","allowCredentials":["AQ"],"userVerification":"discouraged","mediation":"optional","timeout":30000}"#, text("posted[2]"))
+        precondition(text("posted[posted.length - 1]") == #"{"op":"get","requestId":4,"challenge":"AAEC","rpId":"example.com","allowCredentials":["AQ"],"userVerification":"discouraged","mediation":"optional","timeout":30000}"#, text("posted[posted.length - 1]"))
         let signed = SecurityKeyAsserted(credentialID: Data([1]), authenticatorData: Data([2, 3]), signature: Data([4]), userHandle: Data([5]))
         js.evaluateScript("answer(\(json(SecurityKeyReply.asserted(signed, clientDataJSON: Data("{}".utf8)))))")
         let got = "results.got.value"

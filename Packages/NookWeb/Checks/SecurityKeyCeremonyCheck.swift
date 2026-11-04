@@ -42,6 +42,7 @@ final class FakeKey: SecurityKeyHID {
     var answersForRP: String?
     var autoTouch = true
     var keepalivesBeforeTouch = 0
+    var minPINLength: Int?
     var credentials: [FakeCredential] = []
     var onWaitingForTouch: (() -> Void)?
     /// What the key was asked, in order, without secrets.
@@ -136,6 +137,7 @@ final class FakeKey: SecurityKeyHID {
             var info: [CBOR: CBOR] = [.int(1): .array(versions.map { .text($0) }), .int(3): .bytes(aaguid),
                                       .int(4): .map(options), .int(5): .int(1200), .int(6): .array(pinProtocols.map { .int($0) })]
             if let maxCredentialCountInList { info[.int(7)] = .int(maxCredentialCountInList) }
+            if let minPINLength { info[.int(0x0d)] = .int(minPINLength) }
             reply(channel, 0, .map(info))
         case CTAP2.Command.clientPIN.rawValue:
             clientPIN(channel, p!)
@@ -467,6 +469,16 @@ struct SecurityKeyCeremonyCheck {
         counting.pin = "1234"
         _ = created(await run(.create(createRequest(uv: .required)), [counting], answers: [pin("12"), pin("1234")]).0)
         precondition(counting.log.filter { $0.hasPrefix("getPinUvAuthToken") }.count == 1)
+
+        // A key claiming a minimum PIN length past CTAP's 63-byte limit is held to 63.
+        precondition(try! CTAP2.Info(.map([.int(1): .array([.text("FIDO_2_0")]), .int(3): .bytes(Data(count: 16)),
+                                            .int(0x0d): .int(500)])).minPINLength == 63)
+        let strict = FakeKey()
+        strict.pin = String(repeating: "7", count: 63)
+        strict.minPINLength = 200
+        let (strictResult, strictSteps) = await run(.create(createRequest(uv: .required)), [strict], answers: [pin(strict.pin!)])
+        _ = created(strictResult)
+        precondition(strictSteps.first == .pin(SecurityKeyPINPrompt(retries: 8, wrongPIN: false, minimumLength: 63)), "\(strictSteps)")
 
         // A blocked PIN, a PIN-only site on a key without one, and leaving the PIN prompt.
         let blocked = FakeKey()

@@ -86,7 +86,7 @@ public enum CTAP2 {
             pinUvAuthProtocols = reply[6]?.array?.compactMap(\.int) ?? []
             maxCredentialCountInList = reply[7]?.int.flatMap { $0 > 0 ? $0 : nil }
             maxCredentialIdLength = reply[8]?.int.flatMap { $0 > 0 ? $0 : nil }
-            minPINLength = max(reply[0x0d]?.int ?? 4, 4)
+            minPINLength = min(max(reply[0x0d]?.int ?? 4, 4), 63)
         }
 
         public var supportsFIDO2: Bool { versions.contains { $0.hasPrefix("FIDO_2_") } }
