@@ -28,6 +28,9 @@ struct SettingsAITab: View {
     @State private var customProviderKey: String = ""
     @State private var addModelId: String = ""
     @State private var showFetchedModels: Bool = false
+    @State private var addTranslationModelId: String = ""
+    @State private var translationOpenRouterSearch: String = ""
+    @State private var showFetchedTranslationModels: Bool = false
 
     var body: some View {
         @Bindable var settings = nookSettings
@@ -186,106 +189,14 @@ struct SettingsAITab: View {
                     }
                 }
 
-                // Add by ID
-                HStack {
-                    TextField("Add model by ID (e.g., gpt-4o)", text: $addModelId)
-                        .textFieldStyle(.roundedBorder)
-                        .font(NookDesign.Font.secondary)
-                    Button("Add") {
-                        guard !addModelId.isEmpty,
-                              let providerId = configService.config.activeProviderId else { return }
-                        configService.addModelById(addModelId, displayName: nil, providerId: providerId)
-                        addModelId = ""
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(addModelId.isEmpty || configService.config.activeProviderId == nil)
-                }
-
-                // Fetch from provider
-                if configService.activeProviderType == .openRouter {
-                    DisclosureGroup("Fetch from OpenRouter", isExpanded: $showFetchedModels) {
-                        HStack {
-                            TextField("Search models...", text: $openRouterSearch)
-                                .textFieldStyle(.roundedBorder)
-                                .font(NookDesign.Font.secondary)
-                            Button("Fetch") {
-                                Task {
-                                    await configService.fetchOpenRouterModels(search: openRouterSearch.isEmpty ? nil : openRouterSearch)
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .disabled(configService.isFetchingModels)
-                        }
-
-                        if configService.isFetchingModels {
-                            HStack {
-                                ProgressView().scaleEffect(0.7)
-                                Text("Loading models...")
-                                    .font(NookDesign.Font.secondary)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        ForEach(configService.openRouterModels.prefix(50)) { model in
-                            fetchedModelRow(model)
-                        }
+                if let providerId = configService.config.activeProviderId {
+                    addModelField(text: $addModelId) { id in
+                        configService.addModelById(id, displayName: nil, providerId: providerId)
                     }
                 }
 
-                if configService.activeProviderType == .ollama {
-                    DisclosureGroup("Fetch from Ollama", isExpanded: $showFetchedModels) {
-                        Button("Refresh") {
-                            Task { await configService.fetchOllamaModels() }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(configService.isFetchingModels)
-
-                        if configService.isFetchingModels {
-                            HStack {
-                                ProgressView().scaleEffect(0.7)
-                                Text("Loading models...")
-                                    .font(NookDesign.Font.secondary)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        ForEach(configService.ollamaModels) { model in
-                            fetchedModelRow(model)
-                        }
-                    }
-                }
-
-                if let providerType = configService.activeProviderType, providerType == .openAI || providerType == .anthropic {
-                    DisclosureGroup("Fetch from \(providerType.displayName)", isExpanded: $showFetchedModels) {
-                        Button("Refresh") {
-                            Task {
-                                if providerType == .openAI {
-                                    await configService.fetchOpenAIModels()
-                                } else {
-                                    await configService.fetchAnthropicModels()
-                                }
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(configService.isFetchingModels || configService.activeProvider?.apiKey.isEmpty != false)
-
-                        if configService.isFetchingModels {
-                            HStack {
-                                ProgressView().scaleEffect(0.7)
-                                Text("Loading models...")
-                                    .font(NookDesign.Font.secondary)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        ForEach(providerType == .openAI ? configService.openAIModels : configService.anthropicModels) { model in
-                            fetchedModelRow(model)
-                        }
-                    }
+                fetchModels(for: configService.activeProvider, isExpanded: $showFetchedModels, search: $openRouterSearch) { model in
+                    configService.addModel(model)
                 }
             }
 
@@ -536,11 +447,7 @@ struct SettingsAITab: View {
 
                 if let provider {
                     let models = configService.config.translationModels(for: provider.id)
-                    if models.isEmpty {
-                        Text("Add a \(provider.displayName) model under Models below to translate with it.")
-                            .font(NookDesign.Font.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
+                    if !models.isEmpty {
                         Picker("Model", selection: Binding(
                             get: { configService.translationModel?.id },
                             set: { if let id = $0 { configService.setTranslationModel(id) } }
@@ -552,6 +459,12 @@ struct SettingsAITab: View {
                                 Text(model.displayName).tag(Optional(model.id))
                             }
                         }
+                    }
+                    addModelField(text: $addTranslationModelId) { id in
+                        configService.addTranslationModel(AIConfigService.customModel(id, providerId: provider.id))
+                    }
+                    fetchModels(for: provider, isExpanded: $showFetchedTranslationModels, search: $translationOpenRouterSearch) { model in
+                        configService.addTranslationModel(model)
                     }
                     Text("Page text is sent to \(provider.displayName). Private windows always translate on this Mac.")
                         .font(NookDesign.Font.caption)
@@ -655,10 +568,100 @@ struct SettingsAITab: View {
         }
     }
 
-    // MARK: - Fetched Model Row
+    // MARK: - Adding Models
+
+    private func addModelField(text: Binding<String>, add: @escaping (String) -> Void) -> some View {
+        HStack {
+            TextField("Add model by ID (e.g., gpt-4o)", text: text)
+                .textFieldStyle(.roundedBorder)
+                .font(NookDesign.Font.secondary)
+            Button("Add") {
+                let id = text.wrappedValue.trimmingCharacters(in: .whitespaces)
+                guard !id.isEmpty else { return }
+                add(id)
+                text.wrappedValue = ""
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(text.wrappedValue.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+    }
+
+    /// The provider's own model list, for the providers that publish one.
+    @ViewBuilder
+    private func fetchModels(
+        for provider: AIProviderConfig?,
+        isExpanded: Binding<Bool>,
+        search: Binding<String>,
+        add: @escaping (AIModelConfig) -> Void
+    ) -> some View {
+        if let provider {
+            switch provider.providerType {
+            case .openRouter:
+                DisclosureGroup("Fetch from OpenRouter", isExpanded: isExpanded) {
+                    HStack {
+                        TextField("Search models...", text: search)
+                            .textFieldStyle(.roundedBorder)
+                            .font(NookDesign.Font.secondary)
+                        Button("Fetch") {
+                            let query = search.wrappedValue
+                            Task { await configService.fetchOpenRouterModels(search: query.isEmpty ? nil : query) }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(configService.isFetchingModels)
+                    }
+                    fetchedModels(Array(configService.openRouterModels.prefix(50)), add: add)
+                }
+            case .ollama:
+                DisclosureGroup("Fetch from Ollama", isExpanded: isExpanded) {
+                    Button("Refresh") {
+                        Task { await configService.fetchOllamaModels() }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(configService.isFetchingModels)
+                    fetchedModels(configService.ollamaModels, add: add)
+                }
+            case .openAI, .anthropic:
+                DisclosureGroup("Fetch from \(provider.providerType.displayName)", isExpanded: isExpanded) {
+                    Button("Refresh") {
+                        Task {
+                            if provider.providerType == .openAI {
+                                await configService.fetchOpenAIModels()
+                            } else {
+                                await configService.fetchAnthropicModels()
+                            }
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(configService.isFetchingModels || provider.apiKey.isEmpty)
+                    fetchedModels(provider.providerType == .openAI ? configService.openAIModels : configService.anthropicModels, add: add)
+                }
+            case .gemini, .openAICompatible, .appleIntelligence:
+                EmptyView()
+            }
+        }
+    }
 
     @ViewBuilder
-    private func fetchedModelRow(_ model: AIModelConfig) -> some View {
+    private func fetchedModels(_ models: [AIModelConfig], add: @escaping (AIModelConfig) -> Void) -> some View {
+        if configService.isFetchingModels {
+            HStack {
+                ProgressView().scaleEffect(0.7)
+                Text("Loading models...")
+                    .font(NookDesign.Font.secondary)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        ForEach(models) { model in
+            fetchedModelRow(model, add: add)
+        }
+    }
+
+    @ViewBuilder
+    private func fetchedModelRow(_ model: AIModelConfig, add: @escaping (AIModelConfig) -> Void) -> some View {
         let alreadyAdded = configService.models.contains { $0.id == model.id && $0.providerId == model.providerId }
         HStack {
             VStack(alignment: .leading, spacing: NookDesign.Spacing.xxs) {
@@ -675,7 +678,7 @@ struct SettingsAITab: View {
                     .foregroundStyle(.secondary)
             } else {
                 Button("Add") {
-                    configService.addModel(model)
+                    add(model)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)

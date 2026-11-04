@@ -107,6 +107,23 @@ struct AIProviderConfigCheck {
 
         config.translationProviderId = "openai"
         config.translationModelId = "gpt-6-luna"
+
+        // A model added in the Translation section goes to the translation provider, not the chat's.
+        var adding = config
+        adding.activeProviderId = "anthropic"
+        adding.activeModelId = "claude-haiku-4-5"
+        let terra = AIModelConfig(id: "gpt-6-terra", displayName: "GPT-6 Terra", providerId: "openai")
+        adding.addTranslationModel(terra)
+        adding.addTranslationModel(terra)
+        precondition(adding.translationModelId == "gpt-6-terra", "and is the one pages translate with")
+        precondition(adding.models.filter { $0.id == "gpt-6-terra" }.count == 1)
+        precondition(adding.activeProviderId == "anthropic" && adding.activeModelId == "claude-haiku-4-5", "the chat keeps its provider and model")
+        adding.addTranslationModel(AIModelConfig(id: "text-embedding-3-small", displayName: "text-embedding-3-small", providerId: "openai"))
+        precondition(adding.translationModelId == "gpt-6-terra", "a model that cannot chat is not picked")
+        adding.addTranslationModel(AIModelConfig(id: "claude-sonnet-5-5", displayName: "Claude Sonnet 5.5", providerId: "anthropic"))
+        precondition(!adding.models.contains { $0.id == "claude-sonnet-5-5" } && adding.translationModelId == "gpt-6-terra",
+                     "nor is another provider's")
+
         let reloaded = try! JSONDecoder().decode(AIConfiguration.self, from: JSONEncoder().encode(config))
         precondition(reloaded.translationEngine == .ai)
         precondition(reloaded.translationTarget(hasKey: hasKey).map { [$0.provider.id, $0.model.id] } == ["openai", "gpt-6-luna"])

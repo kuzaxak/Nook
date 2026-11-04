@@ -329,6 +329,20 @@ public struct AIConfiguration: Codable {
         }
     }
 
+    /// Adds one of the translation provider's models and translates with it when it can chat. The
+    /// chat's provider and model stay as they are.
+    public mutating func addTranslationModel(_ model: AIModelConfig) {
+        guard model.providerId == translationProviderId,
+              let type = providers.first(where: { $0.id == model.providerId })?.providerType
+        else { return }
+        if !models.contains(where: { $0.id == model.id && $0.providerId == model.providerId }) {
+            models.append(model)
+        }
+        if type.isChatModel(model.id) {
+            translationModelId = model.id
+        }
+    }
+
     public func translationModels(for providerId: String) -> [AIModelConfig] {
         guard let type = providers.first(where: { $0.id == providerId })?.providerType else { return [] }
         return models.filter { $0.providerId == providerId && type.isChatModel($0.id) }

@@ -173,15 +173,18 @@ class AIConfigService {
     }
 
     func addModelById(_ modelId: String, displayName: String?, providerId: String) {
-        let name = displayName ?? modelId
-        let model = AIModelConfig(
+        addModel(Self.customModel(modelId, displayName: displayName, providerId: providerId))
+    }
+
+    /// A model added by its id rather than from a provider's list.
+    static func customModel(_ modelId: String, displayName: String? = nil, providerId: String) -> AIModelConfig {
+        AIModelConfig(
             id: modelId,
-            displayName: name,
+            displayName: displayName ?? modelId,
             providerId: providerId,
             isCustom: true,
             capabilities: AIModelCapabilities(toolCalling: true, streaming: true, webSearch: true)
         )
-        addModel(model)
     }
 
     func removeModel(_ modelId: String, providerId: String) {
@@ -241,6 +244,11 @@ class AIConfigService {
 
     func setTranslationModel(_ modelId: String) {
         config.translationModelId = modelId
+        save()
+    }
+
+    func addTranslationModel(_ model: AIModelConfig) {
+        config.addTranslationModel(model)
         save()
     }
 
