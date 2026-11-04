@@ -112,6 +112,27 @@ final class SplitViewManager: ObservableObject {
         }
     }
 
+    // MARK: - Add Split View
+
+    /// Arc's Add Split View, for every entry to it: the selected tab stays on the left and the
+    /// command bar opens over an empty right pane. Does nothing with no tab selected or while
+    /// the window shows a split.
+    func addSplitView(in window: BrowserWindowState) {
+        guard let addSplit = AddSplit.start(selectedItemID: window.selectedItemID, split: window.splitPair) else { return }
+        window.commandPalette?.open(addSplit: addSplit)
+    }
+
+    func offersAddSplitView(in window: BrowserWindowState) -> Bool {
+        AddSplit.isOffered(selectedItemID: window.selectedItemID, split: window.splitPair)
+    }
+
+    /// `itemID`, chosen in the command bar, takes Add Split View's empty pane and becomes the selection.
+    func fill(_ addSplit: AddSplit, with itemID: UUID, in window: BrowserWindowState) {
+        guard let right = addSplit.rightItem(choosing: itemID, selectedItemID: window.selectedItemID, split: window.splitPair) else { return }
+        enterSplit(with: right, placeOn: .right, in: window)
+        browserManager?.tabs.select(right, in: window)
+    }
+
     /// `itemID` as a split sees it: whether it is a tab, and one of the tree `window` shows.
     func dragged(_ itemID: UUID, in window: BrowserWindowState) -> SplitDrop.Dragged? {
         guard let tabs = browserManager?.tabs, let item = tabs.item(itemID) else { return nil }

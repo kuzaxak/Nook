@@ -159,11 +159,10 @@ struct SidebarBottomBar: View {
         Divider()
 
         Button("New Split", systemImage: "rectangle.split.2x1") {
-            if let itemID = tabs.open(url: TabsController.homeURL, in: windowState, placement: .background) {
-                browserManager.splitManager.enterSplit(with: itemID, in: windowState)
-            }
+            browserManager.splitManager.addSplitView(in: windowState)
         }
-        .disabled(windowState.selectedItemID == nil || SplitDrop.current(windowState.splitPair, selected: windowState.selectedItemID) != nil)
+        .keyboardShortcut(shortcuts?.swiftUIShortcut(for: .addSplitView))
+        .disabled(!browserManager.splitManager.offersAddSplitView(in: windowState))
 
         Button("New Tab", systemImage: "plus.square") {
             commandPalette.open()

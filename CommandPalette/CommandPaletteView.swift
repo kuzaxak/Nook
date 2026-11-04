@@ -665,10 +665,8 @@ struct CommandPaletteView: View {
 
     /// Add Split View: `itemID` takes the right pane and becomes the selection.
     private func fillEmptyPane(with itemID: UUID) {
-        guard let right = commandPalette.addSplit?.rightItem(
-            choosing: itemID, selectedItemID: windowState.selectedItemID, split: windowState.splitPair) else { return }
-        browserManager.enterSplit(with: right, placeOnRight: true, in: windowState)
-        browserManager.tabs.select(right, in: windowState)
+        guard let addSplit = commandPalette.addSplit else { return }
+        browserManager.splitManager.fill(addSplit, with: itemID, in: windowState)
     }
 
     // MARK: - Keys
@@ -832,7 +830,7 @@ struct CommandPaletteView: View {
     /// when each word starts a word of the name; the `> ` scope lists substring matches too.
     private func actionRows(matching query: String, wordPrefixOnly: Bool) -> [SearchManager.SearchSuggestion] {
         let manager = browserManager.keyboardShortcutManager
-        let canAddSplit = SplitDrop.current(windowState.splitPair, selected: windowState.selectedItemID) == nil && commandPalette.addSplit == nil
+        let canAddSplit = browserManager.splitManager.offersAddSplitView(in: windowState) && commandPalette.addSplit == nil
         let scored = Self.barActions.filter { $0 != .addSplitView || canAddSplit }.compactMap { action -> (row: SearchManager.SearchSuggestion, score: Int)? in
             guard let score = PaletteText.matchScore(query: query, title: action.displayName, detail: nil),
                   !wordPrefixOnly || score == 2 else { return nil }

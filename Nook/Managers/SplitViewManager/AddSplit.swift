@@ -14,15 +14,21 @@ import Foundation
 struct AddSplit: Equatable {
     let leftItemID: UUID
 
+    /// Whether the command bar, ⌃⇧= and the sidebar's New Split offer it: not while the window
+    /// shows a split. With no tab selected it is offered and `start` declines.
+    static func isOffered(selectedItemID: UUID?, split: SplitDrop.Pair?) -> Bool {
+        SplitDrop.current(split, selected: selectedItemID) == nil
+    }
+
     /// nil with no tab selected, or while the window shows a split.
     static func start(selectedItemID: UUID?, split: SplitDrop.Pair?) -> AddSplit? {
-        guard let selectedItemID, SplitDrop.current(split, selected: selectedItemID) == nil else { return nil }
+        guard let selectedItemID, isOffered(selectedItemID: selectedItemID, split: split) else { return nil }
         return AddSplit(leftItemID: selectedItemID)
     }
 
     /// False once the window selects another tab or space, closes the left tab, or shows a split.
     func shows(selectedItemID: UUID?, split: SplitDrop.Pair?) -> Bool {
-        selectedItemID == leftItemID && SplitDrop.current(split, selected: selectedItemID) == nil
+        selectedItemID == leftItemID && Self.isOffered(selectedItemID: selectedItemID, split: split)
     }
 
     /// The tab that fills the right pane when `itemID` is chosen: an open tab, or the one a

@@ -22,6 +22,13 @@ struct AddSplitCheck {
         precondition(AddSplit.start(selectedItemID: current, split: hidden) == adding, "a hidden pair")
         precondition(adding.shows(selectedItemID: current, split: hidden))
 
+        // Every entry (the command bar, ⌃⇧=, the sidebar's New Split) is on offer unless a split
+        // shows; with no tab selected it is offered and does nothing.
+        precondition(AddSplit.isOffered(selectedItemID: current, split: nil))
+        precondition(AddSplit.isOffered(selectedItemID: current, split: hidden), "a hidden pair")
+        precondition(!AddSplit.isOffered(selectedItemID: current, split: showing), "a split shows")
+        precondition(AddSplit.isOffered(selectedItemID: nil, split: nil) && AddSplit.start(selectedItemID: nil, split: nil) == nil)
+
         // An open tab moves into the right pane; an address or a search fills it with the tab it opened.
         precondition(adding.rightItem(choosing: other, selectedItemID: current, split: nil) == other, "tab")
         precondition(adding.rightItem(choosing: opened, selectedItemID: current, split: nil) == opened, "URL")

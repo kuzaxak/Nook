@@ -9,7 +9,7 @@
 - The sidebar's address shows "Translation Available" under the URL when a page is in another language, as in Arc; click it to translate
 - Spaces can be exported to a `.nookspace` file and imported as a new space in any profile: Export Space… in a space's right-click menu or Settings → Spaces, Import Space… in the File menu or Settings → Spaces, or open the file from Finder; the file holds the space's look, favorites, pinned tabs and open tabs, never logins, cookies or history, only web links come in, and imported tabs load when you open them
 - Press and hold Back or Forward to list the pages that way, as in Safari and Arc
-- Add Split View (⌃⇧=, or type "split" in the command bar) puts an empty pane beside the current tab with the command bar over it, as in Arc: pick a tab, or type an address or a search, to fill it; Escape leaves the window as it was
+- Add Split View (⌃⇧=, "split" in the command bar, or New Split in the sidebar's + menu) puts an empty pane beside the current tab with the command bar over it, as in Arc: pick a tab, or type an address or a search, to fill it; Escape leaves the window as it was
 
 ### Fixed
 
