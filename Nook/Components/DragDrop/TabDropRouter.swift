@@ -32,7 +32,6 @@ import AppKit
         }
     }
 
-    /// `draggingEntered:` and `draggingUpdated:` of `receiver`.
     func updated(_ sender: NSDraggingInfo, at receiver: TabDropTarget) -> NSDragOperation {
         guard Self.isTabDrag(sender) else { return [] }
         let owner = owner(of: sender, at: receiver)
@@ -57,7 +56,6 @@ import AppKit
         current = nil
     }
 
-    /// `performDragOperation:` of `receiver`.
     func perform(_ sender: NSDraggingInfo, at receiver: TabDropTarget) -> Bool {
         guard Self.isTabDrag(sender) else { return false }
         let owner = owner(of: sender, at: receiver)

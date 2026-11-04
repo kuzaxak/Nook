@@ -326,7 +326,6 @@ struct WebsiteView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.99)))
             }
 
-            // What a tab dragged over the page would do there.
             if let preview = splitManager.preview(for: windowState.id) {
                 SplitPreviewOverlay(preview: preview)
                     .environmentObject(browserManager)

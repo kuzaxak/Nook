@@ -55,7 +55,6 @@ enum SplitDrop {
         return split
     }
 
-    /// Dividers that make `count` panes the same size.
     static func equalDividers(_ count: Int) -> [CGFloat] {
         (1..<max(count, 1)).map { CGFloat($0) / CGFloat(count) }
     }

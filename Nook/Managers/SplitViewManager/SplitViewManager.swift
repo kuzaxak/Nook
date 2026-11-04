@@ -183,7 +183,6 @@ final class SplitViewManager: ObservableObject {
         tabs?.mirror(window)
     }
 
-    /// No selection change to save the record, so save it here.
     private func update(_ window: BrowserWindowState, to record: SplitRecord?) {
         window.split = record
         tabs?.mirror(window)
