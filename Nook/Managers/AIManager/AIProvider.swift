@@ -83,6 +83,18 @@ struct AIResponse: Equatable {
     }
 }
 
+extension AIResponse {
+    /// The reply as the chat shows it. One that hit the output limit says so, since thinking can
+    /// use the whole limit and leave no text or text cut off mid-sentence.
+    var chatText: String {
+        guard finishReason == .maxTokens else { return content }
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "The reply used up its output limit before any text. Raise Max Output Tokens in Settings → AI and ask again."
+        }
+        return content + "\n\n(Cut off at the output limit. Raise Max Output Tokens in Settings → AI to get the rest.)"
+    }
+}
+
 enum AIFinishReason: String, Equatable {
     case stop
     case toolCalls = "tool_calls"

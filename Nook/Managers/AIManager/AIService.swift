@@ -254,7 +254,7 @@ class AIService {
             // Create assistant message
             var assistantMessage = ChatMessage(
                 role: .assistant,
-                content: response.content,
+                content: response.chatText,
                 timestamp: Date()
             )
             assistantMessage.citations = response.citations

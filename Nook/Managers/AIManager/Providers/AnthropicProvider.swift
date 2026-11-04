@@ -11,6 +11,9 @@ import NookSettings
 
 struct AnthropicProvider: AIProviderProtocol {
     static let apiVersion = "2026-10-21"
+    /// Current models think by default and thinking counts against `max_tokens`; this is the most
+    /// an unstreamed request can ask for without timing out.
+    static let minimumMaxTokens = 16_384
 
     let apiKey: String
     let baseURL: String
@@ -109,7 +112,7 @@ struct AnthropicProvider: AIProviderProtocol {
 
         var body: [String: Any] = [
             "model": model,
-            "max_tokens": config.maxTokens,
+            "max_tokens": max(config.maxTokens, minimumMaxTokens),
             "messages": turns
         ]
 

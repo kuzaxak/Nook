@@ -59,7 +59,9 @@ struct HostedAIProvidersCheck {
         let body = AnthropicProvider.requestBody(messages: messages, model: "claude-opus-5-5", config: config, tools: [search, schemaless])
         precondition(JSONSerialization.isValidJSONObject(body))
         precondition(body["model"] as? String == "claude-opus-5-5")
-        precondition(body["max_tokens"] as? Int == 2048)
+        precondition(body["max_tokens"] as? Int == 16_384, "thinking shares max_tokens, so a low setting is raised")
+        let roomy = AnthropicProvider.requestBody(messages: messages, model: "claude-opus-5-5", config: AIGenerationConfig(maxTokens: 32_000), tools: [])
+        precondition(roomy["max_tokens"] as? Int == 32_000)
         precondition(body["system"] as? String == "You are Nook.", "the system turn goes in the top-level field")
         precondition(body["temperature"] == nil, "the API version Nook sends rejects sampling parameters")
 
@@ -145,6 +147,13 @@ struct HostedAIProvidersCheck {
          "stop_reason":"max_tokens","usage":{"input_tokens":1,"output_tokens":2}}
         """.utf8))
         precondition(cut.finishReason == .maxTokens)
+
+        // The chat says when the output limit ended a reply, instead of a blank or cut-off answer.
+        precondition(AIResponse(content: "Two tabs.", finishReason: .stop).chatText == "Two tabs.")
+        let partial = AIResponse(content: "The page lists three", finishReason: .maxTokens).chatText
+        precondition(partial.hasPrefix("The page lists three") && partial.count > "The page lists three".count && partial.contains("Max Output Tokens"))
+        let blank = AIResponse(content: " \n", finishReason: .maxTokens).chatText
+        precondition(!blank.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && blank.contains("Max Output Tokens"))
         let full = try! AnthropicProvider.parseResponse(Data("""
         {"type":"message","role":"assistant","content":[{"type":"text","text":"Long"}],"stop_reason":"model_context_window_exceeded"}
         """.utf8))
