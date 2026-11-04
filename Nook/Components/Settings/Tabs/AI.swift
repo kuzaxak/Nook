@@ -101,6 +101,8 @@ struct SettingsAITab: View {
                 Text("Downloads")
             }
 
+            translationSection
+
             // MARK: - Providers
             Section("Providers") {
                 ForEach(configService.providers.filter { $0.providerType != .appleIntelligence || AppleIntelligenceProvider.isAvailable }) { provider in
@@ -497,6 +499,68 @@ struct SettingsAITab: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    // MARK: - Translation
+
+    private var translationSection: some View {
+        Section {
+            Picker("Engine", selection: Binding(
+                get: { configService.translationEngine },
+                set: { configService.setTranslationEngine($0) }
+            )) {
+                ForEach(PageTranslationEngine.allCases) { engine in
+                    Text(engine.displayName).tag(engine)
+                }
+            }
+
+            if configService.translationEngine == .ai {
+                let provider = configService.translationProvider
+                if configService.translationProviders.isEmpty {
+                    Text("Add an API key to a provider below to translate with it.")
+                        .font(NookDesign.Font.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Picker("Provider", selection: Binding(
+                        get: { provider?.id },
+                        set: { if let id = $0 { configService.setTranslationProvider(id) } }
+                    )) {
+                        if provider == nil {
+                            Text("Choose…").tag(String?.none)
+                        }
+                        ForEach(configService.translationProviders) { candidate in
+                            Text(candidate.displayName).tag(Optional(candidate.id))
+                        }
+                    }
+                }
+
+                if let provider {
+                    let models = configService.modelsForProvider(provider.id)
+                    if models.isEmpty {
+                        Text("Add a \(provider.displayName) model under Models below to translate with it.")
+                            .font(NookDesign.Font.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Model", selection: Binding(
+                            get: { configService.translationModel?.id },
+                            set: { if let id = $0 { configService.setTranslationModel(id) } }
+                        )) {
+                            if configService.translationModel == nil {
+                                Text("Choose…").tag(String?.none)
+                            }
+                            ForEach(models) { model in
+                                Text(model.displayName).tag(Optional(model.id))
+                            }
+                        }
+                    }
+                    Text("Page text is sent to \(provider.displayName). Private windows always translate on this Mac.")
+                        .font(NookDesign.Font.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Translation")
+        }
     }
 
     // MARK: - Provider Row

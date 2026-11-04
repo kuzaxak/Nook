@@ -3,8 +3,9 @@
 //  PageSession+Translate.swift
 //  Nook
 //
-//  Whole-page translation on the Mac with the Translation framework. The script and its
-//  handler live in the NookTranslate world, so a page can neither read nor feed them.
+//  Whole-page translation with the Translation framework on the Mac, or with the AI model chosen
+//  in Settings (AIPageTranslation.swift). The script and its handler live in the NookTranslate
+//  world, so a page can neither read nor feed them.
 //
 
 import Foundation
@@ -18,7 +19,7 @@ extension PageSession {
     /// Hosts that got "Not Now" this session.
     private static var declinedTranslationHosts: Set<String> = []
     private static let minimumTextForOffer = 200
-    private static let translationBatchSize = 40
+    private static let translationBatchSize = AIPageTranslation.batchSize
 
     private static let translateScript: String = {
         guard let url = Bundle.module.url(forResource: "page-translate", withExtension: "js", subdirectory: "Resources"),
@@ -48,15 +49,24 @@ extension PageSession {
         translationOffer = nil
     }
 
+    public func dismissTranslationNotice() {
+        translationNotice = nil
+    }
+
     /// Ends any translation in flight. The page's text stays as it is.
     func resetTranslation() {
         translationGeneration &+= 1
         translationFeed?.finish()
         translationFeed = nil
+        translationBacklog = []
         installedTranslation?.cancel()
         installedTranslation = nil
+        aiTranslationWork?.cancel()
+        aiTranslationWork = nil
+        aiTranslator = nil
         translationRequest = nil
         translationOffer = nil
+        translationNotice = nil
         translationSource = nil
         isTranslated = false
     }
@@ -96,34 +106,68 @@ extension PageSession {
         let status = await LanguageAvailability().status(from: source, to: target)
         guard generation == translationGeneration, !isTranslated else { return }
         translationOffer = nil
-        switch status {
-        case .installed, .supported:
-            isTranslated = true
-            if status == .installed, #available(macOS 26, iOS 26, *) {
-                let session = TranslationSession(installedSource: source, target: target)
-                installedTranslation = Task { await runTranslation(with: session) }
-            } else {
-                // The host view's .translationTask hands back a session that can show the download
-                // sheet; Sequoia has no other way to make one.
-                translationRequest = TranslationSession.Configuration(source: source, target: target)
-            }
-        default:
+        let onDeviceSupported = status == .installed || status == .supported
+        let engine = TranslationEngineChoice.choose(controller?.pageTranslation?(), isPrivate: isPrivate)
+        if case .ai(let model) = engine {
+            aiTranslator = AIPageTranslator(
+                model: model,
+                context: AITranslationContext(target: target, source: source, title: title, host: url.host ?? ""),
+                onNotice: { [weak self] notice in
+                    guard let self, generation == self.translationGeneration else { return }
+                    self.showTranslationNotice(notice)
+                }
+            )
+        } else if !onDeviceSupported {
             return
         }
+        isTranslated = true
+        if case .onDeviceInstead(let reason) = engine {
+            translationNotice = .aiFailed(reason: reason, onDevice: true)
+        }
+        if !onDeviceSupported {
+            installedTranslation = Task { await runTranslation(onDevice: nil) }
+        } else if status == .installed, #available(macOS 26, iOS 26, *) {
+            let session = TranslationSession(installedSource: source, target: target)
+            installedTranslation = Task { await runTranslation(with: session) }
+        } else {
+            // The host view's .translationTask hands back a session that can show the download
+            // sheet; Sequoia has no other way to make one.
+            translationRequest = TranslationSession.Configuration(source: source, target: target)
+        }
+    }
+
+    /// A failure outranks the AI engine's length limit when a page hits both.
+    private func showTranslationNotice(_ notice: PageTranslationNotice) {
+        if case .aiLimitReached = notice, translationNotice != nil { return }
+        translationNotice = notice
     }
 
     /// Translates the page's text, then whatever the page adds, until the translation is reset or
     /// the caller's task ends. Safe to call again for the same page: only untranslated text is sent.
     public func runTranslation(with translator: TranslationSession) async {
+        await runTranslation(onDevice: translator)
+    }
+
+    /// `translator` is nil when the AI engine translates a language pair Apple cannot.
+    private func runTranslation(onDevice translator: TranslationSession?) async {
         let generation = translationGeneration
         guard isTranslated else { return }
         let (stream, feed) = AsyncStream.makeStream(of: [[String: Any]].self)
         translationFeed?.finish()
         translationFeed = feed
+        if !translationBacklog.isEmpty {
+            feed.yield(translationBacklog)
+            translationBacklog = []
+        }
         if let first = await callTranslateScript("start()") as? [[String: Any]] { feed.yield(first) }
 
         for await nodes in stream {
             guard generation == translationGeneration else { return }
+            if let aiTranslator {
+                await translate(nodes.compactMap(TranslationNode.init), with: aiTranslator, onDevice: translator, generation: generation)
+                continue
+            }
+            guard let translator else { return }
             let requests = nodes.compactMap { node -> TranslationSession.Request? in
                 guard let id = node["id"] as? String, let text = node["text"] as? String else { return nil }
                 return TranslationSession.Request(sourceText: text, clientIdentifier: id)
@@ -146,6 +190,28 @@ extension PageSession {
                 }
             }
         }
+    }
+
+    /// Sends `nodes` through the AI engine, with `translator` for the batches the model fails on.
+    private func translate(_ nodes: [TranslationNode], with ai: AIPageTranslator, onDevice translator: TranslationSession?, generation: Int) async {
+        var onDevice: AIPageTranslator.Translate?
+        if let translator {
+            onDevice = { batch in
+                let responses = try await translator.translations(from: batch.map {
+                    TranslationSession.Request(sourceText: $0.text, clientIdentifier: $0.id)
+                })
+                return Dictionary(responses.compactMap { response in response.clientIdentifier.map { ($0, response.targetText) } },
+                                  uniquingKeysWith: { first, _ in first })
+            }
+        }
+        let work = Task {
+            await ai.translate(nodes, onDevice: onDevice) { [weak self] pairs in
+                guard let self, generation == self.translationGeneration else { return }
+                _ = await self.callTranslateScript("apply(pairs)", arguments: ["pairs": pairs.map { [$0.key, $0.value] }])
+            }
+        }
+        aiTranslationWork = work
+        await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
     }
 
     // MARK: - Script

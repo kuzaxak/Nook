@@ -5,6 +5,8 @@
 ### Added
 
 - OpenAI and Anthropic providers for the AI assistant: Settings → AI → Providers takes each one's API key, kept in the Keychain, and Models fetches the models it offers
+- Pages can translate with an AI model instead of Apple's on-device translation: Settings → AI → Translation picks the provider and model, a few batches go at once, text the model fails on is translated on this Mac with a line saying why, and private windows always translate on this Mac
+- The sidebar's address shows "Translation Available" under the URL when a page is in another language, as in Arc; click it to translate
 
 ## 1.5.2
 

@@ -3,7 +3,8 @@
 //  TranslateOfferView.swift
 //  Nook
 //
-//  The card offering to translate a page in another language, and the invisible host whose
+//  The card offering to translate a page in another language, the card saying why the AI engine
+//  left some of a translated page to Apple or in the original, and the invisible host whose
 //  .translationTask gives a page a session that can download a language pair.
 //
 
@@ -31,6 +32,30 @@ struct TranslateOfferView: View {
             HStack(spacing: NookDesign.Spacing.xxs) {
                 Button("Not Now") { session.declineTranslationOffer() }
                 Button("Translate") { session.toggleTranslation() }
+            }
+            .buttonStyle(RectNavButtonStyle())
+            .controlSize(.small)
+        }
+        .padding(NookDesign.Spacing.xxs)
+        .nookFloatingSurface(in: NookDesign.Radius.shape(NookDesign.Radius.md))
+    }
+}
+
+struct TranslationNoticeView: View {
+    let session: PageSession
+    let notice: PageTranslationNotice
+
+    var body: some View {
+        HStack(spacing: NookDesign.Spacing.md) {
+            Text(notice.message)
+                .font(NookDesign.Font.body)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .help(notice.message)
+                .padding(.leading, NookDesign.Spacing.sm)
+            HStack(spacing: NookDesign.Spacing.xxs) {
+                Button("Show Original") { session.showOriginal() }
+                Button("OK") { session.dismissTranslationNotice() }
             }
             .buttonStyle(RectNavButtonStyle())
             .controlSize(.small)

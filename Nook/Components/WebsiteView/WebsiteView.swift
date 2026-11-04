@@ -302,6 +302,12 @@ struct WebsiteView: View {
                             .padding(.top, NookDesign.Spacing.lg)
                         Spacer()
                     }
+                } else if let notice = session.translationNotice, session.isTranslated {
+                    VStack {
+                        TranslationNoticeView(session: session, notice: notice)
+                            .padding(.top, NookDesign.Spacing.lg)
+                        Spacer()
+                    }
                 }
                 if let offer = browserManager.autofillManager.saveOffer, offer.itemID == session.itemID {
                     VStack {

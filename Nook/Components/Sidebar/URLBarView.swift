@@ -167,17 +167,28 @@ struct URLBarView: View {
                                     .font(.system(size: NookDesign.Size.rowGlyph, weight: .medium))
                                     .foregroundStyle(.secondary)
                             }
-                            // Two texts so a narrow sidebar cuts the path first and then the
-                            // host's head: `accounts.google.com.x.evil.tld` must keep `evil.tld`.
-                            HStack(spacing: 0) {
-                                Text(displayHost(for: session)).foregroundStyle(.primary)
-                                    .truncationMode(.head)
-                                    .layoutPriority(1)
-                                Text(displayPath(for: session)).foregroundStyle(.tertiary)
-                                    .truncationMode(.tail)
+                            VStack(alignment: .leading, spacing: 0) {
+                                // Two texts so a narrow sidebar cuts the path first and then the
+                                // host's head: `accounts.google.com.x.evil.tld` must keep `evil.tld`.
+                                HStack(spacing: 0) {
+                                    Text(displayHost(for: session)).foregroundStyle(.primary)
+                                        .truncationMode(.head)
+                                        .layoutPriority(1)
+                                    Text(displayPath(for: session)).foregroundStyle(.tertiary)
+                                        .truncationMode(.tail)
+                                }
+                                .font(NookDesign.Font.secondary)
+                                .lineLimit(1)
+                                if let session, session.translationOffer != nil, !session.isTranslated {
+                                    Button("Translation Available") { session.toggleTranslation() }
+                                        .buttonStyle(.plain)
+                                        .font(NookDesign.Font.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .pointerStyle(.link)
+                                        .help(browserManager.help("Translate Page", shortcut: .translatePage))
+                                }
                             }
-                            .font(NookDesign.Font.secondary)
-                            .lineLimit(1)
                             if let errors = devErrorCount(for: session) {
                                 Button {
                                     browserManager.toggleDevPanel(.console)

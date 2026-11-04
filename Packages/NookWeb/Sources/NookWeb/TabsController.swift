@@ -88,6 +88,9 @@ public final class TabsController {
     @ObservationIgnored public var onLeavingTab: ((UUID, BrowserWindowState) -> Void)?
     /// A page let go of its web views: unloaded, or closed, in a private window too.
     @ObservationIgnored public var onPageUnloaded: ((UUID) -> Void)?
+    /// The engine Settings chose for page translation. Set by the app, which owns the AI
+    /// providers; pages translate on device without it.
+    @ObservationIgnored public var pageTranslation: (() -> PageTranslationSetting)?
 
     /// Launch argument that redirects tab state, e.g. `-NookStateDir /tmp/bench`.
     /// Read from the argument domain only, never from persisted defaults, so a stray written

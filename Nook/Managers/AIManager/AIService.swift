@@ -73,18 +73,24 @@ class AIService {
         mcpToolsByFunctionName: [String: MCPTool]
     ) -> AIProviderProtocol? {
         guard let providerConfig = configService.activeProvider else { return nil }
+        guard providerConfig.providerType == .appleIntelligence else { return Self.hostedProvider(for: providerConfig) }
+        return AppleIntelligenceProvider { [weak self] name, argumentsJSON in
+            await self?.runOnDeviceTool(
+                name,
+                argumentsJSON: argumentsJSON,
+                tag: contextTag,
+                request: request,
+                mcpToolsByFunctionName: mcpToolsByFunctionName
+            ) ?? ""
+        }
+    }
 
+    /// The client for a provider reached over the network; nil for Apple Intelligence, which runs
+    /// on this Mac with the conversation's tools.
+    static func hostedProvider(for providerConfig: AIProviderConfig) -> AIProviderProtocol? {
         switch providerConfig.providerType {
         case .appleIntelligence:
-            return AppleIntelligenceProvider { [weak self] name, argumentsJSON in
-                await self?.runOnDeviceTool(
-                    name,
-                    argumentsJSON: argumentsJSON,
-                    tag: contextTag,
-                    request: request,
-                    mcpToolsByFunctionName: mcpToolsByFunctionName
-                ) ?? ""
-            }
+            return nil
         case .gemini:
             return GeminiProvider(apiKey: providerConfig.apiKey, baseURL: providerConfig.baseURL)
         case .openRouter:

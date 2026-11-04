@@ -145,10 +145,17 @@ public final class PageSession: NSObject, Identifiable {
     public internal(set) var translationOffer: Locale.Language?
     /// Requests a view-hosted session for language downloads, or any translation on Sequoia.
     public internal(set) var translationRequest: TranslationSession.Configuration?
+    /// Says why some of the text did not go through the AI engine, while the page is translated.
+    public internal(set) var translationNotice: PageTranslationNotice?
     @ObservationIgnored var translationSource: Locale.Language?
     @ObservationIgnored var translationGeneration = 0
     @ObservationIgnored var translationFeed: AsyncStream<[[String: Any]]>.Continuation?
+    /// Text the page added while no run was reading the feed, for the next run.
+    @ObservationIgnored var translationBacklog: [[String: Any]] = []
     @ObservationIgnored var installedTranslation: Task<Void, Never>?
+    @ObservationIgnored var aiTranslator: AIPageTranslator?
+    /// The AI engine's requests in flight; resetting the translation cancels them.
+    @ObservationIgnored var aiTranslationWork: Task<Void, Never>?
 
     // MARK: - Web Process Crash Tracking
 

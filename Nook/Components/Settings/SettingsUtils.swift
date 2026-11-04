@@ -61,7 +61,7 @@ enum SettingsTabs: String, Hashable, CaseIterable {
         switch self {
         case .general: return ["startup", "search engine", "tabs", "quit", "update", "archive", "ungrouped", "new tabs", "nest", "link tabs", "url shortcuts", "kagi", "session link", "site search"]
         case .appearance: return ["theme", "dark", "light", "sidebar"]
-        case .ai: return ["gemini", "openrouter", "ollama", "mcp"]
+        case .ai: return ["gemini", "openrouter", "ollama", "mcp", "translation", "translate"]
         case .privacy: return ["cookies", "cache", "tracking", "website data", "history", "half-life", "pawl", "vault", "passwords", "passkeys", "autofill"]
         case .adBlocker: return ["ads", "filters", "blocking", "allowlist", "whitelist"]
         case .tweaks: return ["youtube", "shorts", "thumbnails", "sponsorblock", "facebook", "instagram", "reels", "download", "social media"]

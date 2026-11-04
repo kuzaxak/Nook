@@ -9,6 +9,7 @@
 import CryptoKit
 import Foundation
 import NookSettings
+import NookWeb
 import OSLog
 
 @MainActor
@@ -198,6 +199,67 @@ class AIConfigService {
     func modelsForActiveProvider() -> [AIModelConfig] {
         guard let providerId = config.activeProviderId else { return [] }
         return modelsForProvider(providerId)
+    }
+
+    // MARK: - Page Translation
+
+    /// Room for a 40-text batch's JSON reply, and for a reasoning model's thinking before it.
+    private static let translationMaxTokens = 16_384
+
+    private static func hasKey(_ provider: AIProviderConfig) -> Bool { !provider.apiKey.isEmpty }
+
+    var translationEngine: PageTranslationEngine { config.translationEngine ?? .onDevice }
+
+    var translationProviders: [AIProviderConfig] { config.translationProviders(hasKey: Self.hasKey) }
+
+    var translationProvider: AIProviderConfig? {
+        translationProviders.first { $0.id == config.translationProviderId }
+    }
+
+    var translationModel: AIModelConfig? {
+        config.translationTarget(hasKey: Self.hasKey)?.model
+    }
+
+    /// Choosing the AI engine with nothing usable chosen yet picks the first provider and its first model.
+    func setTranslationEngine(_ engine: PageTranslationEngine) {
+        config.translationEngine = engine
+        if engine == .ai, translationModel == nil {
+            let provider = translationProvider ?? translationProviders.first
+            config.translationProviderId = provider?.id
+            config.translationModelId = provider.flatMap { modelsForProvider($0.id).first?.id }
+        }
+        save()
+    }
+
+    func setTranslationProvider(_ providerId: String) {
+        config.translationProviderId = providerId
+        config.translationModelId = modelsForProvider(providerId).first?.id
+        save()
+    }
+
+    func setTranslationModel(_ modelId: String) {
+        config.translationModelId = modelId
+        save()
+    }
+
+    /// What pages translate with: on device, or the chosen model, which gets the instructions and
+    /// one request and returns the reply's text.
+    var pageTranslation: PageTranslationSetting {
+        guard translationEngine == .ai else { return .onDevice }
+        guard let target = config.translationTarget(hasKey: Self.hasKey),
+              let client = AIService.hostedProvider(for: target.provider)
+        else { return .ai(nil) }
+        let modelId = target.model.id
+        let model: AITranslationModel = { instructions, request in
+            try await client.sendMessage(
+                messages: [AIMessage(role: .system, content: instructions), AIMessage(role: .user, content: request)],
+                model: modelId,
+                config: AIGenerationConfig(temperature: 0, maxTokens: Self.translationMaxTokens, systemPrompt: instructions, streamingEnabled: false),
+                tools: [],
+                onStream: { _ in }
+            ).content
+        }
+        return .ai(model)
     }
 
     // MARK: - MCP Server Management

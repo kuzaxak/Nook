@@ -119,6 +119,7 @@ struct NookApp: App {
 
         let toolExecutor = BrowserToolExecutor(browserManager: browserManager)
         aiService.browserToolExecutor = toolExecutor
+        browserManager.tabs.pageTranslation = { [aiConfigService] in aiConfigService.pageTranslation }
 
         // Start enabled MCP servers
         mcpManager.startEnabledServers(configs: aiConfigService.mcpServers)

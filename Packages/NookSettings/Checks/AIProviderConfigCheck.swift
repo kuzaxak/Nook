@@ -58,6 +58,52 @@ struct AIProviderConfigCheck {
         precondition(reloaded.providers.map(\.providerType) == config.providers.map(\.providerType))
         precondition(reloaded.providers.map(\.id) == config.providers.map(\.id))
 
+        pageTranslation(saved: config)
         print("AIProviderConfigCheck passed")
+    }
+
+    static func pageTranslation(saved: AIConfiguration) {
+        // A config saved before page translation had a setting keeps decoding, with none chosen.
+        precondition(saved.translationEngine == nil && saved.translationProviderId == nil && saved.translationModelId == nil)
+
+        var config = AIConfiguration(
+            providers: [
+                AIProviderConfig(id: "apple_intelligence", displayName: "Apple Intelligence", providerType: .appleIntelligence),
+                AIProviderConfig(id: "openai", displayName: "OpenAI", providerType: .openAI),
+                AIProviderConfig(id: "anthropic", displayName: "Anthropic", providerType: .anthropic),
+                AIProviderConfig(id: "ollama", displayName: "Ollama (Local)", providerType: .ollama),
+                AIProviderConfig(id: "lmstudio", displayName: "LM Studio", providerType: .openAICompatible, isEnabled: false)
+            ],
+            models: [
+                AIModelConfig(id: "on-device", displayName: "On-Device", providerId: "apple_intelligence"),
+                AIModelConfig(id: "gpt-6-luna", displayName: "GPT-6 Luna", providerId: "openai"),
+                AIModelConfig(id: "claude-haiku-4-5", displayName: "Claude Haiku 4.5", providerId: "anthropic"),
+                AIModelConfig(id: "gemma", displayName: "Gemma", providerId: "ollama")
+            ]
+        )
+        let hasKey: (AIProviderConfig) -> Bool = { $0.id == "openai" }
+        precondition(config.translationProviders(hasKey: hasKey).map(\.id) == ["openai", "ollama"],
+                     "Apple Intelligence, a provider without its key and a switched-off one cannot translate")
+
+        config.translationEngine = .ai
+        config.translationProviderId = "openai"
+        config.translationModelId = "gpt-6-luna"
+        precondition(config.translationTarget(hasKey: hasKey).map { [$0.provider.id, $0.model.id] } == ["openai", "gpt-6-luna"])
+
+        config.translationModelId = "gemma"
+        precondition(config.translationTarget(hasKey: hasKey) == nil, "the model must be the chosen provider's")
+        config.translationModelId = "gpt-gone"
+        precondition(config.translationTarget(hasKey: hasKey) == nil, "a removed model is no target")
+        config.translationProviderId = "anthropic"
+        config.translationModelId = "claude-haiku-4-5"
+        precondition(config.translationTarget(hasKey: hasKey) == nil, "nor is a provider whose key was cleared")
+
+        config.translationProviderId = "openai"
+        config.translationModelId = "gpt-6-luna"
+        let reloaded = try! JSONDecoder().decode(AIConfiguration.self, from: JSONEncoder().encode(config))
+        precondition(reloaded.translationEngine == .ai)
+        precondition(reloaded.translationTarget(hasKey: hasKey).map { [$0.provider.id, $0.model.id] } == ["openai", "gpt-6-luna"])
+        precondition(PageTranslationEngine.allCases == [.onDevice, .ai])
+        precondition(PageTranslationEngine.onDevice.displayName == "Apple (on device)" && PageTranslationEngine.ai.displayName == "AI model")
     }
 }

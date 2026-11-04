@@ -285,8 +285,9 @@ extension PageSession: WKScriptMessageHandler {
             self.onCommandHover?(href)
 
         case Self.translateHandlerName where message.world == Self.translateWorld:
-            if let body = message.body as? [String: Any], let nodes = body["nodes"] as? [[String: Any]] {
-                translationFeed?.yield(nodes)
+            if let body = message.body as? [String: Any], let nodes = body["nodes"] as? [[String: Any]],
+               case .terminated? = translationFeed?.yield(nodes) {
+                translationBacklog += nodes
             }
 
         case "pipStateChange":

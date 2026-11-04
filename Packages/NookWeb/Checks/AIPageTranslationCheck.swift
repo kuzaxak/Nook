@@ -1,0 +1,311 @@
+// Licensed under GPL-3.0. See LICENSE.
+//
+//  AIPageTranslationCheck.swift
+//  Nook
+//
+//  What a page translation sends to an AI model and accepts back, which engine translates a page,
+//  and how batches fall back, run side by side and stop. The model is a stand-in, so nothing goes
+//  to the network. Compiles the shipped source directly:
+//
+//    swiftc Packages/NookWeb/Sources/NookWeb/AIPageTranslation.swift \
+//           Packages/NookWeb/Checks/AIPageTranslationCheck.swift -o /tmp/ai-page-translation-check && /tmp/ai-page-translation-check
+//
+
+import Foundation
+
+@main
+struct AIPageTranslationCheck {
+    @MainActor
+    static func main() async {
+        request()
+        replies()
+        engineChoice()
+        await limit()
+        await invalidReplies()
+        await modelFailure()
+        await timeout()
+        await parallel()
+        await cancellation()
+        print("AIPageTranslationCheck passed")
+    }
+
+    static let context = AITranslationContext(
+        target: Locale.Language(identifier: "en-US"),
+        source: Locale.Language(identifier: "de"),
+        title: "Die \"Zeit\"\nheute",
+        host: "zeit.de"
+    )
+
+    static func nodes(_ count: Int, from start: Int = 0) -> [TranslationNode] {
+        (start..<start + count).map { TranslationNode(id: String($0), text: "Text \($0)") }
+    }
+
+    static func ids(_ range: Range<Int>) -> [String] { range.map(String.init) }
+
+    static func request() {
+        let sent = [
+            TranslationNode(id: "0", text: "Guten Tag"),
+            TranslationNode(id: "7", text: "Preis: 4,99 € auf https://zeit.de/abo")
+        ]
+        let json = try! JSONSerialization.jsonObject(with: Data(AIPageTranslation.request(for: sent, context: context).utf8)) as! [String: Any]
+        precondition(json["target_language"] as? String == "English")
+        precondition(json["source_language"] as? String == "German")
+        precondition(json["title"] as? String == "Die \"Zeit\"\nheute", "the title goes as data")
+        precondition(json["host"] as? String == "zeit.de")
+        let texts = json["texts"] as! [[String: Any]]
+        precondition(texts.map { $0["id"] as! String } == ["0", "7"], "every id goes, in page order")
+        precondition(texts.map { $0["text"] as! String } == sent.map(\.text), "each text goes as it is")
+
+        let traditional = AITranslationContext(target: Locale.Language(identifier: "zh-Hant"), source: Locale.Language(identifier: "ja"), title: "", host: "")
+        let named = try! JSONSerialization.jsonObject(with: Data(AIPageTranslation.request(for: sent, context: traditional).utf8)) as! [String: Any]
+        precondition(named["target_language"] as? String == "Chinese, Traditional", "a script that is not the usual one is named")
+        precondition(named["source_language"] as? String == "Japanese")
+    }
+
+    static func replies() {
+        let ids = ["0", "1"]
+        func parsed(_ reply: String) -> [String: String] { try! AIPageTranslation.translations(fromReply: reply, ids: ids) }
+        func failure(_ reply: String) -> AITranslationFailure? {
+            do {
+                _ = try AIPageTranslation.translations(fromReply: reply, ids: ids)
+                return nil
+            } catch {
+                return error as? AITranslationFailure
+            }
+        }
+
+        precondition(parsed(#"{"0": "Good day", "1": "Price"}"#) == ["0": "Good day", "1": "Price"])
+        precondition(parsed("```json\n{\"0\": \"Good day\", \"1\": \"Price\"}\n```") == ["0": "Good day", "1": "Price"], "a fenced reply reads")
+        precondition(parsed(#"{"0": "a", "1": "b", "9": "stray"}"#) == ["0": "a", "1": "b"], "an id that was not asked for is ignored")
+        precondition(parsed(#"{"0": " Good  day\n", "1": "\tPrice "}"#) == ["0": " Good  day\n", "1": "\tPrice "], "whitespace stays as the model wrote it")
+
+        precondition(failure(#"{"0": "a"}"#) == .missingTexts(missing: 1, of: 2))
+        precondition(failure(#"{"0": "a", "1": "  "}"#) == .missingTexts(missing: 1, of: 2), "a blank translation counts as missing")
+        precondition(failure(#"{"0": "a", "1": 4}"#) == .missingTexts(missing: 1, of: 2), "so does one that is not text")
+        precondition(failure("I cannot translate this page.") == .invalidJSON)
+        precondition(failure(#"{"0": "a", "1": "b""#) == .invalidJSON, "a reply cut off at the output limit")
+        precondition(failure(#"["a", "b"]"#) == .invalidJSON)
+    }
+
+    static func engineChoice() {
+        let model: AITranslationModel = { _, _ in "" }
+        func choice(_ setting: PageTranslationSetting?, isPrivate: Bool = false) -> String {
+            switch TranslationEngineChoice.choose(setting, isPrivate: isPrivate) {
+            case .onDevice: return "on device"
+            case .ai: return "ai"
+            case .onDeviceInstead: return "on device instead"
+            }
+        }
+        precondition(choice(nil) == "on device", "no setting translates on device")
+        precondition(choice(.onDevice) == "on device")
+        precondition(choice(.ai(model)) == "ai")
+        precondition(choice(.ai(model), isPrivate: true) == "on device", "a private window never sends page text")
+        precondition(choice(.ai(nil), isPrivate: true) == "on device")
+        precondition(choice(.ai(nil)) == "on device instead", "the AI engine without a model translates on device and says why")
+    }
+
+    @MainActor
+    static func limit() async {
+        let model = FakeModel()
+        let page = FakePage()
+        let translator = AIPageTranslator(model: model.model, context: context, characterLimit: 25, onNotice: page.note)
+        let ten = String(repeating: "a", count: 10)
+        await translator.translate([
+            TranslationNode(id: "0", text: ten),
+            TranslationNode(id: "1", text: ten),
+            TranslationNode(id: "2", text: ten),
+            TranslationNode(id: "3", text: "b")
+        ], onDevice: page.onDevice, apply: page.apply)
+        let sent = await model.requests()
+        precondition(sent == [["0", "1"]], "text past the limit is not sent")
+        precondition(Set(page.applied.keys) == ["0", "1"] && page.onDeviceBatches.isEmpty, "and stays in the original")
+        precondition(page.notices == [.aiLimitReached(characters: 25)])
+
+        // Text the page adds later is past the limit too.
+        await translator.translate([TranslationNode(id: "4", text: "c")], onDevice: page.onDevice, apply: page.apply)
+        let sentLater = await model.requests()
+        precondition(sentLater.count == 1 && page.applied["4"] == nil)
+        precondition(page.notices.count == 1, "the limit is reported once")
+    }
+
+    @MainActor
+    static func invalidReplies() async {
+        let model = FakeModel { ids in ids.first == "40" ? .invalidJSON : ids.first == "80" ? .dropFirst : .translate }
+        let page = FakePage()
+        let translator = AIPageTranslator(model: model.model, context: context, onNotice: page.note)
+        await translator.translate(nodes(120), onDevice: page.onDevice, apply: page.apply)
+        let sent = await model.requests()
+        precondition(sent.count == 3)
+        precondition(Set(page.onDeviceBatches) == [ids(40..<80), ids(80..<120)], "each batch with a bad reply goes on device")
+        precondition((0..<40).allSatisfy { page.applied[String($0)] == "EN Text \($0)" }, "the good batch lands from the model")
+        precondition((40..<120).allSatisfy { page.applied[String($0)] == "ON Text \($0)" })
+        precondition(!page.notices.isEmpty && page.notices.allSatisfy { notice in
+            if case .aiFailed(_, onDevice: true) = notice { return true }
+            return false
+        })
+
+        // A bad reply fails only its own batch: the next text still goes to the model.
+        await translator.translate(nodes(40, from: 120), onDevice: page.onDevice, apply: page.apply)
+        let sentLater = await model.requests()
+        precondition(sentLater.count == 4 && page.applied["120"] == "EN Text 120")
+        precondition(!page.appliedTwice)
+    }
+
+    @MainActor
+    static func modelFailure() async {
+        let model = FakeModel { ids in ids.first == "0" ? .fail : .translate }
+        let page = FakePage()
+        let translator = AIPageTranslator(model: model.model, context: context, onNotice: page.note)
+        await translator.translate(nodes(200), onDevice: page.onDevice, apply: page.apply)
+        let sent = await model.requests()
+        precondition(sent.count == 3, "after the model's request fails, nothing more goes to it")
+        precondition((0..<40).allSatisfy { page.applied[String($0)] == "ON Text \($0)" }, "the failed batch goes on device")
+        precondition((40..<120).allSatisfy { page.applied[String($0)] == "EN Text \($0)" }, "batches already sent still land")
+        precondition((120..<200).allSatisfy { page.applied[String($0)] == "ON Text \($0)" }, "the rest goes on device")
+        guard case .aiFailed(let reason, onDevice: true)? = page.notices.last, !reason.isEmpty, !reason.contains("\n") else {
+            preconditionFailure("the window says the AI engine failed and why")
+        }
+
+        // Without an on-device translator (a language pair Apple cannot translate) the text stays.
+        let alone = FakePage()
+        let failing = AIPageTranslator(model: FakeModel { _ in .fail }.model, context: context, onNotice: alone.note)
+        await failing.translate(nodes(10), onDevice: nil, apply: alone.apply)
+        precondition(alone.applied.isEmpty)
+        guard case .aiFailed(_, onDevice: false)? = alone.notices.last else { preconditionFailure("says the text stays") }
+    }
+
+    @MainActor
+    static func timeout() async {
+        let model = FakeModel { _ in .hang }
+        let page = FakePage()
+        let translator = AIPageTranslator(model: model.model, context: context, timeout: .milliseconds(50), onNotice: page.note)
+        let started = ContinuousClock.now
+        await translator.translate(nodes(10), onDevice: page.onDevice, apply: page.apply)
+        precondition(ContinuousClock.now - started < .seconds(5), "a model that never answers is given up on")
+        let cancelled = await model.cancelled()
+        precondition(cancelled == 1, "and its request is cancelled")
+        precondition((0..<10).allSatisfy { page.applied[String($0)] == "ON Text \($0)" })
+        precondition(page.notices == [.aiFailed(reason: AITranslationFailure.timedOut.localizedDescription, onDevice: true)])
+    }
+
+    @MainActor
+    static func parallel() async {
+        let model = FakeModel()
+        let page = FakePage()
+        let translator = AIPageTranslator(model: model.model, context: context, onNotice: page.note)
+        await translator.translate(nodes(280), onDevice: page.onDevice, apply: page.apply)
+        let requests = await model.requests()
+        let mostInFlight = await model.maxInFlight()
+        precondition(mostInFlight == 3, "three batches at a time")
+        precondition(requests.count == 7 && Set(requests.flatMap { $0 }) == Set(ids(0..<280)))
+        precondition(Set(requests[0..<3].map { $0[0] }) == ["0", "40", "80"], "the top of the page goes first")
+        precondition(Set(requests[3..<6].map { $0[0] }) == ["120", "160", "200"])
+        precondition(requests[6][0] == "240")
+        precondition(page.applied.count == 280 && page.onDeviceBatches.isEmpty && page.notices.isEmpty)
+    }
+
+    @MainActor
+    static func cancellation() async {
+        let model = FakeModel { _ in .hang }
+        let page = FakePage()
+        let translator = AIPageTranslator(model: model.model, context: context, onNotice: page.note)
+        let run = Task { @MainActor in
+            await translator.translate(nodes(200), onDevice: page.onDevice, apply: page.apply)
+        }
+        let deadline = ContinuousClock.now + .seconds(2)
+        while await model.requests().count < 3, ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(5)) }
+        run.cancel()
+        await run.value
+        let cancelled = await model.cancelled()
+        precondition(cancelled == 3, "cancelling the run cancels the requests in flight")
+        let sent = await model.requests()
+        precondition(sent.count == 3, "and sends no more")
+        precondition(page.applied.isEmpty && page.onDeviceBatches.isEmpty && page.notices.isEmpty, "nothing lands or falls back")
+
+        // The page's run starts again (its tab is shown again): what was not translated goes once.
+        await model.answer { _ in .translate }
+        await translator.translate([], onDevice: page.onDevice, apply: page.apply)
+        precondition(page.applied.count == 200 && !page.appliedTwice)
+        let sentAgain = await model.requests()
+        precondition(sentAgain.count == 3 + 5)
+    }
+}
+
+/// A stand-in model that answers each batch as `script` says.
+actor FakeModel {
+    enum Answer { case translate, dropFirst, invalidJSON, fail, hang }
+
+    private var script: @Sendable ([String]) -> Answer
+    private var sent: [[String]] = []
+    private var mostInFlight = 0
+    private var cancellations = 0
+    private var inFlight = 0
+
+    init(_ script: @escaping @Sendable ([String]) -> Answer = { _ in .translate }) {
+        self.script = script
+    }
+
+    func answer(_ script: @escaping @Sendable ([String]) -> Answer) {
+        self.script = script
+    }
+
+    func requests() -> [[String]] { sent }
+    func maxInFlight() -> Int { mostInFlight }
+    func cancelled() -> Int { cancellations }
+
+    nonisolated var model: AITranslationModel {
+        { _, request in try await self.reply(to: request) }
+    }
+
+    private func reply(to request: String) async throws -> String {
+        let json = try JSONSerialization.jsonObject(with: Data(request.utf8)) as! [String: Any]
+        let texts = (json["texts"] as! [[String: String]]).map { ($0["id"]!, $0["text"]!) }
+        sent.append(texts.map(\.0))
+        let answer = script(texts.map(\.0))
+        if answer == .fail { throw URLError(.badServerResponse) }
+        inFlight += 1
+        mostInFlight = max(mostInFlight, inFlight)
+        defer { inFlight -= 1 }
+        do {
+            try await Task.sleep(for: answer == .hang ? .seconds(30) : .milliseconds(30))
+        } catch {
+            cancellations += 1
+            throw error
+        }
+        switch answer {
+        case .translate: return Self.encode(texts)
+        case .dropFirst: return Self.encode(Array(texts.dropFirst()))
+        default: return "Sure! Here is the page in English."
+        }
+    }
+
+    private static func encode(_ texts: [(String, String)]) -> String {
+        let object = Dictionary(uniqueKeysWithValues: texts.map { ($0.0, "EN " + $0.1) })
+        return String(decoding: try! JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+    }
+}
+
+/// The page side: what lands in it, what went on device and what the window says.
+@MainActor
+final class FakePage {
+    var applied: [String: String] = [:]
+    var appliedTwice = false
+    var onDeviceBatches: [[String]] = []
+    var notices: [PageTranslationNotice] = []
+
+    func apply(_ pairs: [String: String]) async {
+        for (id, text) in pairs {
+            if applied[id] != nil { appliedTwice = true }
+            applied[id] = text
+        }
+    }
+
+    func onDevice(_ batch: [TranslationNode]) async throws -> [String: String] {
+        onDeviceBatches.append(batch.map(\.id))
+        return Dictionary(uniqueKeysWithValues: batch.map { ($0.id, "ON " + $0.text) })
+    }
+
+    func note(_ notice: PageTranslationNotice) {
+        notices.append(notice)
+    }
+}

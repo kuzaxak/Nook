@@ -239,6 +239,22 @@ public struct BrowserToolsConfig: Codable, Equatable {
     }
 }
 
+// MARK: - Page Translation
+
+public enum PageTranslationEngine: String, Codable, CaseIterable, Identifiable {
+    case onDevice = "on_device"
+    case ai
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .onDevice: return "Apple (on device)"
+        case .ai: return "AI model"
+        }
+    }
+}
+
 // MARK: - Full AI Configuration
 
 public struct AIConfiguration: Codable {
@@ -249,6 +265,11 @@ public struct AIConfiguration: Codable {
     public var generationConfig: AIGenerationConfig
     public var mcpServers: [MCPServerConfig]
     public var browserToolsConfig: BrowserToolsConfig
+    /// The engine that translates pages; nil, as in a config saved before there was a choice, is on device.
+    public var translationEngine: PageTranslationEngine?
+    /// The provider and model the AI engine translates with, kept while the engine is on device.
+    public var translationProviderId: String?
+    public var translationModelId: String?
 
     public init(
         providers: [AIProviderConfig] = [],
@@ -278,5 +299,22 @@ public struct AIConfiguration: Codable {
             at: index
         )
         return !missing.isEmpty
+    }
+
+    /// Providers that can translate pages: reached over the network, switched on, and holding a
+    /// key when they need one. `hasKey` reads the Keychain, which this package cannot.
+    public func translationProviders(hasKey: (AIProviderConfig) -> Bool) -> [AIProviderConfig] {
+        providers.filter { provider in
+            provider.providerType != .appleIntelligence && provider.isEnabled
+                && (!provider.providerType.requiresAPIKey || hasKey(provider))
+        }
+    }
+
+    /// The chosen provider and model for page translation, while both still exist and can be used.
+    public func translationTarget(hasKey: (AIProviderConfig) -> Bool) -> (provider: AIProviderConfig, model: AIModelConfig)? {
+        guard let provider = translationProviders(hasKey: hasKey).first(where: { $0.id == translationProviderId }),
+              let model = models.first(where: { $0.providerId == provider.id && $0.id == translationModelId })
+        else { return nil }
+        return (provider, model)
     }
 }
