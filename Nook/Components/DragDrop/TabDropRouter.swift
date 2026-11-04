@@ -20,12 +20,13 @@ import AppKit
 
 @MainActor final class TabDropRouter {
     static let shared = TabDropRouter()
-    static let tabType = NSPasteboard.PasteboardType("com.nook.tab-drag-item")
+    nonisolated static let tabType = NSPasteboard.PasteboardType("com.nook.tab-drag-item")
 
     private weak var current: TabDropTarget?
 
     /// `draggingEntered:` and `draggingUpdated:` of `receiver`.
     func updated(_ sender: NSDraggingInfo, at receiver: TabDropTarget) -> NSDragOperation {
+        guard Self.isTabDrag(sender) else { return [] }
         let owner = Self.owner(of: sender, at: receiver)
         if owner !== current {
             current?.tabDragExited()
@@ -37,6 +38,7 @@ import AppKit
     /// `draggingExited:` of `receiver`. AppKit leaving a view the drag was already handed away
     /// from, to the view under the pointer, leaves the drag with that view.
     func exited(_ sender: NSDraggingInfo?, at receiver: TabDropTarget) {
+        if let sender, !Self.isTabDrag(sender) { return }
         if let sender, let current, current !== receiver, Self.owner(of: sender, at: receiver) === current { return }
         end()
     }
@@ -49,10 +51,15 @@ import AppKit
 
     /// `performDragOperation:` of `receiver`.
     func perform(_ sender: NSDraggingInfo, at receiver: TabDropTarget) -> Bool {
+        guard Self.isTabDrag(sender) else { return false }
         let owner = Self.owner(of: sender, at: receiver)
         if owner !== current { current?.tabDragExited() }
         current = nil
         return owner?.tabDragPerform(sender) ?? false
+    }
+
+    private static func isTabDrag(_ sender: NSDraggingInfo) -> Bool {
+        sender.draggingPasteboard.availableType(from: [tabType]) != nil
     }
 
     private static func owner(of sender: NSDraggingInfo, at receiver: NSView) -> TabDropTarget? {

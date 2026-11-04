@@ -61,7 +61,7 @@ final class SplitDropCaptureView: NSView, TabDropTarget {
     }
 
     func tabDragUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        isDragActive = true
+        isDragActive = NookDragItem.fromPasteboard(sender.draggingPasteboard) != nil
         guard let windowId, let sm = splitManager else { return [] }
         guard let drop = drop(for: sender) else {
             sm.setPreview(nil, for: windowId)

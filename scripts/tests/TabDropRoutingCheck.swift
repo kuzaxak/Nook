@@ -129,6 +129,17 @@ struct TabDropRoutingCheck {
         precondition(page.log == ["updated", "exited"], "the session's end lets the page target go")
         router.end()
         precondition(page.log == ["updated", "exited"] && tabs.log.isEmpty, "an end with nothing held")
+        reset()
+
+        // Text or a file dragged over the sidebar, whose zones take text too, is no tab drag: the
+        // drop views stay out of it and the tab drag the router holds stays where it is.
+        _ = router.updated(Info(row), at: tabs)
+        precondition(router.updated(Info(overPage, carrying: .string), at: tabs) == [])
+        router.exited(Info(overPage, carrying: .string), at: tabs)
+        precondition(!router.perform(Info(overPage, carrying: .string), at: tabs))
+        precondition(tabs.log == ["updated"] && page.log.isEmpty)
+        router.end()
+        precondition(tabs.log == ["updated", "exited"])
         print("TabDropRoutingCheck passed")
     }
 
@@ -167,13 +178,16 @@ struct TabDropRoutingCheck {
     /// A drag at `draggingLocation`, in the coordinates of the check's root view.
     final class Info: NSObject, NSDraggingInfo {
         let draggingLocation: NSPoint
-        init(_ location: NSPoint) { draggingLocation = location }
+        let draggingPasteboard = NSPasteboard.withUniqueName()
+        init(_ location: NSPoint, carrying type: NSPasteboard.PasteboardType = TabDropRouter.tabType) {
+            draggingLocation = location
+            draggingPasteboard.declareTypes([type], owner: nil)
+        }
 
         var draggingDestinationWindow: NSWindow? { nil }
         var draggingSourceOperationMask: NSDragOperation { .move }
         var draggedImageLocation: NSPoint { draggingLocation }
         var draggedImage: NSImage? { nil }
-        var draggingPasteboard: NSPasteboard { NSPasteboard(name: NSPasteboard.Name("TabDropRoutingCheck")) }
         var draggingSource: Any? { nil }
         var draggingSequenceNumber: Int { 1 }
         func slideDraggedImage(to screenPoint: NSPoint) {}
