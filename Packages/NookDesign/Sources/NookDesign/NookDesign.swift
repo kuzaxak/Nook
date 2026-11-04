@@ -203,6 +203,7 @@ public enum NookDesign {
         public static let libraryVelocityWindow: TimeInterval = 0.1      // swipe samples older than this are dropped from the velocity
         public static let swipeAxisLock: CGFloat = 10                    // points of travel before a swipe commits to an axis
         public static let swipeIdleTimeout: TimeInterval = 1             // a tracked swipe with no event this long is over
+        public static let historyMenuHold: TimeInterval = 0.4            // a press on Back or Forward held this long opens its history
     }
 
     // MARK: - Surface

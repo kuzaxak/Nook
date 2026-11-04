@@ -21,14 +21,10 @@ struct SidebarHistoryButtons: View {
         HStack(spacing: NookDesign.SidebarChrome.gap) {
             Button("Go Back", systemImage: "arrow.left", action: goBack)
                 .disabled(!canGoBack)
-                .contextMenu {
-                    NavigationHistoryContextMenu(historyType: .back, windowState: windowState)
-                }
+                .background(NavigationHistoryMenu(direction: .back, windowState: windowState))
             Button("Go Forward", systemImage: "arrow.right", action: goForward)
                 .disabled(!canGoForward)
-                .contextMenu {
-                    NavigationHistoryContextMenu(historyType: .forward, windowState: windowState)
-                }
+                .background(NavigationHistoryMenu(direction: .forward, windowState: windowState))
             Button(action: reloadOrStop) {
                 Image(systemName: session?.isLoading == true ? "xmark" : "arrow.clockwise")
                     .contentTransition(.symbolEffect(.replace))
