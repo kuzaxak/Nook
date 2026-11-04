@@ -4,6 +4,13 @@
 
 ### Added
 
+- OpenAI and Anthropic providers for the AI assistant: Settings → AI → Providers takes each one's API key, kept in the Keychain, and Models fetches the models it offers
+- Pages can translate with an AI model instead of Apple's on-device translation: Settings → AI → Translation picks the provider and model, a few batches go at once, text the model fails on is translated on this Mac with a line saying why, and private windows always translate on this Mac
+- The sidebar's address shows "Translation Available" under the URL when a page is in another language, as in Arc; click it to translate
+- Spaces can be exported to a `.nookspace` file and imported as a new space in any profile: Export Space… in a space's right-click menu or Settings → Spaces, Import Space… in the File menu or Settings → Spaces, or open the file from Finder; the file holds the space's look, favorites, pinned tabs and open tabs, never logins, cookies or history, only web links come in, and imported tabs load when you open them
+- Press and hold Back or Forward to list the pages that way, as in Safari and Arc
+- Add Split View (⌃⇧=, or type "split" in the command bar) puts an empty pane beside the current tab with the command bar over it, as in Arc: pick a tab, or type an address or a search, to fill it; Escape leaves the window as it was
+
 ### Fixed
 
 - Cmd+W closes the tab instead of the window on Russian and other non-Latin keyboard layouts, and in any window with a tab; it closes the command bar or a Peek when one is open, as in Arc, a held Cmd+W stops at the empty window, and the File menu lists Close Tab and Close Window
@@ -14,9 +21,6 @@
 - A two-finger swipe over the sidebar switches spaces whatever System Settings → Trackpad → Swipe between pages is set to; a mouse's tilt wheel or Shift-scroll moves one space per flick, over the tab list too
 - Turning Developer Mode off (Control-D, the site controls or Settings) closes the right panel in every window where it showed Console, Network, Blocker or Perf; the Agent tab stays open
 - A Web Inspector docked to a page stays beside it when the window resizes, the Developer Mode bar or right panel opens, or you switch tabs or split and come back, and the page fills its pane again when the inspector closes or undocks, instead of leaving a grey band below it
-
-### Fixed
-
 - Dragging a tab from the sidebar onto the page splits the window again, as in Arc: the half under the pointer shows where it goes and takes the tab, or replaces that pane in a split; text dragged inside a page no longer brings up the split zones
 
 ## 1.5.2
