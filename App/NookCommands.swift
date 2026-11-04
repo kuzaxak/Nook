@@ -28,53 +28,11 @@ struct NookCommands: Commands {
 
     // MARK: - Dynamic Keyboard Shortcuts
 
-    /// Returns the key equivalent for a given action, or nil if disabled
-    private func keyEquivalent(for action: ShortcutAction) -> KeyEquivalent? {
-        guard let shortcut = shortcutManager.shortcut(for: action),
-              shortcut.isEnabled else { return nil }
-        // Handle special keys
-        switch shortcut.keyCombination.key.lowercased() {
-        case "return", "enter": return .return
-        case "escape", "esc": return .escape
-        case "delete", "backspace": return .delete
-        case "tab": return .tab
-        case "space": return .space
-        case "up", "uparrow": return .upArrow
-        case "down", "downarrow": return .downArrow
-        case "left", "leftarrow": return .leftArrow
-        case "right", "rightarrow": return .rightArrow
-        case "home": return .home
-        case "end": return .end
-        case "pageup": return .pageUp
-        case "pagedown": return .pageDown
-        case "clear": return .clear
-        default:
-            // Handle single character keys
-            if shortcut.keyCombination.key.count == 1,
-               let char = shortcut.keyCombination.key.first {
-                return KeyEquivalent(char)
-            }
-            return nil
-        }
-    }
-
-    /// Returns the event modifiers for a given action
-    private func eventModifiers(for action: ShortcutAction) -> EventModifiers {
-        guard let shortcut = shortcutManager.shortcut(for: action),
-              shortcut.isEnabled else { return [] }
-        var modifiers: EventModifiers = []
-        if shortcut.keyCombination.modifiers.contains(.command) { modifiers.insert(.command) }
-        if shortcut.keyCombination.modifiers.contains(.shift) { modifiers.insert(.shift) }
-        if shortcut.keyCombination.modifiers.contains(.option) { modifiers.insert(.option) }
-        if shortcut.keyCombination.modifiers.contains(.control) { modifiers.insert(.control) }
-        return modifiers
-    }
-
     /// View extension to apply dynamic keyboard shortcut if enabled
     private func dynamicShortcut(_ action: ShortcutAction) -> some ViewModifier {
         DynamicShortcutModifier(
-            keyEquivalent: keyEquivalent(for: action),
-            modifiers: eventModifiers(for: action)
+            keyEquivalent: shortcutManager.keyEquivalent(for: action),
+            modifiers: shortcutManager.eventModifiers(for: action)
         )
     }
 
@@ -82,7 +40,7 @@ struct NookCommands: Commands {
         guard let action = ShortcutAction.goToSpaceActions[safe: index] else {
             return DynamicShortcutModifier(keyEquivalent: nil, modifiers: [])
         }
-        return DynamicShortcutModifier(keyEquivalent: keyEquivalent(for: action), modifiers: eventModifiers(for: action))
+        return DynamicShortcutModifier(keyEquivalent: shortcutManager.keyEquivalent(for: action), modifiers: shortcutManager.eventModifiers(for: action))
     }
 
     var body: some Commands {
@@ -526,5 +484,54 @@ struct DynamicShortcutModifier: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+extension KeyboardShortcutManager {
+    /// Returns the key equivalent for a given action, or nil if disabled
+    func keyEquivalent(for action: ShortcutAction) -> KeyEquivalent? {
+        guard let shortcut = self.shortcut(for: action),
+              shortcut.isEnabled else { return nil }
+        // Handle special keys
+        switch shortcut.keyCombination.key.lowercased() {
+        case "return", "enter": return .return
+        case "escape", "esc": return .escape
+        case "delete", "backspace": return .delete
+        case "tab": return .tab
+        case "space": return .space
+        case "up", "uparrow": return .upArrow
+        case "down", "downarrow": return .downArrow
+        case "left", "leftarrow": return .leftArrow
+        case "right", "rightarrow": return .rightArrow
+        case "home": return .home
+        case "end": return .end
+        case "pageup": return .pageUp
+        case "pagedown": return .pageDown
+        case "clear": return .clear
+        default:
+            // Handle single character keys
+            if shortcut.keyCombination.key.count == 1,
+               let char = shortcut.keyCombination.key.first {
+                return KeyEquivalent(char)
+            }
+            return nil
+        }
+    }
+
+    /// Returns the event modifiers for a given action
+    func eventModifiers(for action: ShortcutAction) -> EventModifiers {
+        guard let shortcut = self.shortcut(for: action),
+              shortcut.isEnabled else { return [] }
+        var modifiers: EventModifiers = []
+        if shortcut.keyCombination.modifiers.contains(.command) { modifiers.insert(.command) }
+        if shortcut.keyCombination.modifiers.contains(.shift) { modifiers.insert(.shift) }
+        if shortcut.keyCombination.modifiers.contains(.option) { modifiers.insert(.option) }
+        if shortcut.keyCombination.modifiers.contains(.control) { modifiers.insert(.control) }
+        return modifiers
+    }
+
+    /// The person's shortcut for `action`, for a menu item to show; nil when it is off.
+    func swiftUIShortcut(for action: ShortcutAction) -> SwiftUI.KeyboardShortcut? {
+        keyEquivalent(for: action).map { SwiftUI.KeyboardShortcut($0, modifiers: eventModifiers(for: action)) }
     }
 }

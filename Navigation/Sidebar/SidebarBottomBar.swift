@@ -19,6 +19,7 @@ struct SidebarBottomBar: View {
     @Environment(TabsController.self) private var tabs
     @Environment(BrowserWindowState.self) private var windowState
     @Environment(CommandPalette.self) private var commandPalette
+    @Environment(KeyboardShortcutManager.self) private var shortcuts: KeyboardShortcutManager?
     @Binding var isMenuButtonHovered: Bool
     let onMenuTap: () -> Void
     let onNewSpaceTap: () -> Void
@@ -106,60 +107,68 @@ struct SidebarBottomBar: View {
         }
     }
     
-    /// Arc's create menu: space and folder, then page tools, then panes and tabs.
+    /// Arc's create menu: space and folder, then page tools, then panes and tabs. SwiftUI hands the
+    /// button's icon-only label style down to the menu's items, so they set their own.
     private var newSpaceButton: some View {
         Menu {
-            Button("New Space", systemImage: "plus.square.on.square") {
-                onNewSpaceTap()
-            }
-
-            Button("New Folder", systemImage: "folder.badge.plus") {
-                if let spaceID = windowState.spaceID {
-                    tabs.createFolderForRename(in: .tabs(spaceID: spaceID), after: nil)
-                }
-            }
-
-            Menu {
-                ForEach(LiveFolderMenuItem.all, id: \.title) { entry in
-                    Button(entry.title, systemImage: entry.symbol) {
-                        if let spaceID = windowState.spaceID {
-                            tabs.createLiveFolder(entry.source, in: spaceID)
-                        }
-                    }
-                }
-                Button("New Feed Folder…", systemImage: "dot.radiowaves.up.forward") {
-                    if let spaceID = windowState.spaceID {
-                        browserManager.presentFeedFolderPrompt(in: spaceID)
-                    }
-                }
-            } label: {
-                Label("New Live Folder", systemImage: "folder.badge.gearshape")
-            }
-
-            Divider()
-
-            Button("New Boost", systemImage: "wand.and.stars") {
-                browserManager.openBoostPanel(in: windowState)
-            }
-            .disabled(!selectedPageIsWeb)
-
-            Divider()
-
-            Button("New Split", systemImage: "rectangle.split.2x1") {
-                if let itemID = tabs.open(url: TabsController.homeURL, in: windowState, placement: .background) {
-                    browserManager.splitManager.enterSplit(with: itemID, in: windowState)
-                }
-            }
-            .disabled(windowState.selectedItemID == nil || windowState.split != nil)
-
-            Button("New Tab", systemImage: "plus.square") {
-                commandPalette.open()
-            }
+            Group { newSpaceMenuItems }
+                .labelStyle(.titleAndIcon)
         } label: {
             Label("Actions", systemImage: "plus")
         }
         .menuStyle(.button)
         .nookSidebarIconButtons()
+    }
+
+    @ViewBuilder
+    private var newSpaceMenuItems: some View {
+        Button("New Space", systemImage: "plus.square.on.square") {
+            onNewSpaceTap()
+        }
+
+        Button("New Folder", systemImage: "folder.badge.plus") {
+            if let spaceID = windowState.spaceID {
+                tabs.createFolderForRename(in: .tabs(spaceID: spaceID), after: nil)
+            }
+        }
+
+        Menu {
+            ForEach(LiveFolderMenuItem.all, id: \.title) { entry in
+                Button(entry.title, systemImage: entry.symbol) {
+                    if let spaceID = windowState.spaceID {
+                        tabs.createLiveFolder(entry.source, in: spaceID)
+                    }
+                }
+            }
+            Button("New Feed Folder…", systemImage: "dot.radiowaves.up.forward") {
+                if let spaceID = windowState.spaceID {
+                    browserManager.presentFeedFolderPrompt(in: spaceID)
+                }
+            }
+        } label: {
+            Label("New Live Folder", systemImage: "folder.badge.gearshape")
+        }
+
+        Divider()
+
+        Button("New Boost", systemImage: "wand.and.stars") {
+            browserManager.openBoostPanel(in: windowState)
+        }
+        .disabled(!selectedPageIsWeb)
+
+        Divider()
+
+        Button("New Split", systemImage: "rectangle.split.2x1") {
+            if let itemID = tabs.open(url: TabsController.homeURL, in: windowState, placement: .background) {
+                browserManager.splitManager.enterSplit(with: itemID, in: windowState)
+            }
+        }
+        .disabled(windowState.selectedItemID == nil || windowState.split != nil)
+
+        Button("New Tab", systemImage: "plus.square") {
+            commandPalette.open()
+        }
+        .keyboardShortcut(shortcuts?.swiftUIShortcut(for: .newTab))
     }
 
     private var selectedPageIsWeb: Bool {
