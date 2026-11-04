@@ -92,9 +92,11 @@ struct SpaceSwitchCheck {
         coordinator.onSwipe = { swipes.append($0) }
 
         let strip = pager.subviews[0]
+        /// Where the strip shows: its frame, the settle animating it, and the drag's move of its layer.
         func shown() -> CGFloat {
             guard let layer = strip.layer else { return -strip.frame.minX }
-            return -((layer.presentation() ?? layer).position.x - layer.anchorPoint.x * layer.bounds.width)
+            let current = layer.animationKeys()?.isEmpty == false ? layer.presentation() ?? layer : layer
+            return -(current.position.x - layer.anchorPoint.x * layer.bounds.width + current.affineTransform().tx)
         }
         func wait(_ seconds: TimeInterval) { RunLoop.current.run(until: Date().addingTimeInterval(seconds)) }
 
@@ -106,7 +108,10 @@ struct SpaceSwitchCheck {
         // Swipe left: fingers move the strip at half speed.
         precondition(pager.beginDrag())
         for step in 1...6 { pager.drag(.changed, delta: -40, time: 1 + Double(step) * 0.01) }
-        precondition(strip.frame.minX == -120, "Six -40 pt deltas move the strip 120 pt")
+        precondition(shown() == 120, "Six -40 pt deltas move the strip 120 pt")
+        precondition(strip.frame.minX == 0, "The fingers move the strip's layer, not its frame")
+        wait(0.03)
+        precondition(swipes.count == 2, "Six events within a frame reach the listener as its first position and its latest, got \(swipes.count)")
         precondition(swipes.last??.to == AnyHashable(1) && abs((swipes.last??.progress ?? 0) - 0.4) < 0.001)
         pager.drag(.ended, delta: 0, time: 1.07)
         precondition(selection == 1, "The selection commits at lift, before the slide")
@@ -117,14 +122,25 @@ struct SpaceSwitchCheck {
         precondition(midway > 120 && midway < 300, "Still sliding toward page 1, at \(midway)")
         wait(0.6)
         precondition(!pager.isTracking && strip.frame.minX == -300)
-        precondition(strip.subviews.count == 1, "Only the selected page stays attached at rest")
-        print("PASS: half-speed drag, commit at lift, spring settle, detached pages")
+        precondition(strip.subviews.count == 3 && strip.subviews.filter { !$0.isHidden }.count == 1,
+                     "At rest the pages either side are built and hidden, only the selected one shows")
+        print("PASS: half-speed drag, commit at lift, spring settle, neighbours waiting hidden")
+
+        // A switch without animation shows its page at once, though it waited hidden.
+        selection = 2
+        coordinator.refresh(to: 2, animated: false)
+        precondition(strip.frame.minX == -600 && strip.subviews.filter { !$0.isHidden }.map(\.frame.minX) == [600],
+                     "The page switched to shows straight away")
+        selection = 1
+        coordinator.refresh(to: 1, animated: false)
+        wait(0.05)
+        print("PASS: a switch without animation shows a page that waited hidden")
 
         // A far programmatic jump slides right through the pages between.
         selection = 3
         coordinator.parent = parent
         coordinator.refresh(to: 3, animated: true)
-        precondition(strip.subviews.count == 3, "Pages 1 to 3 are on the strip during the jump")
+        precondition(strip.subviews.filter { !$0.isHidden }.count == 3, "Pages 1 to 3 show on the strip during the jump")
         wait(0.06)
         let early = shown()
         precondition(early > 300 && early < 900, "Moves forward from page 1 toward page 3, at \(early)")
@@ -191,6 +207,7 @@ struct SpaceSwitchCheck {
         }
         func list() -> NSScrollView? {
             func find(_ view: NSView) -> NSScrollView? {
+                if view.isHidden { return nil }
                 if let scroll = view as? NSScrollView { return scroll }
                 return view.subviews.lazy.compactMap(find).first
             }

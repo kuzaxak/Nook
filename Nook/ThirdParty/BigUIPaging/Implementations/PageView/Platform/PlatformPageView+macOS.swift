@@ -108,6 +108,12 @@ extension PlatformPageView: NSViewRepresentable {
         private var wheel = Wheel()
         /// How far a pull past the first page has gone, while its listener has not heard it end.
         private var leadingPull: CGFloat?
+        /// The selection the pages either side were last built for; nil once the parent's content changed.
+        private var neighboursBuiltFor: SelectionValue?
+        private var neighbourTimer: Timer?
+        private var lastReport: TimeInterval = -.infinity
+        private var pendingReport: PageSwipePosition?
+        private var reportTimer: Timer?
 
         private struct Drag {
             var samples: [(time: TimeInterval, position: CGFloat)] = []
@@ -193,6 +199,8 @@ extension PlatformPageView: NSViewRepresentable {
             // Our own commit at lift lands here while the strip is still settling.
             if index == selected, isTracking || attached[index] != nil {
                 attach(index, refresh: true)
+                neighboursBuiltFor = nil
+                scheduleNeighbours()
                 return
             }
 
@@ -202,6 +210,7 @@ extension PlatformPageView: NSViewRepresentable {
             } else {
                 snap()
             }
+            scheduleNeighbours()
         }
 
         private func snap() {
@@ -210,15 +219,48 @@ extension PlatformPageView: NSViewRepresentable {
             raw = CGFloat(selected) * width
             attach(selected)
             detach(keeping: [selected])
+            rest()
             relayout()
             evict()
+        }
+
+        private var neighbours: [Int] {
+            [selected - 1, selected, selected + 1].filter(pages.indices.contains)
         }
 
         private func evict() {
             guard let coordinator, !pages.isEmpty else { return }
 
-            let keep = Set([selected - 1, selected, selected + 1].filter(pages.indices.contains).map { pages[$0] })
-            coordinator.evict(keeping: keep)
+            coordinator.evict(keeping: Set(neighbours.map { pages[$0] }))
+        }
+
+        /// Builds the pages either side of the selection once nothing moves the strip, so a swipe
+        /// starts on pages that already exist. The timer runs in the default mode only, never inside
+        /// a swipe's own event loop.
+        private func scheduleNeighbours(after delay: TimeInterval = 0) {
+            neighbourTimer?.invalidate()
+            let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated { self?.buildNeighbours() }
+            }
+            RunLoop.main.add(timer, forMode: .default)
+            neighbourTimer = timer
+        }
+
+        private func buildNeighbours() {
+            neighbourTimer = nil
+            guard width > 0, window != nil, !pages.isEmpty else { return }
+            if case .dragging = motion { return }
+
+            let stale = neighboursBuiltFor != selectedValue
+            for index in neighbours where index != selected { attach(index, refresh: stale) }
+            neighboursBuiltFor = selectedValue
+            if case .idle = motion { rest() }
+        }
+
+        /// At rest only the selected page shows; the ones either side wait hidden, out of the way of
+        /// the pointer and VoiceOver.
+        private func rest() {
+            for (index, view) in attached { view.isHidden = index != selected }
         }
 
         // MARK: Layout
@@ -231,6 +273,8 @@ extension PlatformPageView: NSViewRepresentable {
                 if case .dragging = motion { report(nil) }
                 lastWidth = width
                 snap()
+                // A sidebar resize changes the width on every mouse event; build once it stops.
+                scheduleNeighbours(after: Self.resizeQuiet)
                 return
             }
             relayout()
@@ -241,10 +285,18 @@ extension PlatformPageView: NSViewRepresentable {
             CATransaction.setDisableActions(true)
             // A leading pull belongs to its listener, so the first page does not band away.
             let position = coordinator?.onLeadingOverscroll != nil && selected == 0 ? max(raw, 0) : raw
-            strip.frame = NSRect(x: -Self.rubberBand(position, max: maxPosition), y: 0,
-                                 width: CGFloat(max(pages.count, 1)) * width, height: bounds.height)
-            for (index, view) in attached {
-                view.frame = NSRect(x: CGFloat(index) * width, y: 0, width: width, height: bounds.height)
+            let shown = Self.rubberBand(position, max: maxPosition)
+            if case .dragging = motion {
+                // Only the strip's layer follows the fingers: a frame change has AppKit tell every view
+                // on the strip its place in the window moved, and each page's hosting view and the
+                // window's lay out again on every event.
+                strip.layer?.setAffineTransform(CGAffineTransform(translationX: -shown - strip.frame.minX, y: 0))
+            } else {
+                strip.layer?.setAffineTransform(.identity)
+                strip.frame = NSRect(x: -shown, y: 0, width: CGFloat(max(pages.count, 1)) * width, height: bounds.height)
+                for (index, view) in attached {
+                    view.frame = NSRect(x: CGFloat(index) * width, y: 0, width: width, height: bounds.height)
+                }
             }
             CATransaction.commit()
         }
@@ -260,12 +312,17 @@ extension PlatformPageView: NSViewRepresentable {
             if view.superview !== strip { strip.addSubview(view) }
         }
 
+        /// Attaches and shows the pages that overlap `range`, page i covering i * width up to the next.
         private func attach(range: ClosedRange<CGFloat>) {
-            guard width > 0 else { return }
+            guard width > 0, !pages.isEmpty else { return }
 
-            let low = Int((range.lowerBound / width).rounded(.down))
-            let high = Int((range.upperBound / width).rounded(.up))
-            for index in max(low, 0)...max(min(high, pages.count - 1), 0) { attach(index) }
+            let last = pages.count - 1
+            let low = min(max(Int((range.lowerBound / width).rounded(.down)), 0), last)
+            let high = min(max(Int((range.upperBound / width).rounded(.up)) - 1, low), last)
+            for index in low...high {
+                attach(index)
+                attached[index]?.isHidden = false
+            }
         }
 
         private func detach(keeping keep: Set<Int>) {
@@ -508,8 +565,10 @@ extension PlatformPageView: NSViewRepresentable {
                 MainActor.assumeIsolated {
                     guard let self, self.motionID == id else { return }
                     self.motion = .idle
-                    self.detach(keeping: [self.selected])
+                    self.detach(keeping: Set(self.neighbours))
                     self.evict()
+                    self.rest()
+                    if self.neighboursBuiltFor != self.selectedValue { self.scheduleNeighbours() }
                 }
             }
             relayout()
@@ -559,7 +618,39 @@ extension PlatformPageView: NSViewRepresentable {
                                      progress: Double(fraction - CGFloat(floor))))
         }
 
+        /// The end of a swipe goes out at once; positions at most once a display frame, the latest
+        /// one, since the trackpad can send more events than the screen shows frames.
         private func report(_ position: PageSwipePosition?) {
+            guard let position else {
+                reportTimer?.invalidate()
+                reportTimer = nil
+                pendingReport = nil
+                coordinator?.onSwipe?(nil)
+                return
+            }
+            let now = ProcessInfo.processInfo.systemUptime
+            let frame = window?.screen?.minimumRefreshInterval ?? Self.frameInterval
+            if reportTimer == nil, now - lastReport >= frame {
+                lastReport = now
+                coordinator?.onSwipe?(position)
+                return
+            }
+            pendingReport = position
+            guard reportTimer == nil else { return }
+
+            let timer = Timer(timeInterval: max(lastReport + frame - now, 0), repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated { self?.sendPendingReport() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            reportTimer = timer
+        }
+
+        private func sendPendingReport() {
+            reportTimer = nil
+            guard let position = pendingReport else { return }
+
+            pendingReport = nil
+            lastReport = ProcessInfo.processInfo.systemUptime
             coordinator?.onSwipe?(position)
         }
 
@@ -578,6 +669,10 @@ extension PlatformPageView: NSViewRepresentable {
         static var wheelStepPoints: CGFloat { 10 }
         /// A tracked swipe with no event this long is over, as the library's swipe is.
         static var swipeIdleTimeout: TimeInterval { 1 }
+        /// A window on no screen reports positions this often.
+        static var frameInterval: TimeInterval { 1.0 / 60 }
+        /// A width that has not changed for this long is a resize that stopped.
+        static var resizeQuiet: TimeInterval { 0.25 }
 
         /// Arc's end resistance: 255 points at most past either end.
         static func rubberBand(_ raw: CGFloat, max upper: CGFloat) -> CGFloat {
