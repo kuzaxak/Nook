@@ -43,6 +43,12 @@ You need an Apple Silicon Mac and Xcode 26 or later.
      CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
    ```
 
+   A build made this way has no iCloud entitlement, so it never touches CloudKit and Settings → Spaces says sync needs a signed build. To try space sync, make a signed test build with the team's Developer ID identity and provisioning profile; it lands in `build/release/Nook.app`, signed and not notarized:
+   ```bash
+   NOOK_PROVISIONING_PROFILE_PATH=~/Downloads/Nook_Developer_ID.provisionprofile scripts/release.sh 0.0.0 --app-only
+   ```
+   On another Mac, remove the quarantine from a copy of it (`xattr -dr com.apple.quarantine Nook.app`), since it is not notarized. Both copies use the Production CloudKit environment, as every Developer ID build does.
+
 There is no app test target. Logic with its own checks lives in `Checks/` folders beside each package's sources and in `scripts/tests/`; each file says how to run it. `Packages/NookTabsCore` and `Packages/NookWeb` also have `swift test` suites.
 
 ## Code Style & Standards

@@ -2,14 +2,19 @@
 # Licensed under GPL-3.0. See LICENSE.
 #
 # Builds a release of the fork for its own Sparkle feed:
-#   scripts/release.sh 1.4.0.1            build, sign, notarize, DMG and appcast in build/release
-#   scripts/release.sh 1.4.0.1 --publish  also upload both to a GitHub release on kuzaxak/Nook
+#   scripts/release.sh 1.4.0.1             build, sign, notarize, DMG and appcast in build/release
+#   scripts/release.sh 1.4.0.1 --publish   also upload both to a GitHub release on kuzaxak/Nook
+#   scripts/release.sh 1.4.0.1 --app-only  only build/release/Nook.app, signed and not notarized
 #
 # The app's feed is https://github.com/kuzaxak/Nook/releases/latest/download/appcast.xml, so the
 # newest published release is the update every install sees.
 #
 # Signing: the "Developer ID Application" identity of team 538SB59LX4 when the login Keychain has
-# one (override with SIGN_IDENTITY, or SIGN_IDENTITY=- for ad-hoc). A Developer ID build is
+# one (override with SIGN_IDENTITY, or SIGN_IDENTITY=- for ad-hoc). A Developer ID build embeds
+# the Developer ID provisioning profile, from NOOK_PROVISIONING_PROFILE (base64) or the file at
+# NOOK_PROVISIONING_PROFILE_PATH, and is signed with Nook/Nook-Release.entitlements by
+# scripts/sign-app.sh, so spaces sync through iCloud; without a profile the script stops. An
+# ad-hoc build keeps Nook/Nook-CI.entitlements and does not sync. A Developer ID build is
 # notarized with the notarytool profile NOTARY_PROFILE (default nook-notary) and the script stops
 # if that fails; NOTARY_PROFILE= skips notarization. SIGN_KEYCHAIN and NOTARY_KEYCHAIN name the
 # keychain the identity and the profile are read from instead of the search list. The DMG is signed
@@ -22,12 +27,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="${1:?usage: scripts/release.sh <version> [--publish]}"
+VERSION="${1:?usage: scripts/release.sh <version> [--publish | --app-only]}"
 PUBLISH="${2:-}"
+[[ -z "$PUBLISH" || "$PUBLISH" == "--publish" || "$PUBLISH" == "--app-only" ]] || { echo "Unknown option: $PUBLISH"; exit 1; }
 TAG="v$VERSION"
 BUILD_NUMBER="$(date -u +%Y%m%d%H%M)"
 TEAM=538SB59LX4
-ENTITLEMENTS="$PWD/Nook/Nook-CI.entitlements"
+BUILD_ENTITLEMENTS="$PWD/Nook/Nook-CI.entitlements"
 SPARKLE_BIN="build/SourcePackages/artifacts/sparkle/Sparkle/bin"
 OUT="build/release"
 APP="$OUT/Nook.app"
@@ -50,16 +56,23 @@ NOTARY_PROFILE="${NOTARY_PROFILE-nook-notary}"
 echo "Signing with: $SIGN_IDENTITY"
 
 if [[ "$SIGN_IDENTITY" == "-" ]]; then
+  echo "Ad-hoc build: Nook/Nook-CI.entitlements and no provisioning profile, so spaces do not sync."
   SIGNING=(CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= CODE_SIGNING_REQUIRED=NO)
 else
+  if [[ -z "${NOOK_PROVISIONING_PROFILE:-}" && -z "${NOOK_PROVISIONING_PROFILE_PATH:-}" ]]; then
+    echo "No provisioning profile. Set NOOK_PROVISIONING_PROFILE to the Developer ID profile in base64, or"
+    echo "NOOK_PROVISIONING_PROFILE_PATH to its file; release builds embed it so spaces can sync through iCloud."
+    exit 1
+  fi
   SIGNING=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$TEAM" PROVISIONING_PROFILE_SPECIFIER="")
   [[ -z "${SIGN_KEYCHAIN:-}" ]] || SIGNING+=(OTHER_CODE_SIGN_FLAGS="--keychain \"$SIGN_KEYCHAIN\"")
 fi
 
-# CI entitlements leave out push and the autofill credential provider, which need a profile.
+# xcodebuild wants an installed profile for entitlements that need one, so it signs with the CI
+# entitlements; scripts/sign-app.sh signs the app again with the release ones and the profile.
 xcodebuild -scheme Nook -configuration Release ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
   -derivedDataPath build "${SIGNING[@]}" \
-  CODE_SIGN_ENTITLEMENTS="$ENTITLEMENTS" CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+  CODE_SIGN_ENTITLEMENTS="$BUILD_ENTITLEMENTS" CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
   MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   COMPILER_INDEX_STORE_ENABLE=NO
 
@@ -67,21 +80,12 @@ rm -rf "$OUT" && mkdir -p "$OUT"
 cp -R build/Build/Products/Release/Nook.app "$APP"
 
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
-  # Sparkle ships signed by its own team; notarization wants every binary under ours, with a
-  # timestamp and the hardened runtime, signed from the inside out.
-  SPARKLE="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
   sign() { codesign --force --sign "$SIGN_IDENTITY" ${SIGN_KEYCHAIN:+--keychain "$SIGN_KEYCHAIN"} --timestamp "$@"; }
-  sign --options runtime "$SPARKLE/XPCServices/Downloader.xpc/Contents/MacOS/Downloader"
-  sign --options runtime "$SPARKLE/XPCServices/Installer.xpc/Contents/MacOS/Installer"
-  sign --options runtime "$SPARKLE/Updater.app/Contents/MacOS/Updater"
-  sign --options runtime "$SPARKLE/Autoupdate"
-  sign --options runtime "$SPARKLE/XPCServices/Downloader.xpc"
-  sign --options runtime "$SPARKLE/XPCServices/Installer.xpc"
-  sign --options runtime "$SPARKLE/Updater.app"
-  sign "$SPARKLE/Sparkle"
-  sign --options runtime "$SPARKLE"
-  sign --options runtime --entitlements "$ENTITLEMENTS" "$APP"
-  codesign --verify --deep --strict "$APP"
+  SIGN_IDENTITY="$SIGN_IDENTITY" SIGN_KEYCHAIN="${SIGN_KEYCHAIN:-}" scripts/sign-app.sh "$APP"
+  if [[ "$PUBLISH" == "--app-only" ]]; then
+    echo "Built $APP (version $VERSION, build $BUILD_NUMBER): signed, not notarized."
+    exit 0
+  fi
 
   if [[ -n "$NOTARY_PROFILE" ]]; then
     ditto -c -k --keepParent "$APP" "$OUT/Nook-notarize.zip"
@@ -92,6 +96,11 @@ if [[ "$SIGN_IDENTITY" != "-" ]]; then
   else
     echo "NOTARY_PROFILE is empty; the release is signed but not notarized."
   fi
+fi
+
+if [[ "$PUBLISH" == "--app-only" ]]; then
+  echo "Built $APP (version $VERSION, build $BUILD_NUMBER): ad-hoc signed."
+  exit 0
 fi
 
 STAGING="$(mktemp -d)"

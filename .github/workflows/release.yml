@@ -16,6 +16,8 @@ name: Release
 #   APPLE_CERTIFICATE_P12_BASE64, APPLE_CERTIFICATE_PASSWORD  Developer ID Application identity
 #   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID       notarization
 #   SPARKLE_SIGNING_KEY                                       EdDSA private key (generate_keys -x)
+#   NOOK_PROVISIONING_PROFILE                                 Developer ID provisioning profile
+#                                                             (base64) for iCloud sync of spaces
 
 on:
   push:
@@ -78,6 +80,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SPARKLE_KEY: ${{ secrets.SPARKLE_SIGNING_KEY }}
+          NOOK_PROVISIONING_PROFILE: ${{ secrets.NOOK_PROVISIONING_PROFILE }}
         run: caffeinate -i scripts/release.sh "$VERSION" --publish
 
       - name: Remove temporary keychain
