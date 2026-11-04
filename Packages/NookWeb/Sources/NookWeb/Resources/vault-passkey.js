@@ -17,6 +17,20 @@
   const nativeGet = container.get;
   const nativeCreate = container.create;
   const failed = 'The operation either timed out or was not allowed.';
+  // Taken before page script runs, so a frame reports the ancestors WebKit gives it.
+  const here = window.location;
+  const ancestorsGetter = typeof Location === 'function'
+    && (Object.getOwnPropertyDescriptor(Location.prototype, 'ancestorOrigins') || {}).get;
+  const listLength = typeof DOMStringList === 'function'
+    && (Object.getOwnPropertyDescriptor(DOMStringList.prototype, 'length') || {}).get;
+  const listItem = typeof DOMStringList === 'function' && DOMStringList.prototype.item;
+  function ancestorOrigins() {
+    if (!ancestorsGetter || !listLength || !listItem) return null;
+    const list = ancestorsGetter.call(here);
+    const out = [];
+    for (let i = 0, count = listLength.call(list); i < count; i++) out.push(listItem.call(list, i));
+    return out;
+  }
 
   function bytes(source) {
     if (source instanceof ArrayBuffer) return new Uint8Array(source);
@@ -45,11 +59,11 @@
       const onAbort = () => {
         if (settled) return;
         settled = true;
-        post({ op: 'abort', requestId }).catch(() => {});
+        post({ op: 'abort', requestId, ancestorOrigins: ancestorOrigins() }).catch(() => {});
         reject(new DOMException('The operation was aborted.', 'AbortError'));
       };
       if (signal) signal.addEventListener('abort', onAbort, { once: true });
-      post(Object.assign({ op, requestId }, payload)).then(reply => {
+      post(Object.assign({ op, requestId, ancestorOrigins: ancestorOrigins() }, payload)).then(reply => {
         if (settled) return;
         settled = true;
         if (signal) signal.removeEventListener('abort', onAbort);

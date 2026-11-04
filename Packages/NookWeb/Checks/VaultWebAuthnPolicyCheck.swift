@@ -56,12 +56,20 @@ struct VaultWebAuthnPolicyCheck {
             precondition(!WebAuthnPolicy.isAllowedOrigin(scheme: scheme, host: host), "\(scheme)://\(host)")
         }
 
-        // Main frame, or a frame with the main frame's origin; never a cross-origin iframe.
-        precondition(WebAuthnPolicy.isAllowedFrame(isMainFrame: true, frameOrigin: "https://a.com", mainFrameOrigin: "https://a.com"))
-        precondition(WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: "https://a.com", mainFrameOrigin: "https://a.com"))
-        precondition(!WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: "https://evil.com", mainFrameOrigin: "https://a.com"))
-        precondition(!WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: "https://sub.a.com", mainFrameOrigin: "https://a.com"))
-        precondition(!WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: "https://a.com", mainFrameOrigin: nil))
+        // Main frame, or a frame with the main frame's origin and only that origin above it; never a
+        // cross-origin iframe, and never a same-origin frame inside a cross-origin one (A > B > A).
+        let a = "https://a.com"
+        precondition(WebAuthnPolicy.isAllowedFrame(isMainFrame: true, frameOrigin: a, mainFrameOrigin: a, ancestorOrigins: []))
+        precondition(WebAuthnPolicy.isAllowedFrame(isMainFrame: true, frameOrigin: a, mainFrameOrigin: a, ancestorOrigins: nil))
+        precondition(WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: a, mainFrameOrigin: a, ancestorOrigins: [a]))
+        precondition(WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: a, mainFrameOrigin: a, ancestorOrigins: [a, "HTTPS://A.COM"]))
+        precondition(!WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: a, mainFrameOrigin: a, ancestorOrigins: ["https://b.com", a]))
+        precondition(!WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: a, mainFrameOrigin: a, ancestorOrigins: ["null", a]))
+        precondition(!WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: a, mainFrameOrigin: a, ancestorOrigins: []))
+        precondition(!WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: a, mainFrameOrigin: a, ancestorOrigins: nil))
+        precondition(!WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: "https://evil.com", mainFrameOrigin: a, ancestorOrigins: [a]))
+        precondition(!WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: "https://sub.a.com", mainFrameOrigin: a, ancestorOrigins: [a]))
+        precondition(!WebAuthnPolicy.isAllowedFrame(isMainFrame: false, frameOrigin: a, mainFrameOrigin: nil, ancestorOrigins: [a]))
 
         // rpId: the host itself, or a registrable suffix of it at a label boundary.
         let ok: [(String, String)] = [

@@ -34,9 +34,15 @@ public enum WebAuthnPolicy {
         }
     }
 
-    /// The main frame, or a frame whose origin is the main frame's.
-    public static func isAllowedFrame(isMainFrame: Bool, frameOrigin: String, mainFrameOrigin: String?) -> Bool {
-        isMainFrame || frameOrigin == mainFrameOrigin
+    /// The main frame, or a frame whose origin is the main frame's with only that origin above
+    /// it, so `crossOrigin` is false for every frame Nook serves. WebKit names no parent frames,
+    /// so `ancestorOrigins` is the frame's `location.ancestorOrigins`, nearest first; a subframe
+    /// that sends none is refused.
+    public static func isAllowedFrame(isMainFrame: Bool, frameOrigin: String, mainFrameOrigin: String?,
+                                      ancestorOrigins: [String]?) -> Bool {
+        if isMainFrame { return true }
+        guard frameOrigin == mainFrameOrigin, let ancestorOrigins, !ancestorOrigins.isEmpty else { return false }
+        return ancestorOrigins.allSatisfy { $0.lowercased() == frameOrigin }
     }
 
     /// `rpId` equals `host`, or is a suffix of it at a label boundary that is neither the host's

@@ -30,6 +30,13 @@ struct SecurityKeyShimCheck {
     CredentialsContainer.prototype.get = function () { return Promise.resolve('native get'); };
     CredentialsContainer.prototype.create = function () { return Promise.resolve('native create'); };
     var navigator = { credentials: new CredentialsContainer() };
+    var frameAncestors = [];
+    function DOMStringList(items) { this.items = items; }
+    Object.defineProperty(DOMStringList.prototype, 'length', { get: function () { return this.items.length; }, configurable: true });
+    DOMStringList.prototype.item = function (i) { return this.items[i]; };
+    function Location() {}
+    Object.defineProperty(Location.prototype, 'ancestorOrigins', { get: function () { return new DOMStringList(frameAncestors); }, configurable: true });
+    window.location = new Location();
     var posted = [], replies = [], results = {};
     window.webkit = { messageHandlers: { nookPasskey: { postMessage: function (message) {
         posted.push(JSON.parse(JSON.stringify(message)));
@@ -104,7 +111,7 @@ struct SecurityKeyShimCheck {
                 authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'required', extra: 1 },
                 attestation: 'direct', extensions: { credProps: true }, timeout: 60000 } }));
             """)
-        precondition(text("posted[0]") == #"{"op":"create","requestId":1,"challenge":"AAEC","rp":{"id":"example.com","name":"Example"},"user":{"id":"dXNlcg","name":"alice","displayName":"Alice"},"pubKeyCredParams":[-7,-8],"excludeCredentials":["qrvM"],"authenticatorSelection":{"residentKey":"required","userVerification":"required","requireResidentKey":true},"credProps":true,"timeout":60000}"#, text("posted[0]"))
+        precondition(text("posted[0]") == #"{"op":"create","requestId":1,"ancestorOrigins":[],"challenge":"AAEC","rp":{"id":"example.com","name":"Example"},"user":{"id":"dXNlcg","name":"alice","displayName":"Alice"},"pubKeyCredParams":[-7,-8],"excludeCredentials":["qrvM"],"authenticatorSelection":{"residentKey":"required","userVerification":"required","requireResidentKey":true},"credProps":true,"timeout":60000}"#, text("posted[0]"))
         let made = SecurityKeyCreated(credentialID: Data([0xfb, 0xff, 1]), authenticatorData: Data([5, 6]), attestationObject: Data([7]),
                                       publicKeyAlgorithm: -7, publicKey: Data([8, 9]), residentKey: true)
         js.evaluateScript("answer(\(json(SecurityKeyReply.created(made, clientDataJSON: Data("{}".utf8), credProps: true))))")
@@ -151,7 +158,7 @@ struct SecurityKeyShimCheck {
             keep('got', navigator.credentials.get({ publicKey: { challenge: new Uint8Array([0, 1, 2]), rpId: 'example.com',
                 allowCredentials: [{ type: 'public-key', id: new Uint8Array([1]) }], userVerification: 'discouraged', timeout: 30000 } }));
             """)
-        precondition(text("posted[posted.length - 1]") == #"{"op":"get","requestId":4,"challenge":"AAEC","rpId":"example.com","allowCredentials":["AQ"],"userVerification":"discouraged","mediation":"optional","timeout":30000}"#, text("posted[posted.length - 1]"))
+        precondition(text("posted[posted.length - 1]") == #"{"op":"get","requestId":4,"ancestorOrigins":[],"challenge":"AAEC","rpId":"example.com","allowCredentials":["AQ"],"userVerification":"discouraged","mediation":"optional","timeout":30000}"#, text("posted[posted.length - 1]"))
         let signed = SecurityKeyAsserted(credentialID: Data([1]), authenticatorData: Data([2, 3]), signature: Data([4]), userHandle: Data([5]))
         js.evaluateScript("answer(\(json(SecurityKeyReply.asserted(signed, clientDataJSON: Data("{}".utf8)))))")
         let got = "results.got.value"
@@ -171,6 +178,22 @@ struct SecurityKeyShimCheck {
         }
         js.evaluateScript("keep('nothing', navigator.credentials.get({ publicKey: { challenge: new Uint8Array(1) } })); answer(null)")
         precondition(text("results.nothing.error.name") == "\"NotAllowedError\"")
+
+        // A frame's ancestors come from the natives as the shim found them, whatever the page
+        // patches afterwards; aborts carry them too.
+        js.evaluateScript("""
+            frameAncestors = ['https://b.example', 'https://a.example'];
+            Object.defineProperty(Location.prototype, 'ancestorOrigins', { get: function () { return new DOMStringList([]); } });
+            Object.defineProperty(DOMStringList.prototype, 'length', { get: function () { return 0; } });
+            DOMStringList.prototype.item = function () { return 'https://a.example'; };
+            var framed = new AbortController();
+            keep('framed', navigator.credentials.get({ signal: framed.signal, publicKey: { challenge: new Uint8Array(1) } }));
+            framed.abort();
+            """)
+        precondition(text("posted.slice(-2).map(function (m) { return [m.op, m.ancestorOrigins]; })")
+            == #"[["get",["https://b.example","https://a.example"]],["abort",["https://b.example","https://a.example"]]]"#,
+            text("posted.slice(-2)"))
+        js.evaluateScript("answer({ error: 'NotAllowedError' }); frameAncestors = []")
 
         // AbortSignal: an aborted request tells Nook and rejects; one aborted before is never sent.
         js.evaluateScript("""

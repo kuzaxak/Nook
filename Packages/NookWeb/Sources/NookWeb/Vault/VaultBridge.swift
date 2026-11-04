@@ -335,6 +335,7 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
         inFlight = inFlight.filter { $0.value.isPending }
         switch op {
         case "abort":
+            guard case .success = context(for: message, body) else { return reply.finish() }
             inFlight.removeValue(forKey: requestID)?.fail(.abort)
             conditionalGets.removeValue(forKey: requestID)
             if modalGetID == requestID { closePicker() }
@@ -342,7 +343,7 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
             reply.finish()
         case "get", "create":
             let context: PageContext
-            switch self.context(for: message) {
+            switch self.context(for: message, body) {
             case .success(let value): context = value
             case .failure(let error): return reply.fail(error)
             }
@@ -389,14 +390,15 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
         }
     }
 
-    /// Origin from WebKit; the main frame or a frame with its origin; HTTPS or local HTTP.
-    private func context(for message: WKScriptMessage) -> Result<PageContext, WebAuthnError> {
+    /// Origin from WebKit; the main frame or a frame with its origin and none other above it;
+    /// HTTPS or local HTTP.
+    private func context(for message: WKScriptMessage, _ body: [String: Any]) -> Result<PageContext, WebAuthnError> {
         guard let service, service.isEnabled || service.securityKeysEnabled, let webView = message.webView else { return .failure(.notAllowed) }
         let security = message.frameInfo.securityOrigin
         guard let origin = WebAuthnPolicy.origin(scheme: security.protocol, host: security.host, port: security.port)
         else { return .failure(.security) }
         guard WebAuthnPolicy.isAllowedFrame(isMainFrame: message.frameInfo.isMainFrame, frameOrigin: origin,
-                                            mainFrameOrigin: committedOrigin)
+                                            mainFrameOrigin: committedOrigin, ancestorOrigins: body["ancestorOrigins"] as? [String])
         else { return .failure(.notAllowed) }
         guard WebAuthnPolicy.isAllowedOrigin(scheme: security.protocol, host: security.host) else { return .failure(.security) }
         return .success(PageContext(origin: origin, host: security.host.lowercased(), profile: profile))
