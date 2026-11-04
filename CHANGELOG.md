@@ -19,6 +19,7 @@
 - The + menu at the bottom of the sidebar names each item beside its icon and shows the New Tab shortcut
 - Right-click on Back or Forward lists the pages that way, nearest first, with their titles and icons, instead of the toolbar's Icon and Text menu
 - A two-finger swipe over the sidebar switches spaces whatever System Settings → Trackpad → Swipe between pages is set to; a mouse's tilt wheel or Shift-scroll moves one space per flick, over the tab list too
+- A sidebar swipe cut short, by switching apps or clicking mid-swipe or by resting the fingers, settles back on its space instead of leaving Nook ignoring clicks until the next scroll
 - Turning Developer Mode off (Control-D, the site controls or Settings) closes the right panel in every window where it showed Console, Network, Blocker or Perf; the Agent tab stays open
 - A Web Inspector docked to a page stays beside it when the window resizes, the Developer Mode bar or right panel opens, or you switch tabs or split and come back, and the page fills its pane again when the inspector closes or undocks, instead of leaving a grey band below it
 - Dragging a tab from the sidebar onto the page splits the window again, as in Arc: the half under the pointer shows where it goes and takes the tab, or replaces that pane in a split; text dragged inside a page no longer brings up the split zones

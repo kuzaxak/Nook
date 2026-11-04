@@ -237,6 +237,60 @@ struct SpaceSwitchCheck {
                      "and goes to the list")
         print("PASS: trackpad swipes over the list page sideways; upright ones are the list's")
 
+        // A swipe cut short, as by switching apps mid-swipe, never gets its `.ended`. The pager lets
+        // go on its own and settles on its space instead of holding the app's events until the next
+        // scroll; a check that still hangs is stopped here.
+        let watchdog = DispatchWorkItem {
+            fputs("FAIL: a swipe with no end still holds the pager's event loop\n", stderr)
+            exit(1)
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 20, execute: watchdog)
+        let strip = pager.subviews[0]
+        var presses = 0
+        let monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { presses += 1; return $0 }
+        /// Starts a swipe that never ends, does `meanwhile`, and returns how long the pager's loop held on.
+        func unfinishedSwipe(_ meanwhile: () -> Void = {}) -> TimeInterval {
+            reset()
+            NSApp.postEvent(scroll(dx: -40, dy: 0, precise: true, phase: 1, at: overList), atStart: false)
+            for _ in 0..<3 { NSApp.postEvent(scroll(dx: -40, dy: 0, precise: true, phase: 2, at: overList), atStart: false) }
+            meanwhile()
+            let start = Date()
+            dispatch(in: window, for: 0.05)
+            return Date().timeIntervalSince(start)
+        }
+        func settledBack() -> Bool {
+            dispatch(in: window, for: 0.7)
+            return selection == 1 && !pager.isTracking && strip.frame.minX == -300
+        }
+
+        let idle = unfinishedSwipe()
+        precondition(idle > 0.5 && idle < 3, "Left alone, the swipe ends after a second without events, took \(idle) s")
+        precondition(settledBack(), "and the pager settles back on its space")
+
+        let pressed = unfinishedSwipe {
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                NSApp.postEvent(NSEvent.mouseEvent(with: type, location: overList, modifierFlags: [],
+                                                   timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                                   context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!, atStart: false)
+            }
+        }
+        precondition(pressed < 0.5 && presses == 1, "A click ends the swipe at once and still goes through, took \(pressed) s, \(presses) clicks")
+        precondition(settledBack())
+
+        for (name, object) in [(NSApplication.didResignActiveNotification, NSApp as AnyObject), (NSWindow.didResignKeyNotification, window)] {
+            let woken = unfinishedSwipe {
+                let timer = Timer(timeInterval: 0.2, repeats: false) { _ in
+                    MainActor.assumeIsolated { NotificationCenter.default.post(name: name, object: object) }
+                }
+                RunLoop.main.add(timer, forMode: .common)
+            }
+            precondition(woken > 0.15 && woken < 0.6, "\(name.rawValue) ends the swipe, took \(woken) s")
+            precondition(settledBack())
+        }
+        watchdog.cancel()
+        NSEvent.removeMonitor(monitor!)
+        print("PASS: a swipe that never ends lets go after a pause, a click, or the app or window losing focus")
+
         reset()
         wheel(dx: -1)
         dispatch(in: window, for: 0.6)

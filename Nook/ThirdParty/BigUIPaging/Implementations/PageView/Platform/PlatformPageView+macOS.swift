@@ -344,22 +344,51 @@ extension PlatformPageView: NSViewRepresentable {
         }
 
         // Arc's pager runs its own loop while fingers are down, so every event of the swipe
-        // reaches it whichever view is under the pointer.
+        // reaches it whichever view is under the pointer. A swipe cut short by the window or the
+        // app losing focus never gets its `.ended`: the notifications wake the loop, a press ends
+        // it and goes on to its view, and the idle timeout covers the rest.
         private func track() {
             guard let window else {
                 motion = .idle
                 return
             }
 
-            let mask: NSEvent.EventTypeMask = [.scrollWheel, .swipe, .mouseMoved, .mouseExited, .keyDown, .keyUp]
-            while case .dragging = motion,
-                  let event = window.nextEvent(matching: mask, until: .distantFuture, inMode: .eventTracking, dequeue: true) {
-                if event.type == .scrollWheel {
+            var interrupted = false
+            let wake = {
+                interrupted = true
+                if let event = NSEvent.otherEvent(with: .applicationDefined, location: .zero, modifierFlags: [],
+                                                  timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0,
+                                                  context: nil, subtype: 0, data1: 0, data2: 0) {
+                    NSApp.postEvent(event, atStart: true)
+                }
+            }
+            let center = NotificationCenter.default
+            let observers = [
+                center.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: nil) { _ in wake() },
+                center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: nil) { _ in wake() },
+            ]
+            defer { observers.forEach(center.removeObserver) }
+
+            let presses: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+            let mask = presses.union([.scrollWheel, .swipe, .mouseMoved, .mouseExited, .keyDown, .keyUp, .applicationDefined])
+            tracking: while case .dragging = motion, !interrupted,
+                            let event = window.nextEvent(matching: mask, until: Date(timeIntervalSinceNow: Self.swipeIdleTimeout),
+                                                         inMode: .eventTracking, dequeue: true) {
+                switch event.type {
+                case .scrollWheel:
                     drag(event.phase, delta: event.scrollingDeltaX, time: event.timestamp)
-                } else {
+                case .applicationDefined where interrupted:
+                    break tracking
+                case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+                    NSApp.postEvent(event, atStart: true)
+                    break tracking
+                default:
                     NSApp.sendEvent(event)
                 }
             }
+            // Drop the wake event if the loop left before reading it.
+            if interrupted { _ = window.nextEvent(matching: .applicationDefined, until: .distantPast, inMode: .eventTracking, dequeue: true) }
+            if case .dragging = motion { drag(.cancelled, delta: 0, time: ProcessInfo.processInfo.systemUptime) }
             // However the loop ended, a pull the listener is holding must be let go, or the
             // library would stay where the fingers left it.
             if let distance = leadingPull { endLeadingPull(distance: distance, velocity: 0) }
@@ -547,6 +576,8 @@ extension PlatformPageView: NSViewRepresentable {
         static var wheelBurstGap: TimeInterval { 0.25 }
         /// About one line of a wheel, for a precise device without gesture phases.
         static var wheelStepPoints: CGFloat { 10 }
+        /// A tracked swipe with no event this long is over, as the library's swipe is.
+        static var swipeIdleTimeout: TimeInterval { 1 }
 
         /// Arc's end resistance: 255 points at most past either end.
         static func rubberBand(_ raw: CGFloat, max upper: CGFloat) -> CGFloat {
