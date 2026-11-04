@@ -488,11 +488,9 @@ struct DynamicShortcutModifier: ViewModifier {
 }
 
 extension KeyboardShortcutManager {
-    /// Returns the key equivalent for a given action, or nil if disabled
     func keyEquivalent(for action: ShortcutAction) -> KeyEquivalent? {
         guard let shortcut = self.shortcut(for: action),
               shortcut.isEnabled else { return nil }
-        // Handle special keys
         switch shortcut.keyCombination.key.lowercased() {
         case "return", "enter": return .return
         case "escape", "esc": return .escape
@@ -509,7 +507,6 @@ extension KeyboardShortcutManager {
         case "pagedown": return .pageDown
         case "clear": return .clear
         default:
-            // Handle single character keys
             if shortcut.keyCombination.key.count == 1,
                let char = shortcut.keyCombination.key.first {
                 return KeyEquivalent(char)
@@ -518,7 +515,6 @@ extension KeyboardShortcutManager {
         }
     }
 
-    /// Returns the event modifiers for a given action
     func eventModifiers(for action: ShortcutAction) -> EventModifiers {
         guard let shortcut = self.shortcut(for: action),
               shortcut.isEnabled else { return [] }

@@ -294,7 +294,6 @@ class KeyboardShortcutManager {
 
     /// Whether the shortcut being run came from Control-Tab, which opens the tab switcher.
     private var lastShortcutWasControlTab = false
-    /// Whether the shortcut being run is a held key's repeat.
     private var lastShortcutWasRepeat = false
     
     /// Forward a keyboard event directly to the active WebView
