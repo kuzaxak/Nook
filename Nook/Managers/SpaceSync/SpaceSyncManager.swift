@@ -338,11 +338,24 @@ final class SpaceSyncManager: SpaceSyncControls {
         }
     }
 
-    /// Joins after the person agreed: moving marks the spaces in this account's zone first.
+    /// Joins after the person agreed: moving marks the spaces in this account's zone first,
+    /// with this account's engine stopped so it cannot fetch those marks and turn the spaces
+    /// Off here before they move.
     private func join(owner: String, ownerName: String?, moving: Bool, in container: CKContainer) async throws {
-        if moving { try await markMoved(state.markedOnMove(in: tabs.tree), to: owner, in: container) }
+        let running = engine != nil
+        if moving {
+            let marked = state.markedOnMove(in: tabs.tree)
+            dropEngine()
+            do {
+                try await markMoved(marked, to: owner, in: container)
+            } catch {
+                if running, let account = state.account { start(account: account) }
+                throw error
+            }
+        }
         apply(state.join(owner: owner, ownerName: ownerName, moving: moving, tree: tabs.tree, kept: tabs.device.keptProfiles ?? []))
-        restartEngine()
+        dropEngine()
+        if running, let account = state.account { start(account: account) }
         scheduleSave()
     }
 
