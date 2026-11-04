@@ -166,7 +166,7 @@ struct SpaceSyncCloudKitCheck {
         check(ownFetch.share === ownShare, "the joined zone's share is read")
         let gone = c.state.fetched([], deletions: [(ownShare.recordID, CKRecord.SystemType.share)])
         check(gone.shareDeleted, "the joined zone's share deleted is noticed")
-        c.state.leaveSharedZone()
+        c.state.leaveSharedZone(in: c.tree)
         check(c.state.databaseScope == .private && c.state.zoneID.ownerName == CKCurrentUserDefaultName, "leaving goes back to Mac C's own zone")
 
         if failures == 0 {

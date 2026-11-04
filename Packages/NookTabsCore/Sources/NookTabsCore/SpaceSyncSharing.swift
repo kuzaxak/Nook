@@ -197,9 +197,14 @@ extension SpaceSyncState {
     }
 
     /// Back to this account's own zone with every space Off, after leaving the joined zone or
-    /// its owner ending the share. Nothing on this Mac is deleted.
-    public mutating func leaveSharedZone() {
+    /// its owner ending the share. Nothing on this Mac is deleted. Every space this Mac knows of
+    /// stays Off by name, so the fetch of this account's zone brings back none it kept out,
+    /// such as one deleted here long ago.
+    public mutating func leaveSharedZone(in tree: TabTree) {
+        var known = Set(levels.keys).union(tree.spaces.keys)
+        if let catalog { known.formUnion(catalog.spaces.keys) }
         reset(account: account)
+        for id in known { levels[id] = .off }
     }
 
     /// This account's zone is shared with these people.

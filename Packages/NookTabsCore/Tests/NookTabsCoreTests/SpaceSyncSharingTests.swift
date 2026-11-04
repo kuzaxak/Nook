@@ -108,7 +108,7 @@ struct SpaceSyncSharingTests {
         #expect(guest.state.zoneOwner == Self.ownerAccount)
         #expect(guest.state.mode == .joined(owner: "Vladimir"))
 
-        guest.state.leaveSharedZone()
+        guest.state.leaveSharedZone(in: guest.tree)
         #expect(guest.state.database == .private)
         #expect(guest.state.zoneOwner == nil)
         #expect(guest.state.mode == .own)
@@ -252,12 +252,13 @@ struct SpaceSyncSharingTests {
         zones.sync(&guest, now: later(10))
         let tree = guest.tree
 
-        guest.state.leaveSharedZone()
+        guest.state.leaveSharedZone(in: guest.tree)
 
         #expect(guest.tree == tree)
         #expect(guest.tree.space(work.space) != nil)
         #expect(guest.state.level(of: work.space) == .off)
         #expect(guest.state.level(of: side) == .off)
+        #expect(guest.state.levels[work.space] == .off)
         #expect(guest.state.account == Self.guestAccount)
         #expect(guest.state.engine == nil)
         #expect(guest.pending == ([], []))
@@ -270,7 +271,7 @@ struct SpaceSyncSharingTests {
         owner.state.stoppedSharing()
         let tree = guest.tree
 
-        guest.state.zoneLost(reuploading: false)
+        guest.state.zoneLost(reuploading: false, in: guest.tree)
 
         #expect(guest.tree == tree)
         #expect(guest.state.database == .private)
@@ -278,6 +279,42 @@ struct SpaceSyncSharingTests {
         #expect(guest.state.level(of: side) == .off)
         #expect(guest.pending == ([], []))
         #expect(owner.state.mode == .own)
+    }
+
+    /// Leaving, or the owner ending the share, then fetching this account's zone again: a space
+    /// this Mac had Off, here one it deleted before joining whose tombstone is long gone, stays out.
+    @Test(arguments: [false, true])
+    func afterTheSharedSyncEndsASpaceOffBeforeStaysOut(ownerStopped: Bool) throws {
+        var (_, guest, work, side, _, zones) = try setUp()
+        var mini = secondGuestMac(&zones)
+        let old = UUID()
+        mini.tree.createSpace(id: old, name: "Old", icon: "", accentHex: "#000000", after: nil, now: fixedNow)
+        mini.state.setLevel(.pinned, for: old, now: fixedNow)
+        mini.sync(&zones.guest, now: later(1))
+        zones.sync(&guest, now: later(2))
+        #expect(guest.tree.space(old) != nil)
+        guest.state.setLevel(.off, for: old, now: later(3))
+        _ = try guest.tree.deleteSpace(old, now: later(3))
+        guest.state.prune(against: guest.tree)
+        guest.tree.repair(now: later(4 + TabTree.tombstoneLifetime))
+        #expect(guest.tree.spaces[old] == nil)
+
+        join(&guest, &zones, now: later(10))
+        zones.sync(&guest, now: later(10))
+        if ownerStopped {
+            guest.state.zoneLost(reuploading: false, in: guest.tree)
+        } else {
+            guest.state.leaveSharedZone(in: guest.tree)
+        }
+        guest.cursor = 0
+        guest.refetch(zones.guest, now: later(20))
+
+        #expect(guest.tree.spaces[old] == nil)
+        #expect(guest.state.level(of: old) == .off)
+        #expect(guest.state.level(of: side) == .off)
+        #expect(guest.state.level(of: work.space) == .off)
+        #expect(guest.tree.space(work.space) != nil)
+        #expect(guest.pending == ([], []))
     }
 
     @Test func anAccountChangeWhileJoinedGoesBackToTheNewAccountsOwnZone() throws {

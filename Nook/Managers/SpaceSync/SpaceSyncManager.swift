@@ -194,7 +194,7 @@ final class SpaceSyncManager: SpaceSyncControls {
             } catch {
                 return note(error)
             }
-            state.leaveSharedZone()
+            state.leaveSharedZone(in: tabs.tree)
             restartEngine()
             scheduleSave()
         }
@@ -550,7 +550,7 @@ final class SpaceSyncManager: SpaceSyncControls {
     /// goes back to its own zone.
     private func zoneLost(reuploading: Bool) {
         let joined = state.database == .shared
-        state.zoneLost(reuploading: reuploading)
+        state.zoneLost(reuploading: reuploading, in: tabs.tree)
         if joined {
             state.lastError = "The shared sync ended. Your spaces stay on this Mac, turned Off."
             restartEngine()

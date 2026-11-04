@@ -507,8 +507,8 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
 
     /// The zone is gone from iCloud. Nothing here is deleted for it. Unless everything goes up
     /// again, as after a reset of the person's encryption keys, every space turns Off.
-    public mutating func zoneLost(reuploading: Bool) {
-        guard sharing?.joinedOwner == nil else { return leaveSharedZone() }
+    public mutating func zoneLost(reuploading: Bool, in tree: TabTree) {
+        guard sharing?.joinedOwner == nil else { return leaveSharedZone(in: tree) }
         forgetRecords()
         deletedInCloud = [:]
         refetchSeen = nil

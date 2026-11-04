@@ -723,7 +723,7 @@ struct SpaceSyncTests {
     func aZoneGoneFromICloudDeletesNothingHere(reuploading: Bool) throws {
         var (a, _, work, _) = try pair(.everything)
         let tree = a.tree
-        a.state.zoneLost(reuploading: reuploading)
+        a.state.zoneLost(reuploading: reuploading, in: a.tree)
 
         #expect(a.tree == tree)
         #expect(a.state.shadow.isEmpty)
