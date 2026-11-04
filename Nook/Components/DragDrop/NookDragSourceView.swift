@@ -8,6 +8,7 @@ import SwiftUI
 import AppKit
 import NookTabsCore
 import NookWeb
+import NookUI
 
 // MARK: - Drag Source Coordinator (NSDraggingSource)
 
@@ -42,6 +43,8 @@ final class NookDragSourceCoordinator: NSObject, NSDraggingSource {
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         TabDropRouter.shared.end()
+        // The drag's own loop takes the mouse-up, so the monitor never sees the press released.
+        RowPress.current.up()
         manager.nativeDragEnded()
     }
 }

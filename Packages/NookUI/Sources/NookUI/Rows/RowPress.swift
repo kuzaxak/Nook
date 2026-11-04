@@ -10,6 +10,9 @@
 //
 
 import CoreGraphics
+#if canImport(AppKit)
+import AppKit
+#endif
 
 public struct RowPress {
     public static let dragThreshold: CGFloat = 4
@@ -37,8 +40,23 @@ public struct RowPress {
         start = nil
     }
 
-    /// A row's click action: runs once the press is released, unless it became a drag.
+    /// A row's click action. A mouse click runs it once the press is released, unless the press
+    /// became a drag; VoiceOver's press or Full Keyboard Access's Space runs it at once.
     @MainActor public static func click(_ action: () -> Void) {
-        if current.start == nil, !current.isDrag { action() }
+        click(byMouse: isMouseEvent, action)
+    }
+
+    @MainActor public static func click(byMouse: Bool, _ action: () -> Void) {
+        if !byMouse || (current.start == nil && !current.isDrag) { action() }
+    }
+
+    /// The event being handled is the left mouse button's.
+    @MainActor public static var isMouseEvent: Bool {
+        #if canImport(AppKit)
+        guard let type = NSApp?.currentEvent?.type else { return false }
+        return [.leftMouseDown, .leftMouseDragged, .leftMouseUp].contains(type)
+        #else
+        return false
+        #endif
     }
 }

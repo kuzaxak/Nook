@@ -10,7 +10,8 @@ import CoreGraphics
 struct RowPressCheck {
     @MainActor static func main() {
         var selections = 0
-        func rowAction() { RowPress.click { selections += 1 } }
+        func rowAction() { RowPress.click(byMouse: true) { selections += 1 } }
+        func keyboardAction() { RowPress.click(byMouse: false) { selections += 1 } }
 
         // A click: pressed and released within the threshold.
         RowPress.current.down(at: CGPoint(x: 10, y: 10))
@@ -39,6 +40,21 @@ struct RowPressCheck {
         RowPress.current.up()
         rowAction()
         precondition(selections == 1, "a click after a drag selects")
+
+        // VoiceOver's press and Full Keyboard Access's Space are no mouse click: they select
+        // whatever press came before, one the drag loop, a menu or a ctrl-click never released.
+        selections = 0
+        RowPress.current.down(at: CGPoint(x: 10, y: 10))
+        keyboardAction()
+        precondition(selections == 1, "after a press with no release seen")
+        rowAction()
+        precondition(selections == 1, "a mouse event during that press still waits for its release")
+        _ = RowPress.current.moved(to: CGPoint(x: 40, y: 10))
+        RowPress.current.up()
+        keyboardAction()
+        precondition(selections == 2, "after a drag")
+        rowAction()
+        precondition(selections == 2, "a mouse event right after the drag still selects nothing")
         print("RowPressCheck passed")
     }
 }
