@@ -80,7 +80,7 @@ public struct SpacesSettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Its \(pendingRemoval?.itemCount ?? 0) favorites, pinned tabs, folders and tabs are deleted from iCloud, and every Mac that syncs it deletes it. On this Mac it stays, turned Off.")
+            Text(Self.removalWarning(itemCount: pendingRemoval?.itemCount ?? 0, mode: actions?.spaceSync?.status.mode ?? .own))
         }
         .alert("Join Shared Sync", isPresented: $joining) {
             TextField("https://www.icloud.com/share/\u{2026}", text: $joinLink)
@@ -94,7 +94,7 @@ public struct SpacesSettingsView: View {
             Button("Stop Sharing", role: .destructive) { sync?.stopSharing() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The people you shared with stop syncing them. Their Macs keep every space, turned Off.")
+            Text("The people you shared with stop syncing these spaces, and their Macs keep every space, turned Off. Spaces they moved in stay in your iCloud.")
         }
         .alert("Remove the old copy from this iCloud account?", isPresented: $confirmingOldCopyRemoval) {
             Button("Remove Old Copy", role: .destructive) { sync?.removeOldCopies() }
@@ -106,7 +106,7 @@ public struct SpacesSettingsView: View {
             Button("Leave", role: .destructive) { sync?.leaveSharedSync() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This Mac stops syncing the shared spaces and goes back to this iCloud account. Every space stays here, turned Off.")
+            Text(Self.leaveWarning(actions?.spaceSync?.status.mode ?? .own))
         }
         .alert(
             "Keep the \u{201C}\(pendingMove?.profile ?? "")\u{201D} profile?",
@@ -237,7 +237,7 @@ public struct SpacesSettingsView: View {
                 }
             }
             if status.availability != .needsSignedBuild {
-                Text("Spaces sync between Macs signed in to the same iCloud account (System Settings \u{2192} your name).")
+                Text(Self.hint(status.mode))
                     .font(NookDesign.Font.caption)
                     .foregroundStyle(.secondary)
             }
@@ -335,6 +335,29 @@ public struct SpacesSettingsView: View {
         let spaces = old?.spaces == 1 ? "The space stays" : "The \(old?.spaces ?? 0) spaces stay"
         let macs = old.map { $0.devices.isEmpty ? "" : " It was synced there by \($0.devices.formatted(.list(type: .and)))." } ?? ""
         return "\(spaces) in the shared sync and on this Mac; only the copy in this iCloud account's own sync is deleted.\(macs) Those Macs keep them if they run this version of Nook or later; an earlier version deletes them."
+    }
+
+    /// Who spaces sync with, under the status line.
+    private static func hint(_ mode: SpaceSyncMode) -> String {
+        switch mode {
+        case .own: return "Spaces sync between Macs signed in to the same iCloud account (System Settings \u{2192} your name)."
+        case .sharing: return "Spaces sync between this iCloud account\u{2019}s Macs and the people it is shared with."
+        case .joined: return "Spaces sync with everyone in this shared sync, whatever iCloud account they use."
+        }
+    }
+
+    private static func leaveWarning(_ mode: SpaceSyncMode) -> String {
+        let owner: String
+        if case .joined(let name?) = mode { owner = "\(name)\u{2019}s" } else { owner = "the owner\u{2019}s" }
+        return "This Mac stops syncing the shared spaces and goes back to this iCloud account. Every space stays here, turned Off. Spaces you moved in stay in \(owner) iCloud."
+    }
+
+    private static func removalWarning(itemCount: Int, mode: SpaceSyncMode) -> String {
+        let items = "Its \(itemCount) favorites, pinned tabs, folders and tabs"
+        guard mode == .own else {
+            return "\(items) are deleted from the shared sync for everyone in it, and every Mac that syncs it deletes it. On this Mac it stays, turned Off."
+        }
+        return "\(items) are deleted from iCloud, and every Mac that syncs it deletes it. On this Mac it stays, turned Off."
     }
 
     private static func describe(_ mode: SpaceSyncMode) -> String {

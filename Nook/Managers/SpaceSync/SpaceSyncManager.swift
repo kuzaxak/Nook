@@ -17,8 +17,8 @@ import NookTabsCore
 import NookUI
 import NookWeb
 import OSLog
+import IOKit
 import Security
-import SystemConfiguration
 
 @MainActor
 @Observable
@@ -37,6 +37,8 @@ final class SpaceSyncManager: SpaceSyncControls {
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var registeredForPushes = false
     @ObservationIgnored private var sharingPicker: NSSharingServicePicker?
+    /// The person asked to leave the joined zone and CloudKit has not answered yet.
+    @ObservationIgnored private var leaving = false
     /// Owners whose share this Mac looked up this session, found or not.
     @ObservationIgnored private var lookedUpOwners: Set<String> = []
     /// A zone fetch in the current fetch failed, so a fetch of everything is not complete yet.
@@ -44,8 +46,8 @@ final class SpaceSyncManager: SpaceSyncControls {
     /// Items already reported as too large for iCloud.
     @ObservationIgnored private var reportedTooLarge: Set<UUID> = []
     @ObservationIgnored private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Nook", category: "SpaceSync")
-    /// This Mac's name as Sharing settings give it, which every save carries.
-    @ObservationIgnored private let deviceName = SCDynamicStoreCopyComputerName(nil, nil) as String? ?? "Mac"
+    /// This Mac's kind, such as "iMac" or "MacBook Pro", which every save carries.
+    @ObservationIgnored private let deviceName = SpaceSyncDevice.name(productName: SpaceSyncManager.productName, model: SpaceSyncManager.model)
 
     init(tabs: TabsController) {
         self.tabs = tabs
@@ -114,7 +116,7 @@ final class SpaceSyncManager: SpaceSyncControls {
             do {
                 let share: CKShare
                 if let existing = try await zoneShare(in: container) {
-                    share = existing
+                    share = try await onlyInvited(existing, in: container)
                 } else {
                     share = try await createShare(in: container)
                 }
@@ -194,18 +196,56 @@ final class SpaceSyncManager: SpaceSyncControls {
     }
 
     func leaveSharedSync() {
-        guard let container, state.database == .shared else { return }
+        guard let container, state.database == .shared, !leaving else { return }
+        leaving = true
         Task {
+            defer { leaving = false }
             do {
                 _ = try await container.sharedCloudDatabase.deleteRecord(withID: state.shareRecordID)
             } catch let error as CKError where error.code == .unknownItem || error.code == .zoneNotFound {
             } catch {
                 return note(error)
             }
-            state.leaveSharedZone(in: tabs.tree)
-            restartEngine()
-            scheduleSave()
+            endSharedSync(message: nil)
         }
+    }
+
+    /// Back to this account's own zone, once, whichever of leaving and the joined zone going
+    /// away comes first.
+    private func endSharedSync(message: String?) {
+        guard state.database == .shared else { return }
+        state.leaveSharedZone(in: tabs.tree)
+        state.lastError = message
+        restartEngine()
+        scheduleSave()
+    }
+
+    /// The share again open to invited people only, should it have been opened to anyone with
+    /// its link elsewhere.
+    private func onlyInvited(_ share: CKShare, in container: CKContainer) async throws -> CKShare {
+        guard share.publicPermission != .none else { return share }
+        share.publicPermission = .none
+        let saved = try await container.privateCloudDatabase.modifyRecords(saving: [share], deleting: []).saveResults[share.recordID]?.get()
+        guard let saved = saved as? CKShare else { throw CKError(.internalError) }
+        return saved
+    }
+
+    private static var model: String {
+        var size = 0
+        guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else { return "" }
+        var bytes = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("hw.model", &bytes, &size, nil, 0) == 0 else { return "" }
+        return String(cString: bytes)
+    }
+
+    /// The product name Apple silicon Macs report, such as "MacBook Pro (14-inch, 2021)".
+    private static var productName: String? {
+        let product = IORegistryEntryFromPath(kIOMainPortDefault, "IODeviceTree:/product")
+        guard product != 0 else { return nil }
+        defer { IOObjectRelease(product) }
+        guard let data = IORegistryEntryCreateCFProperty(product, "product-name" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? Data else { return nil }
+        return String(decoding: data.prefix { $0 != 0 }, as: UTF8.self)
     }
 
     func removeOldCopies() {
@@ -394,7 +434,7 @@ final class SpaceSyncManager: SpaceSyncControls {
             state.shared(participants: share.participants.map { participant in
                 let identity = participant.userIdentity
                 return SpaceSyncParticipant(
-                    name: identity.nameComponents.flatMap(Self.name) ?? identity.lookupInfo?.emailAddress ?? identity.lookupInfo?.phoneNumber ?? "Someone",
+                    name: identity.nameComponents.flatMap(Self.name) ?? "Invited person",
                     status: Self.status(participant.acceptanceStatus), isOwner: participant.role == .owner)
             })
         }
@@ -635,13 +675,10 @@ final class SpaceSyncManager: SpaceSyncControls {
     /// joined zone gone means its owner stopped sharing or removed this account, and this Mac
     /// goes back to its own zone.
     private func zoneLost(reuploading: Bool) {
-        let joined = state.database == .shared
-        state.zoneLost(reuploading: reuploading, in: tabs.tree)
-        if joined {
-            state.lastError = "The shared sync ended. Your spaces stay on this Mac, turned Off."
-            restartEngine()
-            return scheduleSave()
+        guard state.database == .private else {
+            return endSharedSync(message: leaving ? nil : "The shared sync ended. Your spaces stay on this Mac, turned Off.")
         }
+        state.zoneLost(reuploading: reuploading, in: tabs.tree)
         if reuploading {
             engine?.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: state.zoneID))])
         }

@@ -193,6 +193,25 @@ public enum SpaceSyncCodec {
     }
 }
 
+/// The name a Mac's saves carry: its kind as Apple names it, never the name the person gave it.
+public enum SpaceSyncDevice {
+    private static let kinds = [
+        ("MacBookPro", "MacBook Pro"), ("MacBookAir", "MacBook Air"), ("MacBook", "MacBook"), ("iMacPro", "iMac Pro"),
+        ("iMac", "iMac"), ("Macmini", "Mac mini"), ("MacPro", "Mac Pro"),
+    ]
+
+    /// From the product name the hardware reports, such as "MacBook Pro (14-inch, 2021)", else
+    /// from its model identifier, such as "iMac19,1". Apple silicon identifiers are "MacNN,N"
+    /// for every kind, so without a product name those read "Mac".
+    public static func name(productName: String?, model: String) -> String {
+        if let product = productName?.split(separator: "(").first?.trimmingCharacters(in: .whitespaces), !product.isEmpty {
+            return product
+        }
+        let family = String(model.prefix { !$0.isNumber })
+        return kinds.first { $0.0 == family }?.1 ?? "Mac"
+    }
+}
+
 /// CloudKit refusals Settings words for the person.
 public enum SpaceSyncErrorText {
     public static let outdatedSchema = "iCloud hasn't been updated for this version of Nook yet; sync resumes once it is."

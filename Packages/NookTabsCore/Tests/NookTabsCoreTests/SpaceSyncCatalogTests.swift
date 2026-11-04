@@ -185,6 +185,29 @@ struct SpaceSyncCatalogTests {
         #expect(SpaceSyncCodec.accountID("abc") == "abc")
     }
 
+    // MARK: - Device names
+
+    @Test func aMacIsNamedByItsKindNotTheNameThePersonGaveIt() {
+        let products: [(String?, String, String)] = [
+            ("MacBook Pro (14-inch, 2021)", "Mac14,5", "MacBook Pro"),
+            ("Mac mini (2023)", "Mac14,3", "Mac mini"),
+            ("iMac (24-inch, M1, 2021)", "iMac21,1", "iMac"),
+            (nil, "iMac19,1", "iMac"),
+            (nil, "iMacPro1,1", "iMac Pro"),
+            (nil, "MacBookPro16,1", "MacBook Pro"),
+            (nil, "MacBookAir10,1", "MacBook Air"),
+            (nil, "MacBook10,1", "MacBook"),
+            (nil, "Macmini8,1", "Mac mini"),
+            (nil, "MacPro7,1", "Mac Pro"),
+            (nil, "Mac14,2", "Mac"),
+            ("", "VirtualMac2,1", "Mac"),
+            (nil, "", "Mac"),
+        ]
+        for (product, model, name) in products {
+            #expect(SpaceSyncDevice.name(productName: product, model: model) == name, "\(String(describing: product)) \(model)")
+        }
+    }
+
     // MARK: - Errors
 
     @Test func aSaveRefusedForAFieldProductionLacksIsTold() {
