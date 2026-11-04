@@ -60,6 +60,18 @@ extension SyncRecord {
     }
 }
 
+extension SpaceSyncState {
+    /// The zone this Mac syncs: this account's own, or the other account's it joined.
+    var zoneID: CKRecordZone.ID {
+        CKRecordZone.ID(zoneName: SpaceSyncAvailability.zoneName, ownerName: zoneOwner ?? CKCurrentUserDefaultName)
+    }
+
+    var databaseScope: CKDatabase.Scope { database == .shared ? .shared : .private }
+
+    /// The zone-wide share of `zoneID`, which CloudKit always names `CKRecordNameZoneWideShare`.
+    var shareRecordID: CKRecord.ID { CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID) }
+}
+
 extension CKRecord {
     var archivedSystemFields: Data {
         let coder = NSKeyedArchiver(requiringSecureCoding: true)

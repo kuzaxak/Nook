@@ -42,6 +42,9 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
     /// one, so the app fetches everything again to build it.
     public var catalog: SpaceSyncCatalog?
     public var report: SpaceSyncReport?
+    /// Sharing with another iCloud account; nil while this Mac syncs its own account's zone
+    /// unshared.
+    public var sharing: SpaceSyncSharing?
 
     /// Records fetched and not yet applied to the tree, kept with the engine's state so a quit
     /// in between loses none.
@@ -490,6 +493,7 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
     /// The zone is gone from iCloud. Nothing here is deleted for it. Unless everything goes up
     /// again, as after a reset of the person's encryption keys, every space turns Off.
     public mutating func zoneLost(reuploading: Bool) {
+        guard sharing?.joinedOwner == nil else { return leaveSharedZone() }
         forgetRecords()
         deletedInCloud = [:]
         refetchSeen = nil
@@ -518,6 +522,10 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
         }
         let cutoff = SpaceSyncCodec.milliseconds(now.addingTimeInterval(-TabTree.tombstoneLifetime))
         deletedInCloud = deletedInCloud.filter { $0.value >= cutoff }
+        if let moving = sharing?.moving {
+            let kept = moving.filter { level(of: $0.key) != .off && tree.space($0.key) != nil }
+            sharing?.moving = kept
+        }
     }
 }
 

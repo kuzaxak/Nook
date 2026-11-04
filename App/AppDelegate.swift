@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import CloudKit
 import OSLog
 import Sparkle
 import WebKit
@@ -269,6 +270,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
     func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         AppDelegate.log.error("Remote notifications unavailable: \(String(describing: error), privacy: .public)")
+    }
+
+    /// A link to another iCloud account's shared spaces, opened and accepted in the system's prompt.
+    func application(_ application: NSApplication, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
+        browserManager?.spaceSyncManager.accept(metadata)
     }
 
     // MARK: - External URL Handling

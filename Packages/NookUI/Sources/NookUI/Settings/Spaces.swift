@@ -25,6 +25,10 @@ public struct SpacesSettingsView: View {
     @State private var pendingMove: (space: UUID, to: UUID?, profile: String)?
     /// A space in iCloud waiting on Remove or Cancel.
     @State private var pendingRemoval: SpaceSyncCloudSpace?
+    @State private var joining = false
+    @State private var joinLink = ""
+    @State private var confirmingStopSharing = false
+    @State private var confirmingLeave = false
 
     public init() {}
 
@@ -76,6 +80,26 @@ public struct SpacesSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Its \(pendingRemoval?.itemCount ?? 0) favorites, pinned tabs, folders and tabs are deleted from iCloud, and every Mac that syncs it deletes it. On this Mac it stays, turned Off.")
+        }
+        .alert("Join Shared Sync", isPresented: $joining) {
+            TextField("https://www.icloud.com/share/\u{2026}", text: $joinLink)
+            Button("Join") { sync?.joinSharedSync(link: joinLink) }
+                .disabled(SpaceSyncShareLink.parse(joinLink) == nil)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Paste the link someone on another iCloud account shared with you. This Mac then syncs their spaces, and the spaces it syncs now move in with them.")
+        }
+        .alert("Stop sharing these spaces?", isPresented: $confirmingStopSharing) {
+            Button("Stop Sharing", role: .destructive) { sync?.stopSharing() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The people you shared with stop syncing them. Their Macs keep every space, turned Off.")
+        }
+        .alert("Leave the shared sync?", isPresented: $confirmingLeave) {
+            Button("Leave", role: .destructive) { sync?.leaveSharedSync() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This Mac stops syncing the shared spaces and goes back to this iCloud account. Every space stays here, turned Off.")
         }
         .alert(
             "Keep the \u{201C}\(pendingMove?.profile ?? "")\u{201D} profile?",
@@ -195,7 +219,7 @@ public struct SpacesSettingsView: View {
     private func syncSection(_ status: SpaceSyncStatus) -> some View {
         Section {
             HStack {
-                Text(Self.describe(status.availability))
+                Text(status.availability == .available ? Self.describe(status.mode) : Self.describe(status.availability))
                 Spacer()
                 if status.isSyncing {
                     ProgressView().controlSize(.small)
@@ -224,6 +248,9 @@ public struct SpacesSettingsView: View {
                         Text("Not yet")
                     }
                 }
+                if let sync {
+                    sharingRows(status, sync)
+                }
             }
             if let error = status.lastError, status.availability != .needsSignedBuild {
                 LabeledContent("Last error") {
@@ -247,8 +274,52 @@ public struct SpacesSettingsView: View {
         } footer: {
             Text(status.availability == .needsSignedBuild
                  ? "This copy of Nook is not signed for iCloud, so its spaces stay on this Mac."
-                 : "Pick what each space syncs to your other Macs with the cloud beside it. Favorites & Pinned sends its favorites, pinned tabs and folders; Everything also sends its open tabs. Logins, cookies, history, site data, Boosts, private windows and the Agent space never sync. Off stops this Mac syncing a space and leaves it in iCloud; deleting a space deletes it from iCloud.")
+                 : "Pick what each space syncs to your other Macs with the cloud beside it. Favorites & Pinned sends its favorites, pinned tabs and folders; Everything also sends its open tabs. Logins, cookies, history, site data, Boosts, private windows and the Agent space never sync. Off stops this Mac syncing a space and leaves it in iCloud; deleting a space deletes it from iCloud. To sync with a Mac on another iCloud account, share with it: it joins these spaces and its own synced spaces move in, and leaving turns them Off there without deleting any.")
                 .settingsFooter()
+        }
+    }
+
+    /// Who this account shares with, and sharing, joining or leaving another account's sync.
+    @ViewBuilder
+    private func sharingRows(_ status: SpaceSyncStatus, _ sync: any SpaceSyncControls) -> some View {
+        ForEach(status.participants, id: \.self) { person in
+            LabeledContent(person.name) {
+                Text(Self.describe(person.status)).foregroundStyle(.secondary)
+            }
+        }
+        HStack {
+            switch status.mode {
+            case .own:
+                Button("Share with Another iCloud Account\u{2026}") { sync.shareWithAnotherAccount() }
+                Button("Join Shared Sync\u{2026}") {
+                    joinLink = ""
+                    joining = true
+                }
+            case .sharing:
+                Button("Share with Another iCloud Account\u{2026}") { sync.shareWithAnotherAccount() }
+                Button("Stop Sharing\u{2026}", role: .destructive) { confirmingStopSharing = true }
+            case .joined:
+                Button("Leave Shared Sync\u{2026}", role: .destructive) { confirmingLeave = true }
+            }
+            Spacer()
+        }
+    }
+
+    private static func describe(_ mode: SpaceSyncMode) -> String {
+        switch mode {
+        case .own: return "Syncing with this iCloud account"
+        case .sharing(0): return "Shared, no one invited yet"
+        case .sharing(let people): return people == 1 ? "Shared with 1 person" : "Shared with \(people) people"
+        case .joined(let owner): return owner.map { "Joined \($0)\u{2019}s sync" } ?? "Joined another iCloud account\u{2019}s sync"
+        }
+    }
+
+    private static func describe(_ status: SpaceSyncParticipant.Status) -> String {
+        switch status {
+        case .pending: return "Invited"
+        case .accepted: return "Joined"
+        case .removed: return "Removed"
+        case .unknown: return "Unknown"
         }
     }
 

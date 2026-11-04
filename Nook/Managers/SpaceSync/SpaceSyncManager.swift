@@ -4,10 +4,11 @@
 //  Nook
 //
 //  Syncs spaces between the person's Macs with CKSyncEngine, in one zone of the private
-//  database. NookTabsCore's SpaceSyncState decides what each record holds and how fetched records
-//  merge; this moves records to and from CloudKit, follows the iCloud account, and keeps the sync
-//  state in Sync/spaces.json beside the tabs. A build without the iCloud entitlement never makes
-//  a CKContainer.
+//  database, or in another iCloud account's zone through the shared database once this Mac joins
+//  that account's share. NookTabsCore's SpaceSyncState decides what each record holds, how fetched
+//  records merge and which zone to use; this moves records to and from CloudKit, shares the zone,
+//  follows the iCloud account, and keeps the sync state in Sync/spaces.json beside the tabs. A
+//  build without the iCloud entitlement never makes a CKContainer.
 //
 
 import AppKit
@@ -22,8 +23,6 @@ import SystemConfiguration
 @MainActor
 @Observable
 final class SpaceSyncManager: SpaceSyncControls {
-    static let zoneID = CKRecordZone.ID(zoneName: "Spaces", ownerName: CKCurrentUserDefaultName)
-
     private(set) var status: SpaceSyncStatus
     private(set) var cloudSpaces: [SpaceSyncCloudSpace] = []
     private(set) var cloudDevices: [String] = []
@@ -37,6 +36,9 @@ final class SpaceSyncManager: SpaceSyncControls {
     @ObservationIgnored private var queueTask: Task<Void, Never>?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var registeredForPushes = false
+    /// Records of spaces moved into a joined zone are being deleted from this account's zone.
+    @ObservationIgnored private var deletingPrivate = false
+    @ObservationIgnored private var sharingPicker: NSSharingServicePicker?
     /// A zone fetch in the current fetch failed, so a fetch of everything is not complete yet.
     @ObservationIgnored private var fetchFailed = false
     /// Items already reported as too large for iCloud.
@@ -102,6 +104,207 @@ final class SpaceSyncManager: SpaceSyncControls {
 
     func syncReport() -> String {
         state.reportText(account: state.account)
+    }
+
+    // MARK: - Sharing
+
+    func shareWithAnotherAccount() {
+        guard let container, engine != nil, state.database == .private else { return }
+        Task {
+            do {
+                let share: CKShare
+                if let existing = try await zoneShare(in: container) {
+                    share = existing
+                } else {
+                    share = try await createShare(in: container)
+                }
+                shareChanged(share)
+                presentSharing(share, container: container)
+            } catch {
+                note(error)
+            }
+        }
+    }
+
+    func stopSharing() {
+        guard let container, state.database == .private, state.sharing?.participants != nil else { return }
+        Task {
+            do {
+                _ = try await container.privateCloudDatabase.deleteRecord(withID: state.shareRecordID)
+            } catch let error as CKError where error.code == .unknownItem {
+            } catch {
+                return note(error)
+            }
+            state.stoppedSharing()
+            publish()
+            scheduleSave()
+        }
+    }
+
+    func joinSharedSync(link: String) {
+        guard let container else { return }
+        guard let url = SpaceSyncShareLink.parse(link) else {
+            state.lastError = "That is not an iCloud sharing link."
+            return publish()
+        }
+        Task {
+            do {
+                if let metadata = try await container.shareMetadatas(for: [url])[url]?.get() { accept(metadata) }
+            } catch {
+                note(error)
+            }
+        }
+    }
+
+    /// A share the person opened from a link, or pasted in Settings.
+    func accept(_ metadata: CKShare.Metadata) {
+        guard let container else { return }
+        let zone = metadata.share.recordID.zoneID
+        switch state.acceptance(containerID: metadata.containerIdentifier, zoneName: zone.zoneName, zoneOwner: zone.ownerName,
+                                isOwner: metadata.participantRole == .owner) {
+        case .join(let owner):
+            Task {
+                do {
+                    if metadata.participantStatus != .accepted {
+                        _ = try await container.accept([metadata])[metadata]?.get()
+                    }
+                    state.join(owner: owner, ownerName: metadata.ownerIdentity.nameComponents.flatMap(Self.name))
+                    restartEngine()
+                    scheduleSave()
+                } catch {
+                    note(error)
+                }
+            }
+            return
+        case .ownShare:
+            state.lastError = "That link shares this iCloud account's own spaces."
+        case .notASpacesShare:
+            state.lastError = "That link does not share Nook spaces."
+        case .alreadyJoined:
+            state.lastError = zone.ownerName == state.zoneOwner ? nil : "Leave the shared sync before joining another."
+        case .sharingOwnZone:
+            state.lastError = "Stop sharing this account's spaces before joining another account's."
+        }
+        publish()
+    }
+
+    func leaveSharedSync() {
+        guard let container, state.database == .shared else { return }
+        Task {
+            do {
+                _ = try await container.sharedCloudDatabase.deleteRecord(withID: state.shareRecordID)
+            } catch let error as CKError where error.code == .unknownItem || error.code == .zoneNotFound {
+            } catch {
+                return note(error)
+            }
+            state.leaveSharedZone()
+            restartEngine()
+            scheduleSave()
+        }
+    }
+
+    private func zoneShare(in container: CKContainer) async throws -> CKShare? {
+        do {
+            return try await container.privateCloudDatabase.record(for: state.shareRecordID) as? CKShare
+        } catch let error as CKError where error.code == .unknownItem {
+            return nil
+        }
+    }
+
+    private func createShare(in container: CKContainer) async throws -> CKShare {
+        let share = CKShare(recordZoneID: state.zoneID)
+        share.publicPermission = .none
+        share[CKShare.SystemFieldKey.title] = "Nook Spaces" as NSString
+        let saved = try await container.privateCloudDatabase.modifyRecords(saving: [share], deleting: []).saveResults[share.recordID]?.get()
+        guard let saved = saved as? CKShare else { throw CKError(.internalError) }
+        return saved
+    }
+
+    /// The system's sharing popover at the pointer, which has just clicked Share in Settings:
+    /// it invites people by Messages, Mail or a link, and only they can join.
+    private func presentSharing(_ share: CKShare, container: CKContainer) {
+        guard let window = NSApp.keyWindow, let view = window.contentView else { return }
+        let provider = NSItemProvider()
+        provider.registerCKShare(share, container: container, allowedSharingOptions: CKAllowedSharingOptions(
+            allowedParticipantPermissionOptions: .readWrite, allowedParticipantAccessOptions: .specifiedRecipientsOnly))
+        let picker = NSSharingServicePicker(items: [provider])
+        sharingPicker = picker
+        let point = view.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        picker.show(relativeTo: NSRect(origin: point, size: .zero), of: view, preferredEdge: .minY)
+    }
+
+    /// The zone's share is gone: the owner stopped sharing.
+    private func shareDeleted() {
+        if state.database == .shared {
+            zoneLost(reuploading: false)
+        } else {
+            state.stoppedSharing()
+            publish()
+            scheduleSave()
+        }
+    }
+
+    private func shareChanged(_ share: CKShare) {
+        if state.database == .shared {
+            state.sharing?.ownerName = share.owner.userIdentity.nameComponents.flatMap(Self.name)
+        } else {
+            state.shared(participants: share.participants.map { participant in
+                let identity = participant.userIdentity
+                return SpaceSyncParticipant(
+                    name: identity.nameComponents.flatMap(Self.name) ?? identity.lookupInfo?.emailAddress ?? identity.lookupInfo?.phoneNumber ?? "Someone",
+                    status: Self.status(participant.acceptanceStatus), isOwner: participant.role == .owner)
+            })
+        }
+        publish()
+        scheduleSave()
+    }
+
+    private static func name(_ components: PersonNameComponents) -> String? {
+        let name = PersonNameComponentsFormatter.localizedString(from: components, style: .default)
+        return name.isEmpty ? nil : name
+    }
+
+    private static func status(_ status: CKShare.ParticipantAcceptanceStatus) -> SpaceSyncParticipant.Status {
+        switch status {
+        case .pending: return .pending
+        case .accepted: return .accepted
+        case .removed: return .removed
+        default: return .unknown
+        }
+    }
+
+    /// Once the joined zone holds a moved space's records, deletes them from this account's zone.
+    private func deleteMovedPrivateRecords() {
+        guard let container, !deletingPrivate else { return }
+        let ids = state.privateDeletions(in: tabs.tree)
+        guard !ids.isEmpty else { return }
+        deletingPrivate = true
+        let zone = CKRecordZone.ID(zoneName: SpaceSyncAvailability.zoneName, ownerName: CKCurrentUserDefaultName)
+        Task {
+            defer { deletingPrivate = false }
+            do {
+                let results = try await container.privateCloudDatabase.modifyRecords(
+                    saving: [], deleting: ids.map { CKRecord.ID(recordName: $0.uuidString, zoneID: zone) }, atomically: false).deleteResults
+                var deleted: Set<UUID> = []
+                for (recordID, result) in results {
+                    guard let id = UUID(uuidString: recordID.recordName) else { continue }
+                    switch result {
+                    case .success:
+                        deleted.insert(id)
+                    case .failure(let error as CKError) where error.code == .unknownItem:
+                        deleted.insert(id)
+                    case .failure(let error):
+                        note(error)
+                    }
+                }
+                state.deletedFromPrivateZone(deleted)
+            } catch let error as CKError where error.code == .zoneNotFound {
+                state.deletedFromPrivateZone(ids)
+            } catch {
+                note(error)
+            }
+            scheduleSave()
+        }
     }
 
     func syncNow() {
@@ -175,10 +378,12 @@ final class SpaceSyncManager: SpaceSyncControls {
         let serialization = state.catalog == nil ? nil
             : state.engine.flatMap { try? JSONDecoder().decode(CKSyncEngine.State.Serialization.self, from: $0) }
         let engine = CKSyncEngine(CKSyncEngine.Configuration(
-            database: container.privateCloudDatabase, stateSerialization: serialization, delegate: self))
+            database: container.database(with: state.databaseScope), stateSerialization: serialization, delegate: self))
         if serialization == nil {
             state.beginRefetch()
-            engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: Self.zoneID))])
+            if state.database == .private {
+                engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: state.zoneID))])
+            }
         }
         self.engine = engine
         applyInbox()
@@ -214,7 +419,7 @@ final class SpaceSyncManager: SpaceSyncControls {
     // MARK: - Records
 
     private func recordID(_ id: UUID) -> CKRecord.ID {
-        CKRecord.ID(recordName: id.uuidString, zoneID: Self.zoneID)
+        CKRecord.ID(recordName: id.uuidString, zoneID: state.zoneID)
     }
 
     private func scheduleQueue() {
@@ -309,15 +514,24 @@ final class SpaceSyncManager: SpaceSyncControls {
         state.didSend(saved: saved, systemFields: fields, deleted: deleted)
         applyInbox()
         queuePending(only: resend)
+        deleteMovedPrivateRecords()
         scheduleSave()
     }
 
     /// The zone is gone from iCloud: nothing here is deleted for it. After a reset of the
-    /// person's encryption keys everything goes up again; otherwise every space turns Off.
+    /// person's encryption keys everything goes up again; otherwise every space turns Off. A
+    /// joined zone gone means its owner stopped sharing or removed this account, and this Mac
+    /// goes back to its own zone.
     private func zoneLost(reuploading: Bool) {
+        let joined = state.database == .shared
         state.zoneLost(reuploading: reuploading)
+        if joined {
+            state.lastError = "The shared sync ended. Your spaces stay on this Mac, turned Off."
+            restartEngine()
+            return scheduleSave()
+        }
         if reuploading {
-            engine?.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: Self.zoneID))])
+            engine?.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: state.zoneID))])
         }
         queuePending()
         scheduleSave()
@@ -335,6 +549,9 @@ final class SpaceSyncManager: SpaceSyncControls {
         if cloudSpaces != spaces { cloudSpaces = spaces }
         let devices = state.cloudDevices
         if cloudDevices != devices { cloudDevices = devices }
+        if status.mode != state.mode { status.mode = state.mode }
+        let participants = state.sharing?.participants?.filter { !$0.isOwner } ?? []
+        if status.participants != participants { status.participants = participants }
     }
 
     private func note(_ error: Error) {
@@ -405,15 +622,23 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
                 checkAccount()
             }
         case .fetchedDatabaseChanges(let changes):
-            if let deletion = changes.deletions.first(where: { $0.zoneID == Self.zoneID }) {
+            if let deletion = changes.deletions.first(where: { $0.zoneID == state.zoneID }) {
                 zoneLost(reuploading: deletion.reason == .encryptedDataReset)
             }
         case .fetchedRecordZoneChanges(let changes):
             for modification in changes.modifications {
+                if let share = modification.record as? CKShare {
+                    shareChanged(share)
+                    continue
+                }
                 guard let record = SyncRecord(modification.record) else { continue }
                 state.fetched(record, systemFields: modification.record.archivedSystemFields)
             }
             for deletion in changes.deletions {
+                if deletion.recordType == CKRecord.SystemType.share {
+                    shareDeleted()
+                    continue
+                }
                 if let id = UUID(uuidString: deletion.recordID.recordName) { state.fetchedDeletion(id) }
             }
             scheduleSave()
@@ -442,6 +667,7 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
             applyInbox()
             if !fetchFailed { state.endRefetch() }
             queuePending()
+            deleteMovedPrivateRecords()
             finished()
         case .didSendChanges:
             finished()
@@ -462,7 +688,7 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
         })
         var records: [String: CKRecord] = [:]
         for (id, record) in state.outgoing(ids, in: tabs.tree, now: Date(), device: deviceName) {
-            records[id.uuidString] = record.record(in: Self.zoneID, systemFields: state.systemFields[id])
+            records[id.uuidString] = record.record(in: state.zoneID, systemFields: state.systemFields[id])
         }
         let gone = changes.filter { change in
             guard case .saveRecord(let recordID) = change else { return false }

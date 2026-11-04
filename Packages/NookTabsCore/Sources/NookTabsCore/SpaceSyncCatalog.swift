@@ -194,6 +194,14 @@ extension SpaceSyncState {
         let time = Date.ISO8601FormatStyle()
         var lines = ["Nook space sync report", "Generated: \(now.formatted(time))"]
         lines.append("Account ID: \(account.map(SpaceSyncCodec.accountID) ?? "none")")
+        switch mode {
+        case .own: lines.append("Zone: this account's")
+        case .sharing(let people): lines.append("Zone: this account's, shared, participants: \(people)")
+        case .joined: lines.append("Zone: joined, owner account ID \(zoneOwner.map(SpaceSyncCodec.accountID) ?? "unknown")")
+        }
+        if let moving = sharing?.moving, !moving.isEmpty {
+            lines.append("Moving from this account's zone: \(moving.count) spaces, \(moving.values.map(\.count).reduce(0, +)) records left there")
+        }
         if let catalog {
             lines.append("In iCloud: \(catalog.spaces.count) spaces, \(catalog.items.count) items, from \(cloudDevices.count) Macs")
             if !catalog.removing.isEmpty { lines.append("Removing: " + catalog.removing.map(\.uuidString).sorted().joined(separator: ", ")) }

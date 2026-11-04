@@ -197,6 +197,8 @@ public enum SpaceSyncAvailability: Equatable, Sendable {
     case available
 
     public static let containerID = "iCloud.ee.qdo.nook"
+    /// The zone that holds the spaces, in the owner's private database.
+    public static let zoneName = "Spaces"
 
     /// Whether levels can be set: not in an unsigned build, nor while the tabs are read-only.
     public var takesLevels: Bool { self != .needsSignedBuild && self != .readOnlyTabs }
@@ -217,6 +219,9 @@ public struct SpaceSyncStatus: Equatable, Sendable {
     public var isSyncing = false
     /// The iCloud account this Mac syncs with, as `SpaceSyncCodec.accountID` gives it.
     public var accountID: String?
+    public var mode: SpaceSyncMode = .own
+    /// The people this account's zone is shared with, its owner left out.
+    public var participants: [SpaceSyncParticipant] = []
 
     public init(availability: SpaceSyncAvailability, lastSync: Date? = nil, lastError: String? = nil, isSyncing: Bool = false, accountID: String? = nil) {
         self.availability = availability

@@ -10,9 +10,10 @@
 //
 //  Two Macs' spaces through real CKRecords, made and read by the app's mapping: Mac B fetching
 //  Mac A's space and items for the first time, Mac B getting a later change, and a space Off on
-//  Mac B. Each record goes across whole through NSKeyedArchiver, as CloudKit hands records back,
-//  so names, addresses, titles and the Mac's name must come back from the encrypted fields.
-//  No CKContainer is made and nothing reaches iCloud.
+//  Mac B, then which database and zone a Mac that joined another account's share uses. Each
+//  record goes across whole through NSKeyedArchiver, as CloudKit hands records back, so names,
+//  addresses, titles and the Mac's name must come back from the encrypted fields. No CKContainer
+//  is made and nothing reaches iCloud.
 
 import CloudKit
 import Foundation
@@ -131,6 +132,23 @@ struct SpaceSyncCloudKitCheck {
         check(c.tree.item(mail) == nil, "Mac C takes in no items of a space Off there")
         check(c.row(work)?.state == .offHere, "Mac C's list shows Work Off on this Mac")
         check(c.row(work)?.name == "Work 2", "Mac C's list names the space as iCloud has it")
+
+        // Mac C joins Mac A's zone from another account: it sends to and fetches from the shared
+        // database, in the zone A's account owns, and goes back to its own zone when it leaves.
+        let ownerAccount = "_48e607c1179693a062ca0aefa4e62a57"
+        check(c.state.databaseScope == .private, "Mac C syncs its own account's database before joining")
+        check(c.state.zoneID.ownerName == CKCurrentUserDefaultName, "Mac C syncs its own zone before joining")
+        c.state.join(owner: ownerAccount, ownerName: "Vladimir")
+        check(c.state.databaseScope == .shared, "a joined Mac syncs through the shared database")
+        check(c.state.zoneID == CKRecordZone.ID(zoneName: "Spaces", ownerName: ownerAccount), "a joined Mac syncs the owner's Spaces zone")
+        check(c.state.shareRecordID.recordName == CKRecordNameZoneWideShare && c.state.shareRecordID.zoneID == c.state.zoneID,
+              "a joined Mac's share is the zone-wide share of the owner's zone")
+        c.state.setLevel(.pinned, for: work, now: later.addingTimeInterval(3))
+        let joined = c.state.outgoing(c.state.pendingChanges(in: c.tree).saves, in: c.tree, now: later.addingTimeInterval(3), device: c.device)
+            .values.map { $0.record(in: c.state.zoneID, systemFields: nil) }
+        check(!joined.isEmpty && joined.allSatisfy { $0.recordID.zoneID.ownerName == ownerAccount }, "a joined Mac's saves go into the owner's zone")
+        c.state.leaveSharedZone()
+        check(c.state.databaseScope == .private && c.state.zoneID.ownerName == CKCurrentUserDefaultName, "leaving goes back to Mac C's own zone")
 
         if failures == 0 {
             print("PASS: space sync through CKRecords")
