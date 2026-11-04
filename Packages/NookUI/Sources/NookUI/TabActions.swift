@@ -5,7 +5,7 @@
 //
 //  The app-side work the shared rows, menus and settings tabs trigger that is not a
 //  TabsController intent: split view, the floating dialogs, the tab-closure toast, the
-//  window's accent, and the two AppKit services (pasteboard, share sheet).
+//  window's accent, space files, and the two AppKit services (pasteboard, share sheet).
 //  BrowserManager conforms on macOS.
 //
 
@@ -27,6 +27,10 @@ import NookWeb
     func confirmSpaceDeletion(spaceName: String, tabCount: Int, isLastSpace: Bool, onDelete: @escaping () -> Void)
     /// Opens Settings on the Spaces tab.
     func openSpaceSettings()
+    /// Saves the space to a `.nookspace` file the person names.
+    func exportSpace(_ spaceID: UUID)
+    /// Asks for a `.nookspace` file and adds its space as a new one.
+    func importSpace()
     func hideTabClosureToast()
     var tabClosureToastCount: Int { get }
     /// The active space's accent, already published for the window.
@@ -36,12 +40,16 @@ import NookWeb
     /// False on iOS, where there is one scene and no split view. Menus hide the
     /// items that would call into either.
     var supportsMultipleWindows: Bool { get }
+    /// False on iOS, which reads and writes no space files. Menus hide Export Space and
+    /// Import Space.
+    var supportsSpaceFiles: Bool { get }
 }
 
 extension TabActions {
     /// macOS keeps this default; iOS overrides it. A default rather than a
     /// `#if os` so the shared protocol file stays platform-free.
     public var supportsMultipleWindows: Bool { true }
+    public var supportsSpaceFiles: Bool { true }
 }
 
 // MARK: - Environment

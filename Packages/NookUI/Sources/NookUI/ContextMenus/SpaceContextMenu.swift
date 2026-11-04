@@ -51,6 +51,14 @@ struct SpaceContextMenu: View {
                 }
             }
 
+            if actions?.supportsSpaceFiles == true, tabs.canExportSpace(space.id) {
+                Button {
+                    actions?.exportSpace(space.id)
+                } label: {
+                    Label("Export Space…", systemImage: "square.and.arrow.up")
+                }
+            }
+
             Divider()
 
             // Delete space

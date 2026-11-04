@@ -3,9 +3,10 @@
 //  BrowserModel+TabActions.swift
 //  NookiOS
 //
-//  The app-side work the shared rows and menus trigger. Split view and extra
-//  windows do not exist on the phone, so those members are inert and
-//  `supportsMultipleWindows` hides the menu items that would reach them.
+//  The app-side work the shared rows and menus trigger. Split view, extra
+//  windows and space files do not exist on the phone, so those members are inert
+//  and `supportsMultipleWindows` and `supportsSpaceFiles` hide the menu items
+//  that would reach them.
 //
 
 import SwiftUI
@@ -15,6 +16,7 @@ import NookWeb
 
 extension BrowserModel: TabActions {
     var supportsMultipleWindows: Bool { false }
+    var supportsSpaceFiles: Bool { false }
 
     func enterSplit(with itemID: UUID, placeOnRight: Bool, in window: BrowserWindowState) {
         // No split view on iOS. The menu item that would call this is hidden.
@@ -43,6 +45,10 @@ extension BrowserModel: TabActions {
         settingsPath = [.spaces]
         present(.settings)
     }
+
+    func exportSpace(_ spaceID: UUID) {}
+
+    func importSpace() {}
 
     /// There is no toast host on the phone, so there is nothing to hide.
     func hideTabClosureToast() {}

@@ -34,6 +34,18 @@
 				<string>public.url</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Nook Space</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>ee.qdo.nook.space</string>
+			</array>
+		</dict>
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
@@ -102,6 +114,23 @@
 			<string>Nook Tab Drag Item</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.nook.tab-drag-item</string>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Nook Space</string>
+			<key>UTTypeIdentifier</key>
+			<string>ee.qdo.nook.space</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>nookspace</string>
+				</array>
+			</dict>
 		</dict>
 	</array>
 </dict>

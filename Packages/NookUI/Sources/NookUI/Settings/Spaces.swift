@@ -40,6 +40,9 @@ public struct SpacesSettingsView: View {
 
             Section {
                 Button("New Space…", systemImage: "plus", action: showCreateDialog)
+                if actions?.supportsSpaceFiles == true {
+                    Button("Import Space…", systemImage: "square.and.arrow.down") { actions?.importSpace() }
+                }
             }
         }
         .formStyle(.grouped)
@@ -134,10 +137,15 @@ public struct SpacesSettingsView: View {
             .layoutPriority(1)
             Spacer()
             profilePicker(space)
-            if spaces.count > 1 {
+            if spaces.count > 1 || actions?.supportsSpaceFiles == true {
                 Menu {
-                    Button("Delete Space…", systemImage: "trash", role: .destructive) {
-                        showDeleteDialog(space)
+                    if actions?.supportsSpaceFiles == true {
+                        Button("Export Space…", systemImage: "square.and.arrow.up") { actions?.exportSpace(space.id) }
+                    }
+                    if spaces.count > 1 {
+                        Button("Delete Space…", systemImage: "trash", role: .destructive) {
+                            showDeleteDialog(space)
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")

@@ -291,6 +291,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             return
         }
         Task { @MainActor in
+            if BrowserManager.isSpaceFile(url) {
+                manager.importSpaceFile(at: url)
+                return
+            }
             // Air Traffic Control — route to designated space if a rule matches
             if manager.siteRoutingManager.applyRoute(url: url, from: nil) {
                 return

@@ -745,6 +745,28 @@ extension TabsController {
         perform(owner, "moveSpace") { try $0.moveSpace(spaceID, after: after) }
     }
 
+    /// A saved space other than the Agent space; private windows' spaces are never saved.
+    public func canExportSpace(_ spaceID: UUID) -> Bool {
+        tree.space(spaceID).map { !$0.isAgent } ?? false
+    }
+
+    /// The space as a `.nookspace` file holds it; nil when `canExportSpace` is false.
+    public func spaceFile(_ spaceID: UUID, appVersion: String) -> SpaceFile? {
+        tree.spaceSnapshot(spaceID).map { SpaceFile(space: $0, appVersion: appVersion) }
+    }
+
+    /// Adds a file's space as a new last space in the profile whose store is `storeID`. Its tabs
+    /// stay unloaded and no window's selection changes.
+    public func importSpace(_ file: SpaceFile, intoProfile storeID: UUID) -> SpaceImportReport? {
+        var report: SpaceImportReport?
+        perform(.main, "importSpace") { tree in
+            let result = try tree.importSpace(file.space, intoProfile: storeID)
+            report = result.report
+            return result.change
+        }
+        return report
+    }
+
     // MARK: - Profiles
 
     /// The profiles of the spaces, then the kept ones no space uses.

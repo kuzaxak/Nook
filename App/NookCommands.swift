@@ -189,6 +189,11 @@ struct NookCommands: Commands {
             .disabled(selectedItem == nil)
 
             Divider()
+            Button("Import Space…") {
+                browserManager.importSpace()
+            }
+
+            Divider()
             Button("Print…") {
                 browserManager.printCurrentPage()
             }
