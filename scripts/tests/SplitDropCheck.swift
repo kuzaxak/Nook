@@ -7,11 +7,9 @@ import AppKit
 struct SplitDropCheck {
     static func main() {
         let page = CGRect(x: 0, y: 0, width: 800, height: 600)
-        // The half of the page under the pointer takes the tab; a pointer over the sidebar, beside
-        // the page, is no drop on it, so a drag that stays in the sidebar only reorders.
+        // The half of the page under the pointer takes the tab.
         precondition(SplitDrop.side(of: CGPoint(x: 100, y: 300), in: page) == .left)
         precondition(SplitDrop.side(of: CGPoint(x: 700, y: 300), in: page) == .right)
-        precondition(SplitDrop.side(of: CGPoint(x: -40, y: 300), in: page) == nil, "over the sidebar")
 
         let selected = UUID(), dragged = UUID(), left = UUID(), right = UUID()
         func tab(_ id: UUID) -> SplitDrop.Dragged { SplitDrop.Dragged(id: id, isTab: true, isInWindow: true) }

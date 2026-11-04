@@ -46,14 +46,13 @@ struct NookDragItem: Codable, Equatable {
 
 extension NookDragItem {
     func writeToPasteboard(_ pasteboard: NSPasteboard) {
-        pasteboard.declareTypes([.nookTabItem, .string], owner: nil)
+        pasteboard.declareTypes([.nookTabItem], owner: nil)
         do {
             let data = try JSONEncoder().encode(self)
             pasteboard.setData(data, forType: .nookTabItem)
         } catch {
             NSLog("NookDragItem encoding failed: %@", String(describing: error))
         }
-        pasteboard.setString(tabId.uuidString, forType: .string)
     }
 
     static func fromPasteboard(_ pasteboard: NSPasteboard) -> NookDragItem? {

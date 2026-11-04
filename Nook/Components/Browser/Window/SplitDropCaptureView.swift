@@ -86,9 +86,10 @@ final class SplitDropCaptureView: NSView {
     /// The dragged tab and the half of the page it would take, when dropping it there changes the split.
     private func drop(for sender: NSDraggingInfo) -> (itemID: UUID, side: SplitDrop.Side)? {
         guard let sm = splitManager, let windowId, let window = browserManager?.windowRegistry?.windows[windowId],
-              let item = NookDragItem.fromPasteboard(sender.draggingPasteboard), let dragged = sm.dragged(item.tabId, in: window),
-              let side = SplitDrop.side(of: convert(sender.draggingLocation, from: nil), in: bounds),
-              SplitDrop.outcome(of: dragged, on: side, selected: window.selectedItemID, split: window.splitPair) != nil else { return nil }
+              let item = NookDragItem.fromPasteboard(sender.draggingPasteboard), let dragged = sm.dragged(item.tabId, in: window)
+        else { return nil }
+        let side = SplitDrop.side(of: convert(sender.draggingLocation, from: nil), in: bounds)
+        guard SplitDrop.outcome(of: dragged, on: side, selected: window.selectedItemID, split: window.splitPair) != nil else { return nil }
         return (item.tabId, side)
     }
 }

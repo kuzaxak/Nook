@@ -29,10 +29,9 @@ enum SplitDrop {
         let isInWindow: Bool
     }
 
-    /// The half of `page` under `point`; nil off the page, such as over the sidebar.
-    static func side(of point: CGPoint, in page: CGRect) -> Side? {
-        guard page.contains(point) else { return nil }
-        return point.x < page.midX ? .left : .right
+    /// The half of `page` under `point`.
+    static func side(of point: CGPoint, in page: CGRect) -> Side {
+        point.x < page.midX ? .left : .right
     }
 
     typealias Pair = (left: UUID, right: UUID)
