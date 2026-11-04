@@ -9,16 +9,20 @@ import AppKit
 @main
 struct CloseShortcutCheck {
     static func main() {
-        let tab = CloseShortcut.BrowserWindow(showsCommandBar: false, showsTab: true)
-        let empty = CloseShortcut.BrowserWindow(showsCommandBar: false, showsTab: false)
+        let tab = CloseShortcut.BrowserWindow(showsCommandBar: false, showsPeek: false, showsTab: true)
+        let empty = CloseShortcut.BrowserWindow(showsCommandBar: false, showsPeek: false, showsTab: false)
         precondition(CloseShortcut.target(in: tab, isRepeat: false) == .tab,
-                     "a tab, pinned tab, favorite, folder tab, split pane or tab with a Peek closes, whatever has focus in the window")
+                     "a tab, pinned tab, favorite, folder tab or split pane closes, whatever has focus in the window")
         precondition(CloseShortcut.target(in: tab, isRepeat: true) == .tab, "a held ⌘W keeps closing tabs")
         precondition(CloseShortcut.target(in: empty, isRepeat: false) == .window, "the empty space: no tab, so the window closes")
         precondition(CloseShortcut.target(in: empty, isRepeat: true) == .nothing, "a held ⌘W stops at the empty window")
-        precondition(CloseShortcut.target(in: .init(showsCommandBar: true, showsTab: true), isRepeat: false) == .commandBar,
+        precondition(CloseShortcut.target(in: .init(showsCommandBar: false, showsPeek: true, showsTab: true), isRepeat: false) == .peek,
+                     "a Peek closes, not the tab it is over, as in Arc")
+        precondition(CloseShortcut.target(in: .init(showsCommandBar: true, showsPeek: false, showsTab: true), isRepeat: false) == .commandBar,
                      "the command bar closes, not the tab under it")
-        precondition(CloseShortcut.target(in: .init(showsCommandBar: true, showsTab: false), isRepeat: false) == .commandBar,
+        precondition(CloseShortcut.target(in: .init(showsCommandBar: true, showsPeek: true, showsTab: true), isRepeat: false) == .commandBar,
+                     "the command bar over a Peek closes first")
+        precondition(CloseShortcut.target(in: .init(showsCommandBar: true, showsPeek: false, showsTab: false), isRepeat: false) == .commandBar,
                      "⌘T on the empty space, then ⌘W: the command bar closes, not the window")
         precondition(CloseShortcut.target(in: nil, isRepeat: false) == .window,
                      "Settings, a mini window, a Web Inspector or an extension popup closes itself")

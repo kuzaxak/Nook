@@ -481,12 +481,16 @@ class KeyboardShortcutManager {
     func closeTab(isRepeat: Bool = false) {
         let keyWindow = NSApp.keyWindow ?? NSApp.mainWindow
         let state = keyWindow.flatMap { key in windowRegistry?.windows.values.first { $0.window === key } }
+        let peeks = browserManager?.peekManager
         let shown = state.map {
-            CloseShortcut.BrowserWindow(showsCommandBar: $0.commandPalette?.isVisible == true, showsTab: $0.selectedItemID != nil)
+            CloseShortcut.BrowserWindow(showsCommandBar: $0.commandPalette?.isVisible == true,
+                                        showsPeek: peeks?.page(in: $0) != nil, showsTab: $0.selectedItemID != nil)
         }
         switch CloseShortcut.target(in: shown, isRepeat: isRepeat) {
         case .commandBar:
             state?.commandPalette?.close()
+        case .peek:
+            if let state { peeks?.dismissPeek(in: state) }
         case .tab:
             if let state { browserManager?.tabs.closeSelected(in: state) }
         case .window:

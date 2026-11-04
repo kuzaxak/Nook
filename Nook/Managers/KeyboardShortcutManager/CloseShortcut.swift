@@ -13,11 +13,13 @@ enum CloseShortcut {
     /// What the key window shows, when it is a browser window.
     struct BrowserWindow: Equatable {
         var showsCommandBar: Bool
+        var showsPeek: Bool
         var showsTab: Bool
     }
 
     enum Target: Equatable {
         case commandBar
+        case peek
         case tab
         /// The key window: a browser window with no tab, or any other window.
         case window
@@ -29,6 +31,7 @@ enum CloseShortcut {
     static func target(in browserWindow: BrowserWindow?, isRepeat: Bool) -> Target {
         guard let browserWindow else { return .window }
         if browserWindow.showsCommandBar { return .commandBar }
+        if browserWindow.showsPeek { return .peek }
         if browserWindow.showsTab { return .tab }
         return isRepeat ? .nothing : .window
     }
