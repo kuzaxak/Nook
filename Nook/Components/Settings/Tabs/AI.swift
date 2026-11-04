@@ -255,6 +255,36 @@ struct SettingsAITab: View {
                         }
                     }
                 }
+
+                if let providerType = configService.activeProviderType, providerType == .openAI || providerType == .anthropic {
+                    DisclosureGroup("Fetch from \(providerType.displayName)", isExpanded: $showFetchedModels) {
+                        Button("Refresh") {
+                            Task {
+                                if providerType == .openAI {
+                                    await configService.fetchOpenAIModels()
+                                } else {
+                                    await configService.fetchAnthropicModels()
+                                }
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(configService.isFetchingModels || configService.activeProvider?.apiKey.isEmpty != false)
+
+                        if configService.isFetchingModels {
+                            HStack {
+                                ProgressView().scaleEffect(0.7)
+                                Text("Loading models...")
+                                    .font(NookDesign.Font.secondary)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        ForEach(providerType == .openAI ? configService.openAIModels : configService.anthropicModels) { model in
+                            fetchedModelRow(model)
+                        }
+                    }
+                }
             }
 
             // MARK: - Generation
@@ -737,9 +767,17 @@ struct SettingsAITab: View {
                     } else {
                         connectionTestResult = "Failed: Invalid response"
                     }
-                case .openRouter:
+                case .openRouter, .openAI:
                     var request = URLRequest(url: URL(string: "\(provider.baseURL)/models")!)
                     request.setValue("Bearer \(provider.apiKey)", forHTTPHeaderField: "Authorization")
+                    let (_, response) = try await URLSession.shared.data(for: request)
+                    if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                        connectionTestResult = "Success: Connection verified"
+                    } else {
+                        connectionTestResult = "Failed: Invalid response"
+                    }
+                case .anthropic:
+                    let request = AnthropicProvider.request("models", baseURL: provider.baseURL, apiKey: provider.apiKey)
                     let (_, response) = try await URLSession.shared.data(for: request)
                     if let http = response as? HTTPURLResponse, http.statusCode == 200 {
                         connectionTestResult = "Success: Connection verified"

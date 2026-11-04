@@ -89,9 +89,11 @@ class AIService {
             return GeminiProvider(apiKey: providerConfig.apiKey, baseURL: providerConfig.baseURL)
         case .openRouter:
             return OpenRouterProvider(apiKey: providerConfig.apiKey, baseURL: providerConfig.baseURL)
+        case .anthropic:
+            return AnthropicProvider(apiKey: providerConfig.apiKey, baseURL: providerConfig.baseURL)
         case .ollama:
             return OllamaProvider(baseURL: providerConfig.baseURL)
-        case .openAICompatible:
+        case .openAI, .openAICompatible:
             return OpenAICompatibleProvider(
                 apiKey: providerConfig.apiKey,
                 baseURL: providerConfig.baseURL,
@@ -197,7 +199,8 @@ class AIService {
                 aiMessages.append(AIMessage(
                     role: .assistant,
                     content: response.content,
-                    toolCalls: response.toolCalls
+                    toolCalls: response.toolCalls,
+                    providerContent: response.providerContent
                 ))
 
                 // Execute tool calls

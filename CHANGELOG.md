@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- OpenAI and Anthropic providers for the AI assistant: Settings → AI → Providers takes each one's API key, kept in the Keychain, and Models fetches the models it offers
+
 ## 1.5.2
 
 Links from other apps can open in the current space, as in Arc, and ClickUp lists scroll smoothly.

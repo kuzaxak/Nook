@@ -29,12 +29,21 @@ struct AIMessage: Equatable {
     let content: String
     var toolCalls: [AIToolCall]
     var toolResults: [AIToolResult]
+    /// An assistant turn as `AIResponse.providerContent` held it.
+    var providerContent: Data?
 
-    init(role: AIMessageRole, content: String, toolCalls: [AIToolCall] = [], toolResults: [AIToolResult] = []) {
+    init(
+        role: AIMessageRole,
+        content: String,
+        toolCalls: [AIToolCall] = [],
+        toolResults: [AIToolResult] = [],
+        providerContent: Data? = nil
+    ) {
         self.role = role
         self.content = content
         self.toolCalls = toolCalls
         self.toolResults = toolResults
+        self.providerContent = providerContent
     }
 }
 
@@ -53,19 +62,24 @@ struct AIResponse: Equatable {
     let citations: [URLCitation]
     let usage: AIUsage?
     let finishReason: AIFinishReason
+    /// The reply in the provider's own encoding, for a provider that needs it sent back unchanged:
+    /// Anthropic rejects or loses a tool step whose thinking blocks were dropped or edited.
+    let providerContent: Data?
 
     init(
         content: String = "",
         toolCalls: [AIToolCall] = [],
         citations: [URLCitation] = [],
         usage: AIUsage? = nil,
-        finishReason: AIFinishReason = .stop
+        finishReason: AIFinishReason = .stop,
+        providerContent: Data? = nil
     ) {
         self.content = content
         self.toolCalls = toolCalls
         self.citations = citations
         self.usage = usage
         self.finishReason = finishReason
+        self.providerContent = providerContent
     }
 }
 
@@ -151,6 +165,7 @@ enum AIProviderError: LocalizedError {
     case invalidResponse
     case httpError(Int, String)
     case rateLimited
+    case refused
     case networkError(Error)
     case unsupportedFeature(String)
     case insecureURL(String)
@@ -161,6 +176,7 @@ enum AIProviderError: LocalizedError {
         case .invalidResponse: return "Failed to parse response"
         case .httpError(let code, let msg): return "HTTP \(code): \(msg)"
         case .rateLimited: return "Rate limit exceeded. Please try again later."
+        case .refused: return "The model declined to answer this request."
         case .networkError(let err): return "Network error: \(err.localizedDescription)"
         case .unsupportedFeature(let feature): return "\(feature) is not supported by this provider"
         case .insecureURL(let url): return "Custom provider URL must use HTTPS for non-local connections: \(url)"

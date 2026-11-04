@@ -59,6 +59,8 @@ class AIConfigService {
     // Dynamic model lists (fetched from APIs)
     var openRouterModels: [AIModelConfig] = []
     var ollamaModels: [AIModelConfig] = []
+    var openAIModels: [AIModelConfig] = []
+    var anthropicModels: [AIModelConfig] = []
     var isFetchingModels: Bool = false
 
     init() {
@@ -75,6 +77,9 @@ class AIConfigService {
 
         // Migrate from UserDefaults if this is a fresh config
         migrateFromUserDefaultsIfNeeded()
+        if config.addMissingProviders([.openAI, .anthropic]) {
+            save()
+        }
         addOnDeviceProvider()
         replaceUneditedSystemPrompt()
     }
@@ -317,6 +322,37 @@ class AIConfigService {
         } catch {
             Self.log.error("Failed to fetch Ollama models: \(error.localizedDescription)")
             ollamaModels = []
+        }
+    }
+
+    func fetchOpenAIModels() async {
+        guard let provider = config.providers.first(where: { $0.providerType == .openAI }),
+              !provider.apiKey.isEmpty else { return }
+        var request = URLRequest(url: URL(string: "\(provider.baseURL)/models")!)
+        request.setValue("Bearer \(provider.apiKey)", forHTTPHeaderField: "Authorization")
+        openAIModels = await fetchModels(request) { try OpenAICompatibleProvider.models(from: $0, providerId: provider.id) }
+    }
+
+    func fetchAnthropicModels() async {
+        guard let provider = config.providers.first(where: { $0.providerType == .anthropic }),
+              !provider.apiKey.isEmpty else { return }
+        let request = AnthropicProvider.request("models?limit=1000", baseURL: provider.baseURL, apiKey: provider.apiKey)
+        anthropicModels = await fetchModels(request) { try AnthropicProvider.models(from: $0, providerId: provider.id) }
+    }
+
+    private func fetchModels(_ request: URLRequest, parse: (Data) throws -> [AIModelConfig]) async -> [AIModelConfig] {
+        isFetchingModels = true
+        defer { isFetchingModels = false }
+
+        var request = request
+        request.timeoutInterval = 15.0
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return [] }
+            return try parse(data)
+        } catch {
+            Self.log.error("Failed to fetch models: \(error.localizedDescription)")
+            return []
         }
     }
 

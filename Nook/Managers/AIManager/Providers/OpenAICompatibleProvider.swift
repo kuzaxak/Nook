@@ -150,6 +150,20 @@ struct OpenAICompatibleProvider: AIProviderProtocol {
         return body
     }
 
+    /// The model list from `GET /models`, newest first.
+    static func models(from data: Data, providerId: String) throws -> [AIModelConfig] {
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let list = json["data"] as? [[String: Any]] else {
+            throw AIProviderError.invalidResponse
+        }
+        return list
+            .sorted { ($0["created"] as? Int ?? 0) > ($1["created"] as? Int ?? 0) }
+            .compactMap { entry in
+                guard let id = entry["id"] as? String else { return nil }
+                return AIModelConfig(id: id, displayName: id, providerId: providerId, capabilities: AIModelCapabilities(toolCalling: true))
+            }
+    }
+
     private func parseResponse(_ data: Data) throws -> AIResponse {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
 

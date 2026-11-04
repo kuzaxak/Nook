@@ -13,6 +13,8 @@ import Foundation
 public enum AIProviderType: String, Codable, CaseIterable, Identifiable {
     case gemini = "gemini"
     case openRouter = "openrouter"
+    case openAI = "openai"
+    case anthropic = "anthropic"
     case ollama = "ollama"
     case openAICompatible = "openai_compatible"
     case appleIntelligence = "apple_intelligence"
@@ -23,6 +25,8 @@ public enum AIProviderType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .gemini: return "Google Gemini"
         case .openRouter: return "OpenRouter"
+        case .openAI: return "OpenAI"
+        case .anthropic: return "Anthropic"
         case .ollama: return "Ollama (Local)"
         case .openAICompatible: return "OpenAI Compatible"
         case .appleIntelligence: return "Apple Intelligence"
@@ -31,7 +35,7 @@ public enum AIProviderType: String, Codable, CaseIterable, Identifiable {
 
     public var requiresAPIKey: Bool {
         switch self {
-        case .gemini, .openRouter: return true
+        case .gemini, .openRouter, .openAI, .anthropic: return true
         case .ollama, .openAICompatible, .appleIntelligence: return false
         }
     }
@@ -40,6 +44,8 @@ public enum AIProviderType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .gemini: return "https://generativelanguage.googleapis.com/v1beta"
         case .openRouter: return "https://openrouter.ai/api/v1"
+        case .openAI: return "https://api.openai.com/v1"
+        case .anthropic: return "https://api.anthropic.com"
         case .ollama: return "http://localhost:11434"
         case .openAICompatible, .appleIntelligence: return nil
         }
@@ -260,5 +266,17 @@ public struct AIConfiguration: Codable {
         self.generationConfig = generationConfig
         self.mcpServers = mcpServers
         self.browserToolsConfig = browserToolsConfig
+    }
+
+    /// Adds a provider for each of `types` the config lacks, ahead of the custom providers, with the
+    /// type's raw value as its id. Returns whether it added any.
+    public mutating func addMissingProviders(_ types: [AIProviderType]) -> Bool {
+        let missing = types.filter { type in !providers.contains { $0.id == type.rawValue } }
+        let index = providers.firstIndex { $0.providerType == .openAICompatible } ?? providers.endIndex
+        providers.insert(
+            contentsOf: missing.map { AIProviderConfig(id: $0.rawValue, displayName: $0.displayName, providerType: $0) },
+            at: index
+        )
+        return !missing.isEmpty
     }
 }
