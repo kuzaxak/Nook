@@ -5,7 +5,11 @@ extension TabTree {
     /// Sidebar rows for one space: the pinned section, then the tabs section. The children of a
     /// folder or a parent tab appear only while it is open.
     public func visibleRows(space spaceID: UUID, openFolders: Set<UUID>) -> [Row] {
-        let groups = childrenByParent()
+        visibleRows(space: spaceID, openFolders: openFolders, children: childrenByParent())
+    }
+
+    /// The same rows from `childrenByParent()` already worked out, so several spaces share one grouping.
+    public func visibleRows(space spaceID: UUID, openFolders: Set<UUID>, children groups: [Parent: [Item]]) -> [Row] {
         var rows: [Row] = []
         func walk(_ parent: Parent, depth: Int, section: SidebarSection) {
             for child in groups[parent] ?? [] {

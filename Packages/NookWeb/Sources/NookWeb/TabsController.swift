@@ -28,11 +28,16 @@ public final class TabsController {
     // MARK: - State
 
     public private(set) var tree: TabTree {
-        didSet { mainRows = [:] }
+        didSet {
+            mainChildren = nil
+            mainRows = [:]
+        }
     }
     public private(set) var device: DeviceState
-    /// Each main-tree space's sidebar rows, with the open folders they were walked for.
+    @ObservationIgnored private var mainChildren: [Parent: [Item]]?
     @ObservationIgnored private var mainRows: [UUID: (openFolders: Set<UUID>, rows: [Row])] = [:]
+    /// How many times the main tree's items were grouped by parent for sidebar rows; tests read it.
+    @ObservationIgnored private(set) var treeWalks = 0
     public let loadOutcome: LoadOutcome
     public let directory: URL
     var isReadOnly: Bool {
@@ -331,7 +336,13 @@ public final class TabsController {
         guard case .main = owner else { return tree(owner).visibleRows(space: spaceID, openFolders: open) }
         if let walked = mainRows[spaceID], walked.openFolders == open { return walked.rows }
 
-        let rows = tree.visibleRows(space: spaceID, openFolders: open)
+        let children = mainChildren ?? {
+            treeWalks += 1
+            let children = tree.childrenByParent()
+            mainChildren = children
+            return children
+        }()
+        let rows = tree.visibleRows(space: spaceID, openFolders: open, children: children)
         mainRows[spaceID] = (open, rows)
         return rows
     }
