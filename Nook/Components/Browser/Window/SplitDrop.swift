@@ -35,12 +35,21 @@ enum SplitDrop {
         return point.x < page.midX ? .left : .right
     }
 
+    typealias Pair = (left: UUID, right: UUID)
+
+    /// The split the window shows: its saved pair while one of the two is selected. Selecting
+    /// another tab keeps the pair saved, but the window shows that tab alone.
+    static func current(_ split: Pair?, selected: UUID?) -> Pair? {
+        guard let split, let selected, selected == split.left || selected == split.right else { return nil }
+        return split
+    }
+
     /// nil when the drop changes nothing: a folder or another window's tab, the selected tab beside
     /// itself, a pane's own tab, or no selected tab to pair with.
-    static func outcome(of dragged: Dragged, on side: Side, selected: UUID?, split: (left: UUID, right: UUID)?) -> Outcome? {
+    static func outcome(of dragged: Dragged, on side: Side, selected: UUID?, split: Pair?) -> Outcome? {
         guard dragged.isTab, dragged.isInWindow else { return nil }
         let itemID = dragged.id
-        guard let split else {
+        guard let split = current(split, selected: selected) else {
             guard let selected, selected != itemID else { return nil }
             return .split(side)
         }

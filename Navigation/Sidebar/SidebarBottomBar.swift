@@ -163,7 +163,7 @@ struct SidebarBottomBar: View {
                 browserManager.splitManager.enterSplit(with: itemID, in: windowState)
             }
         }
-        .disabled(windowState.selectedItemID == nil || windowState.split != nil)
+        .disabled(windowState.selectedItemID == nil || SplitDrop.current(windowState.splitPair, selected: windowState.selectedItemID) != nil)
 
         Button("New Tab", systemImage: "plus.square") {
             commandPalette.open()

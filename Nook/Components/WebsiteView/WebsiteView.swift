@@ -384,8 +384,8 @@ private struct SplitPreviewOverlay: View {
     var body: some View {
         let splitState = splitManager.getSplitState(for: windowState.id)
         HStack(spacing: NookDesign.Spacing.md) {
-            zone(.left, isSplit: splitState.isSplit, hovered: splitState.previewSide == .left)
-            zone(.right, isSplit: splitState.isSplit, hovered: splitState.previewSide == .right)
+            zone(.left, isSplit: splitState.activeSide != nil, hovered: splitState.previewSide == .left)
+            zone(.right, isSplit: splitState.activeSide != nil, hovered: splitState.previewSide == .right)
         }
         .padding(NookDesign.Spacing.md)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -609,7 +609,7 @@ struct TabCompositorWrapper: NSViewRepresentable {
         let rightId = split.rightTabId(for: windowState.id)
         let isCurrentPane = (currentId != nil) && (currentId == leftId || currentId == rightId)
         let adding = windowState.commandPalette?.addSplit.flatMap {
-            $0.shows(selectedItemID: currentId, isSplit: windowState.split != nil) ? $0 : nil
+            $0.shows(selectedItemID: currentId, split: windowState.splitPair) ? $0 : nil
         }
 
         if isCurrentPane, let leftId, let rightId,
@@ -808,7 +808,7 @@ struct TabCompositorWrapper: NSViewRepresentable {
 
 private extension WebsiteView {
     var showsAddSplit: Bool {
-        commandPalette.addSplit?.shows(selectedItemID: windowState.selectedItemID, isSplit: windowState.split != nil) == true
+        commandPalette.addSplit?.shows(selectedItemID: windowState.selectedItemID, split: windowState.splitPair) == true
     }
 
     var shouldShowSplit: Bool {

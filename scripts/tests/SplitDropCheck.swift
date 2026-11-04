@@ -37,6 +37,15 @@ struct SplitDropCheck {
         precondition(SplitDrop.outcome(of: tab(left), on: .left, selected: left, split: pair) == nil)
         precondition(SplitDrop.outcome(of: tab(right), on: .left, selected: left, split: pair) == nil)
 
+        // The split shows only while one of its tabs is selected. With another tab selected the
+        // pair stays saved but is not the window's split: a drop starts a new pair with that tab.
+        precondition(SplitDrop.current(pair, selected: right) != nil)
+        precondition(SplitDrop.current(pair, selected: selected) == nil, "a saved pair, not showing")
+        precondition(SplitDrop.outcome(of: tab(dragged), on: .right, selected: selected, split: pair) == .split(.right),
+                     "a new split beside the selected tab, not a replaced pane of the hidden pair")
+        precondition(SplitDrop.outcome(of: tab(left), on: .left, selected: selected, split: pair) == .split(.left),
+                     "a tab of the hidden pair can join the new one")
+
         // The answer is one the drag allows: a tab dragged inside Nook allows only a move, and
         // AppKit drops nothing that answers with another operation.
         precondition(SplitDrop.operation(allowed: .move) == .move, "a drag from the sidebar")

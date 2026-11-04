@@ -585,7 +585,7 @@ class KeyboardShortcutManager {
             case .toggleFullScreen:
                 browserManager.toggleFullScreenForActiveWindow()
             case .addSplitView:
-                guard let window, let addSplit = AddSplit.start(selectedItemID: window.selectedItemID, isSplit: window.split != nil) else { break }
+                guard let window, let addSplit = AddSplit.start(selectedItemID: window.selectedItemID, split: window.splitPair) else { break }
                 window.commandPalette?.open(addSplit: addSplit)
 
             // Tools & Features
