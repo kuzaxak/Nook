@@ -15,9 +15,12 @@
 # identity (-) signs without a timestamp: such an app does not launch with these entitlements,
 # but its entitlements and embedded profile can be checked.
 set -euo pipefail
-cd "$(dirname "$0")/.."
 
 APP="${1:?usage: scripts/sign-app.sh path/to/Nook.app}"
+[[ "$APP" == /* ]] || APP="$PWD/$APP"
+PROFILE_PATH="${NOOK_PROVISIONING_PROFILE_PATH:-}"
+[[ -z "$PROFILE_PATH" || "$PROFILE_PATH" == /* ]] || PROFILE_PATH="$PWD/$PROFILE_PATH"
+cd "$(dirname "$0")/.."
 : "${SIGN_IDENTITY:?SIGN_IDENTITY names the signing identity}"
 TEAM=538SB59LX4
 APP_ID="$TEAM.ee.qdo.nook"
@@ -37,8 +40,8 @@ trap 'rm -rf "$WORK"' EXIT
 if [[ -n "${NOOK_PROVISIONING_PROFILE:-}" ]]; then
   PROFILE="$WORK/Nook.provisionprofile"
   printf '%s' "$NOOK_PROVISIONING_PROFILE" | base64 --decode > "$PROFILE"
-elif [[ -n "${NOOK_PROVISIONING_PROFILE_PATH:-}" ]]; then
-  PROFILE="$NOOK_PROVISIONING_PROFILE_PATH"
+elif [[ -n "$PROFILE_PATH" ]]; then
+  PROFILE="$PROFILE_PATH"
 else
   echo "No provisioning profile. Set NOOK_PROVISIONING_PROFILE to the Developer ID profile in base64, or"
   echo "NOOK_PROVISIONING_PROFILE_PATH to its file; release builds embed it so spaces can sync through iCloud."
