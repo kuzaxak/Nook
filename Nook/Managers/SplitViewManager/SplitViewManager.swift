@@ -115,6 +115,13 @@ final class SplitViewManager: ObservableObject {
         AddSplit.isOffered(selectedItemID: window.selectedItemID, split: window.splitLayout)
     }
 
+    /// A pane's Add Right Split or Add Left Split: the empty pane beside that pane.
+    func addSplit(beside itemID: UUID, after: Bool, in window: BrowserWindowState) {
+        guard let addSplit = AddSplit.start(beside: itemID, after: after, selectedItemID: window.selectedItemID,
+                                            split: window.splitLayout) else { return }
+        window.commandPalette?.open(addSplit: addSplit)
+    }
+
     /// `itemID`, chosen in the command bar, takes Add Split View's empty pane and becomes the selection.
     func fill(_ addSplit: AddSplit, with itemID: UUID, in window: BrowserWindowState) {
         guard let tabs, let filled = addSplit.filling(choosing: itemID, selectedItemID: window.selectedItemID, split: window.splitLayout),
@@ -123,6 +130,30 @@ final class SplitViewManager: ObservableObject {
         window.split = record
         loadPanes(of: window)
         tabs.select(filled, in: window)
+    }
+
+    // MARK: - A Pane's Menu
+
+    /// Move Left or Right, Up or Down when stacked.
+    func move(_ itemID: UUID, by offset: Int, in window: BrowserWindowState) {
+        guard let record = shownSplit(in: window)?.moving(itemID, by: offset) else { return }
+        update(window, to: record)
+    }
+
+    /// Convert to Vertical, or Horizontal, Split View.
+    func convert(in window: BrowserWindowState) {
+        guard let record = shownSplit(in: window) else { return }
+        update(window, to: record.converted())
+    }
+
+    /// Separate Tab from Split: the tab leaves the split and stays in the sidebar. With one pane
+    /// left the split ends. A separated selected tab hands the selection to the pane beside it.
+    func separate(_ itemID: UUID, in window: BrowserWindowState) {
+        guard let tabs, let split = shownSplit(in: window), let index = split.itemIDs.firstIndex(of: itemID) else { return }
+        let remaining = split.removing(itemID)
+        guard window.selectedItemID == itemID else { return update(window, to: remaining) }
+        window.split = remaining
+        tabs.select(split.itemIDs[index + 1 < split.itemIDs.count ? index + 1 : index - 1], in: window)
     }
 
     /// Ends the split and keeps all its tabs open. The active pane stays selected.

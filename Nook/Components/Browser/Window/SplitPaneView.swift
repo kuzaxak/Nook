@@ -3,8 +3,8 @@
 //  SplitPaneView.swift
 //  Nook
 //
-//  One pane of the split view: a toolbar strip (back, forward, reload, address, separate, close)
-//  above the page, as Arc draws it. The compositor keeps panes across refreshes so a web
+//  One pane of the split view: a toolbar strip (back, forward, reload, address, the split menu,
+//  close) above the page, as Arc draws it. The compositor keeps panes across refreshes so a web
 //  view never leaves its superview while the split holds.
 //
 
@@ -72,7 +72,7 @@ final class SplitPaneView: NSView {
         let title = host(URLBarView(isSidebarHovered: false, splitItemID: itemID)
             .environmentObject(browserManager)
             .environmentObject(hoverManager), textCursor: true)
-        let buttons = host(SplitPaneButtons(itemID: itemID))
+        let buttons = host(SplitPaneButtons(itemID: itemID, split: browserManager.splitManager))
         let navigation = host(SplitPaneNavigation(itemID: itemID))
         let inset = NookDesign.Spacing.sm
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -202,24 +202,90 @@ private struct SplitPaneNavigation: View {
     }
 }
 
-/// Separate and close, at the trailing end of the pane's strip.
+/// The split menu and close, at the trailing end of the pane's strip.
 private struct SplitPaneButtons: View {
     let itemID: UUID
+    let split: SplitViewManager
 
     @Environment(TabsController.self) private var tabs
-    @Environment(BrowserWindowState.self) private var windowState
-    @Environment(\.tabActions) private var actions
 
     var body: some View {
         HStack(spacing: NookDesign.Spacing.xxs) {
-            SplitPaneButton(systemImage: "rectangle.split.2x1.slash", help: "Separate Tabs") {
-                actions?.separateSplit(in: windowState)
-            }
+            SplitPaneMenu(itemID: itemID, split: split)
             SplitPaneButton(systemImage: "xmark", help: "Close Tab") {
                 tabs.close(itemID)
             }
         }
         .frame(height: NookDesign.Size.navRow)
+    }
+}
+
+/// Arc's split button: move the pane, add an empty one beside it, take its tab out of the split,
+/// or turn the split on its side.
+private struct SplitPaneMenu: View {
+    let itemID: UUID
+    let split: SplitViewManager
+
+    @Environment(BrowserWindowState.self) private var windowState
+    @State private var isHovering = false
+
+    var body: some View {
+        let record = windowState.split
+        let index = record?.itemIDs.firstIndex(of: itemID)
+        let vertical = record?.orientation == .vertical
+        let canAdd = record?.isFull == false
+        Menu {
+            Button {
+                split.move(itemID, by: -1, in: windowState)
+            } label: {
+                Label(vertical ? "Move Up" : "Move Left", systemImage: vertical ? "arrow.up" : "arrow.left")
+            }
+            .disabled(index == nil || index == 0)
+            Button {
+                split.move(itemID, by: 1, in: windowState)
+            } label: {
+                Label(vertical ? "Move Down" : "Move Right", systemImage: vertical ? "arrow.down" : "arrow.right")
+            }
+            .disabled(index == nil || index == (record?.itemIDs.count ?? 0) - 1)
+            Divider()
+            Button {
+                split.addSplit(beside: itemID, after: true, in: windowState)
+            } label: {
+                Label(vertical ? "Add Below" : "Add Right Split", systemImage: vertical ? "rectangle.bottomhalf.inset.filled" : "rectangle.righthalf.inset.filled")
+            }
+            .disabled(!canAdd)
+            Button {
+                split.addSplit(beside: itemID, after: false, in: windowState)
+            } label: {
+                Label(vertical ? "Add Above" : "Add Left Split", systemImage: vertical ? "rectangle.tophalf.inset.filled" : "rectangle.lefthalf.inset.filled")
+            }
+            .disabled(!canAdd)
+            Divider()
+            Button {
+                split.separate(itemID, in: windowState)
+            } label: {
+                Label("Separate Tab from Split", systemImage: "rectangle.split.2x1.slash")
+            }
+            Button {
+                split.convert(in: windowState)
+            } label: {
+                Label(vertical ? "Convert to Horizontal Split View" : "Convert to Vertical Split View",
+                      systemImage: vertical ? "rectangle.split.2x1" : "rectangle.split.1x2")
+            }
+        } label: {
+            Image(systemName: vertical ? "rectangle.split.1x2" : "rectangle.split.2x1")
+                .font(NookDesign.Font.secondary)
+                .foregroundStyle(.primary)
+                .frame(width: NookDesign.Size.rowButton, height: NookDesign.Size.rowButton)
+                .background(isHovering ? NookDesign.Surface.fillPressed : Color.clear)
+                .clipShape(NookDesign.Radius.shape(NookDesign.Radius.sm))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Split View")
+        .onHoverTracking { isHovering = $0 }
     }
 }
 
