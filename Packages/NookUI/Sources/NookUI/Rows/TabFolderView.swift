@@ -41,8 +41,10 @@ public struct TabFolderView: View {
 
     public var body: some View {
         Button(action: {
-            withAnimation(NookDesign.Motion.spring) {
-                tabs.toggleFolder(item.id)
+            RowPress.click {
+                withAnimation(NookDesign.Motion.spring) {
+                    tabs.toggleFolder(item.id)
+                }
             }
         }) {
             HStack(spacing: NookDesign.Spacing.md) {

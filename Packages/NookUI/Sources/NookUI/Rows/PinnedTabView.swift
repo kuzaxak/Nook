@@ -89,7 +89,7 @@ public struct PinnedTabView<Icon: View>: View {
             }
             .overlay(alignment: .topTrailing) {
                 if hasLeftPinnedURL && isHovered {
-                    Button(action: onResetToPinnedURL) {
+                    Button(action: { RowPress.click(onResetToPinnedURL) }) {
                         Image(systemName: "arrow.uturn.backward")
                             .font(NookDesign.Font.caption)
                             .foregroundStyle(.primary)

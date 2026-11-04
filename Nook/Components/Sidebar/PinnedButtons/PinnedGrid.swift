@@ -197,8 +197,10 @@ private struct PinnedTile: View {
                 glowHost: tileColors == nil ? nil : item.url?.host,
                 isDimmed: windowRegistry.activeWindowId != windowState.id,
                 action: {
-                    FavoritePreview.shared.dismiss()
-                    tabs.select(item.id, in: windowState)
+                    RowPress.click {
+                        FavoritePreview.shared.dismiss()
+                        tabs.select(item.id, in: windowState)
+                    }
                 }
             )
             .frame(maxWidth: .infinity)

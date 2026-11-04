@@ -102,10 +102,7 @@ final class NookDragSessionManager: ObservableObject {
     private var registeredSources: [UUID: WeakDragSource] = [:]
     private var mouseMonitor: Any?
     private var activeDragSourceId: UUID?
-    private var mouseDownPoint: NSPoint?
     private var mouseDownEvent: NSEvent?
-    private var dragInitiatedFromMonitor: Bool = false
-    private static let dragThreshold: CGFloat = 4
     /// Views drawn over the tab list that own their clicks, such as the sidebar video.
     private let dragBarriers = NSHashTable<NSView>.weakObjects()
 
@@ -154,9 +151,8 @@ final class NookDragSessionManager: ObservableObject {
         case .leftMouseDown:
             // Check if mouseDown is within any registered drag source
             activeDragSourceId = nil
-            mouseDownPoint = nil
             mouseDownEvent = nil
-            dragInitiatedFromMonitor = false
+            RowPress.current.down(at: event.locationInWindow)
 
             if dragBarriers.allObjects.contains(where: { barrier in
                 barrier.window === event.window && !barrier.isHiddenOrHasHiddenAncestor
@@ -169,7 +165,6 @@ final class NookDragSessionManager: ObservableObject {
                 // A hidden row, such as one on another space's page, keeps its frame.
                 if !view.isHiddenOrHasHiddenAncestor, view.bounds.contains(localPoint) {
                     activeDragSourceId = id
-                    mouseDownPoint = event.locationInWindow
                     mouseDownEvent = event
                     break
                 }
@@ -177,28 +172,18 @@ final class NookDragSessionManager: ObservableObject {
             return event // Always pass through mouseDown (SwiftUI buttons need it)
 
         case .leftMouseDragged:
-            guard let sourceId = activeDragSourceId,
-                  let startPoint = mouseDownPoint,
-                  !dragInitiatedFromMonitor,
-                  let source = registeredSources[sourceId]?.view else {
+            guard let sourceId = activeDragSourceId, let source = registeredSources[sourceId]?.view,
+                  RowPress.current.moved(to: event.locationInWindow) else {
                 return event
             }
-
-            let current = event.locationInWindow
-            let distance = hypot(current.x - startPoint.x, current.y - startPoint.y)
-
-            guard distance >= Self.dragThreshold else { return event }
-
-            dragInitiatedFromMonitor = true
             // Initiate the AppKit drag session on the source view
             source.initiateDrag(with: event, mouseDownEvent: mouseDownEvent)
             return nil // Consume this mouseDragged event
 
         case .leftMouseUp:
             activeDragSourceId = nil
-            mouseDownPoint = nil
             mouseDownEvent = nil
-            dragInitiatedFromMonitor = false
+            RowPress.current.up()
             return event
 
         default:

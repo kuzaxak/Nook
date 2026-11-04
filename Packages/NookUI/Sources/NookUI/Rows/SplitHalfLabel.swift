@@ -28,7 +28,7 @@ public struct SplitHalfLabel: View {
     public var body: some View {
         let title = tabs.title(for: item)
         let session = tabs.session(for: item.id)
-        Button(action: { tabs.select(item.id, in: windowState) }) {
+        Button(action: { RowPress.click { tabs.select(item.id, in: windowState) } }) {
             HStack(spacing: NookDesign.Spacing.md) {
                 ItemFavicon(item: item, session: session)
                     .frame(width: NookDesign.Size.favicon, height: NookDesign.Size.favicon)
@@ -40,7 +40,7 @@ public struct SplitHalfLabel: View {
                     .truncationMode(.tail)
                 Spacer(minLength: NookDesign.Spacing.xs)
                 if isHovering {
-                    Button(action: { tabs.close(item.id) }) {
+                    Button(action: { RowPress.click { tabs.close(item.id) } }) {
                         Image(systemName: "xmark")
                             .font(NookDesign.Font.secondary)
                             .foregroundColor(.primary)

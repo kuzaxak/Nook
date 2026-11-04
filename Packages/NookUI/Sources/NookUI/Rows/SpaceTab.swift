@@ -52,7 +52,7 @@ public struct SpaceTab: View {
     private var trailChevron: some View {
         let isOpen = tabs.isOpen(folder: item.id)
         return Button(action: {
-            withAnimation(NookDesign.Motion.spring) { tabs.toggleFolder(item.id) }
+            RowPress.click { withAnimation(NookDesign.Motion.spring) { tabs.toggleFolder(item.id) } }
         }) {
             Image(systemName: "chevron.right")
                 .font(.system(size: NookDesign.Size.rowGlyph - 1, weight: .semibold))
@@ -68,7 +68,8 @@ public struct SpaceTab: View {
         let title = tabs.title(for: item)
         Button(action: {
             // As in Arc, a click selects and a double-click renames; clicking the current tab does nothing.
-            if !isCurrentTab {
+            RowPress.click {
+                guard !isCurrentTab else { return }
                 if isRenaming { commitRename() }
                 tabs.select(item.id, in: windowState)
             }
@@ -91,7 +92,7 @@ public struct SpaceTab: View {
                     }
                     .opacity(isUnloaded ? NookDesign.Surface.unloadedOpacity : 1)
                 if let session, session.hasAudioContent || session.hasPlayingAudio || session.isAudioMuted {
-                    Button(action: { session.toggleMute() }) {
+                    Button(action: { RowPress.click { session.toggleMute() } }) {
                         Image(systemName: session.isAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                             .contentTransition(.symbolEffect(.replace))
                             .font(.system(size: NookDesign.Size.rowGlyph, weight: .medium))
@@ -156,7 +157,7 @@ public struct SpaceTab: View {
                     HStack(spacing: 0) {
                         // Resets a pinned tab whose page left its pinned URL; sits left of close and fades in with it.
                         if showsReset {
-                            Button { tabs.resetToHome(item.id) } label: {
+                            Button { RowPress.click { tabs.resetToHome(item.id) } } label: {
                                 Image(systemName: "arrow.uturn.backward")
                                     .font(NookDesign.Font.secondary)
                                     .foregroundStyle(.primary)
@@ -172,9 +173,11 @@ public struct SpaceTab: View {
                         // normal tabs: "x" closes.
                         let useUnload = tabs.isBookmark(item.id) && !isUnloaded
                         Button(action: {
-                            if useUnload { tabs.unload(item.id) } else { tabs.remove(item.id) }
-                            // The next row slides under the pointer; let it show its close button.
-                            HoverResync.request(after: NookDesign.Motion.tabCloseDuration)
+                            RowPress.click {
+                                if useUnload { tabs.unload(item.id) } else { tabs.remove(item.id) }
+                                // The next row slides under the pointer; let it show its close button.
+                                HoverResync.request(after: NookDesign.Motion.tabCloseDuration)
+                            }
                         }) {
                             Image(systemName: useUnload ? "minus" : "xmark")
                                 .font(NookDesign.Font.secondary)
