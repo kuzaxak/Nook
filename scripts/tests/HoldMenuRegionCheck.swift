@@ -21,6 +21,13 @@ private struct Controls: View {
             button("Back", at: HoldMenuRegionCheck.band, menu: history)
             button("Forward", at: HoldMenuRegionCheck.bandEmpty, menu: { nil })
             button("Low", at: HoldMenuRegionCheck.below, menu: history)
+            button("Washed", at: HoldMenuRegionCheck.washed, menu: history)
+            // Peek's wash: drawn over the button and taking its own clicks.
+            Color.gray.opacity(0.45)
+                .frame(width: 90, height: 50)
+                .contentShape(Rectangle())
+                .onTapGesture {}
+                .position(HoldMenuRegionCheck.washed)
         }
         .ignoresSafeArea()
     }
@@ -28,7 +35,7 @@ private struct Controls: View {
     private func button(_ title: String, at point: CGPoint, menu: @escaping () -> NSMenu?) -> some View {
         Button(title, action: onClick)
             .frame(width: 60, height: 28)
-            .background(HoldMenuRegion(holdDelay: HoldMenuRegionCheck.hold, makeMenu: menu))
+            .overlay(HoldMenuRegion(holdDelay: HoldMenuRegionCheck.hold, makeMenu: menu))
             .position(point)
     }
 }
@@ -41,6 +48,7 @@ struct HoldMenuRegionCheck {
     static let band = CGPoint(x: 100, y: 20)
     static let bandEmpty = CGPoint(x: 200, y: 20)
     static let below = CGPoint(x: 100, y: 200)
+    static let washed = CGPoint(x: 300, y: 200)
 
     static func main() {
         let app = NSApplication.shared
@@ -108,11 +116,22 @@ struct HoldMenuRegionCheck {
             }, {
                 expect(opened.isEmpty && clicks == 1, "a quick click reaches the button and opens nothing")
             }),
+            ("right-click on a wash over the button", {
+                post(.rightMouseDown, at: washed); post(.rightMouseUp, at: washed)
+            }, {
+                expect(opened.isEmpty, "a right-click on something drawn over the button opens no history")
+            }),
+            ("held press on a wash over the button", {
+                post(.leftMouseDown, at: washed)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { post(.leftMouseUp, at: washed) }
+            }, {
+                expect(opened.isEmpty && clicks == 0, "nor does a held press on it")
+            }),
         ]
 
         func run(_ index: Int) {
             guard index < steps.count else {
-                print("HoldMenuRegion ok: right-click, Control-click and a held press open the history; a click clicks")
+                print("HoldMenuRegion ok: right-click, Control-click and a held press open the history; a click clicks; a wash over the button opens nothing")
                 exit(0)
             }
             let (name, act, check) = steps[index]

@@ -111,7 +111,7 @@ struct TopBarView: View {
                 .buttonStyle(NookIconButtonStyle())
                 .disabled(!(session?.canGoBackOrReturn ?? false))
                 .opacity((session?.canGoBackOrReturn ?? false) ? 1.0 : 0.4)
-                .background(NavigationHistoryMenu(direction: .back, windowState: windowState))
+                .overlay(NavigationHistoryMenu(direction: .back, windowState: windowState))
 
             Button(
                 "Go Forward",
@@ -122,7 +122,7 @@ struct TopBarView: View {
             .buttonStyle(NookIconButtonStyle())
             .disabled(!(session?.canGoForward ?? false))
             .opacity((session?.canGoForward ?? false) ? 1.0 : 0.4)
-            .background(NavigationHistoryMenu(direction: .forward, windowState: windowState))
+            .overlay(NavigationHistoryMenu(direction: .forward, windowState: windowState))
 
             Button {
                 if session?.isLoading == true {

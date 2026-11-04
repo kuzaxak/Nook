@@ -6,7 +6,8 @@
 //  A menu behind a button for a right-click, a Control-click or a press held past `holdDelay`,
 //  as Safari's Back and Forward have. A local event monitor takes the press before the window
 //  routes it: over the title band the window's toolbar answers a right-click with its own Icon
-//  and Text menu, so SwiftUI's context menu never sees it there.
+//  and Text menu, so SwiftUI's context menu never sees it there. It goes over its button
+//  (`.overlay`) and answers only for presses that land on it, not on something drawn over it.
 //
 
 import AppKit
@@ -22,8 +23,18 @@ struct HoldMenuRegion: NSViewRepresentable {
         var holdDelay: TimeInterval = 0
         var makeMenu: () -> NSMenu? = { nil }
         private var monitor: Any?
+        /// Set while the region asks the window what is frontmost under a press; clicks otherwise
+        /// pass through it to the button.
+        private var probing = false
 
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func hitTest(_ point: NSPoint) -> NSView? { probing ? super.hitTest(point) : nil }
+
+        private func isFrontmost(at locationInWindow: NSPoint) -> Bool {
+            guard let content = window?.contentView, let frame = content.superview else { return false }
+            probing = true
+            defer { probing = false }
+            return content.hitTest(frame.convert(locationInWindow, from: nil)) === self
+        }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -45,7 +56,8 @@ struct HoldMenuRegion: NSViewRepresentable {
         /// Nil when the press opened the menu or was a context click; else the press goes on.
         private func handle(_ event: NSEvent) -> NSEvent? {
             guard let window, event.window === window, !isHiddenOrHasHiddenAncestor,
-                  bounds.contains(convert(event.locationInWindow, from: nil)) else { return event }
+                  bounds.contains(convert(event.locationInWindow, from: nil)),
+                  isFrontmost(at: event.locationInWindow) else { return event }
             if event.type == .rightMouseDown || event.modifierFlags.contains(.control) {
                 if let menu = makeMenu() { NSMenu.popUpContextMenu(menu, with: event, for: self) }
                 return nil
