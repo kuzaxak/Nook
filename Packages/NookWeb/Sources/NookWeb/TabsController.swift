@@ -27,8 +27,12 @@ public final class TabsController {
 
     // MARK: - State
 
-    public private(set) var tree: TabTree
+    public private(set) var tree: TabTree {
+        didSet { mainRows = [:] }
+    }
     public private(set) var device: DeviceState
+    /// Each main-tree space's sidebar rows, with the open folders they were walked for.
+    @ObservationIgnored private var mainRows: [UUID: (openFolders: Set<UUID>, rows: [Row])] = [:]
     public let loadOutcome: LoadOutcome
     public let directory: URL
     var isReadOnly: Bool {
@@ -323,7 +327,13 @@ public final class TabsController {
 
     public func rows(space spaceID: UUID) -> [Row] {
         guard let owner = owner(ofSpace: spaceID) else { return [] }
-        return tree(owner).visibleRows(space: spaceID, openFolders: openFolders(owner))
+        let open = openFolders(owner)
+        guard case .main = owner else { return tree(owner).visibleRows(space: spaceID, openFolders: open) }
+        if let walked = mainRows[spaceID], walked.openFolders == open { return walked.rows }
+
+        let rows = tree.visibleRows(space: spaceID, openFolders: open)
+        mainRows[spaceID] = (open, rows)
+        return rows
     }
 
     public func section(of itemID: UUID) -> Parent? {
