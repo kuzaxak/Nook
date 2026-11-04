@@ -513,11 +513,21 @@ struct SpaceSyncTests {
         #expect(b.pending == ([], []))
     }
 
-    @Test func aSpaceDeletedHereWhileOffDoesNotComeBack() throws {
+    /// Off by choice, or Off because an account change reset this Mac and it fetches everything
+    /// again; the space stays out after its tombstone is purged.
+    @Test(arguments: [false, true])
+    func aSpaceDeletedHereWhileOffDoesNotComeBack(afterAccountReset: Bool) throws {
         var (a, b, work, cloud) = try pair(.pinned)
-        b.state.setLevel(.off, for: work.space, now: later(1))
+        if afterAccountReset {
+            b.state.reset(account: "same")
+            b.cursor = 0
+        } else {
+            b.state.setLevel(.off, for: work.space, now: later(1))
+        }
         _ = try b.tree.deleteSpace(work.space, now: later(2))
         b.sync(&cloud)
+        b.tree.repair(now: later(3 + TabTree.tombstoneLifetime))
+        #expect(b.tree.spaces[work.space] == nil)
         try a.tree.rename(work.wiki, customTitle: "Renamed", now: later(10))
         try a.tree.updateSpace(work.space, name: "Work 2", now: later(10))
         a.sync(&cloud)
