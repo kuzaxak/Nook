@@ -15,6 +15,10 @@
 - Turning Developer Mode off (Control-D, the site controls or Settings) closes the right panel in every window where it showed Console, Network, Blocker or Perf; the Agent tab stays open
 - A Web Inspector docked to a page stays beside it when the window resizes, the Developer Mode bar or right panel opens, or you switch tabs or split and come back, and the page fills its pane again when the inspector closes or undocks, instead of leaving a grey band below it
 
+### Fixed
+
+- Dragging a tab from the sidebar onto the page splits the window again, as in Arc: the half under the pointer shows where it goes and takes the tab, or replaces that pane in a split; text dragged inside a page no longer brings up the split zones
+
 ## 1.5.2
 
 Links from other apps can open in the current space, as in Arc, and ClickUp lists scroll smoothly.

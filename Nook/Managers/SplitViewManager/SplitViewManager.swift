@@ -9,7 +9,7 @@ import NookWeb
 /// kept here.
 @MainActor
 final class SplitViewManager: ObservableObject {
-    enum Side { case left, right }
+    typealias Side = SplitDrop.Side
 
     /// A read-only snapshot of one window's split and preview state.
     struct WindowSplitState {

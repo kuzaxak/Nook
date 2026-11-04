@@ -88,11 +88,12 @@ final class NookDragSourceNSView: NSView {
             colorScheme: coordinator.colorScheme
         )
 
+        // Nook's own type only: a web view or text field takes any drag that carries text, and
+        // the topmost view taking one of a drag's types is where AppKit sends it.
         let pasteboardItem = NSPasteboardItem()
         if let data = try? JSONEncoder().encode(coordinator.item) {
             pasteboardItem.setData(data, forType: .nookTabItem)
         }
-        pasteboardItem.setString(coordinator.item.tabId.uuidString, forType: .string)
 
         let transparentImage = NSImage(size: NSSize(width: 1, height: 1))
 

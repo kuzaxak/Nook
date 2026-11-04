@@ -21,35 +21,42 @@ final class SplitDropCaptureView: NSView {
     private func commonInit() {
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
-        // Accept plain text drags (UUID string for a Tab)
-        registerForDraggedTypes([.nookTabItem, .string])
+        // Tab drags only: AppKit hands a drag to the frontmost view registered for one of its
+        // types, so text here would take the page's own text drags, and the page its tab drags.
+        registerForDraggedTypes([.nookTabItem])
         // Transparent to normal mouse events; only DnD uses these callbacks
         isHidden = false
     }
 
     // Only intercept events during an active drag; otherwise pass through
-    override func hitTest(_ point: NSPoint) -> NSView? { 
+    override func hitTest(_ point: NSPoint) -> NSView? {
         // Return nil to pass through all mouse events when not dragging
         // This allows right-clicks to reach the webview below for context menus
-        return isDragActive ? self : nil 
+        return isDragActive ? self : nil
     }
-    
+
     // Override acceptsFirstResponder to prevent this view from intercepting events
     override var acceptsFirstResponder: Bool { false }
 
     // MARK: - Dragging
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        isDragActive = true
-        updatePreview(sender)
-        updateDragLocation(sender)
-        return .copy
+        draggingUpdated(sender)
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         isDragActive = true
-        updateDragLocation(sender)
-        updatePreview(sender)
-        return .copy
+        guard let windowId, let sm = splitManager else { return [] }
+        sm.updateDragLocation(convert(sender.draggingLocation, from: nil), for: windowId)
+        guard let drop = drop(for: sender) else {
+            if sm.getSplitState(for: windowId).isPreviewActive { sm.endPreview(cancel: true, for: windowId) }
+            return []
+        }
+        if sm.getSplitState(for: windowId).isPreviewActive {
+            sm.updatePreviewSide(drop.side, for: windowId)
+        } else {
+            sm.beginPreview(side: drop.side, for: windowId)
+        }
+        return SplitDrop.operation(allowed: sender.draggingSourceOperationMask)
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) {
@@ -58,89 +65,31 @@ final class SplitDropCaptureView: NSView {
             splitManager?.updateDragLocation(nil, for: windowId)
             splitManager?.endPreview(cancel: true, for: windowId)
         }
-        // Signal UI to clear any drag-hiding state even on invalid drops
-        NotificationCenter.default.post(name: .tabDragDidEnd, object: nil)
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let bm = browserManager, let sm = splitManager, let windowId else { return false }
-        let pb = sender.draggingPasteboard
-        // Try to read NookDragItem first, fall back to plain string UUID
-        let tabId: UUID? = {
-            if let item = NookDragItem.fromPasteboard(pb) { return item.tabId }
-            if let idString = pb.string(forType: .string) { return UUID(uuidString: idString) }
-            return nil
-        }()
-        guard let id = tabId else {
-            // Invalid payload; clear any lingering drag UI state
-            sm.updateDragLocation(nil, for: windowId)
-            sm.endPreview(cancel: false, for: windowId)
-            NotificationCenter.default.post(name: .tabDragDidEnd, object: nil)
-            return false
-        }
-        guard bm.tabs.item(id) != nil else {
-            sm.updateDragLocation(nil, for: windowId)
-            sm.endPreview(cancel: false, for: windowId)
-            NotificationCenter.default.post(name: .tabDragDidEnd, object: nil)
-            return false
-        }
-        
-        let side = sideForDragInCard(sender)
-        guard let dropSide = side else {
-            sm.updateDragLocation(nil, for: windowId)
-            sm.endPreview(cancel: false, for: windowId)
-            return false
-        }
-        
+        isDragActive = false
+        guard let windowId, let sm = splitManager else { return false }
         sm.updateDragLocation(nil, for: windowId)
         sm.endPreview(cancel: false, for: windowId)
-        
-        // Redundant replace guard
-        if sm.isSplit(for: windowId) {
-            let leftId = sm.leftTabId(for: windowId)
-            let rightId = sm.rightTabId(for: windowId)
-            if (dropSide == .left && leftId == id) || (dropSide == .right && rightId == id) {
-                return true
-            }
-        }
-        if let windowState = bm.windowRegistry?.windows[windowId] {
-            sm.enterSplit(with: id, placeOn: dropSide, in: windowState)
-        }
-        // Cancel any in-progress sidebar/tab drag to prevent unintended reorder/removal
+        guard let drop = drop(for: sender), let window = browserManager?.windowRegistry?.windows[windowId] else { return false }
+        sm.enterSplit(with: drop.itemID, placeOn: drop.side, in: window)
+        // The sidebar's own drop never ran, so its lifted row and preview are still up.
         DispatchQueue.main.async {
             NookDragSessionManager.shared.cancelDrag()
         }
-        isDragActive = false
         return true
     }
 
     // MARK: - Helpers
-    private func updatePreview(_ sender: NSDraggingInfo) {
-        let side = sideForDragInCard(sender)
-        guard let windowId, let sm = splitManager else { return }
-        
-        let currentState = sm.getSplitState(for: windowId)
-        if currentState.isPreviewActive {
-            sm.updatePreviewSide(side, for: windowId)
-        } else {
-            sm.beginPreview(side: side, for: windowId)
-        }
-    }
-    
-    private func updateDragLocation(_ sender: NSDraggingInfo) {
-        let loc = convert(sender.draggingLocation, from: nil)
-        if let windowId {
-            splitManager?.updateDragLocation(loc, for: windowId)
-        }
-    }
 
-    /// Check if drag location is within card bounds and return which side
-    /// Card dimensions: 237x394, positioned with 20pt padding from edges
-    /// The half of the page under the pointer, as in Arc: anywhere on the left half drops on
-    /// the left, anywhere on the right half on the right.
-    private func sideForDragInCard(_ sender: NSDraggingInfo) -> SplitViewManager.Side? {
-        let location = convert(sender.draggingLocation, from: nil)
-        guard bounds.contains(location) else { return nil }
-        return location.x < bounds.midX ? .left : .right
+    /// The dragged tab and the half of the page it would take, when dropping it there changes the split.
+    private func drop(for sender: NSDraggingInfo) -> (itemID: UUID, side: SplitDrop.Side)? {
+        guard let bm = browserManager, let windowId, let window = bm.windowRegistry?.windows[windowId],
+              let item = NookDragItem.fromPasteboard(sender.draggingPasteboard), bm.tabs.item(item.tabId) != nil,
+              let side = SplitDrop.side(of: convert(sender.draggingLocation, from: nil), in: bounds) else { return nil }
+        let pair = window.split.map { (left: $0.leftItemID, right: $0.rightItemID) }
+        guard SplitDrop.outcome(of: item.tabId, on: side, selected: window.selectedItemID, split: pair) != nil else { return nil }
+        return (item.tabId, side)
     }
 }
