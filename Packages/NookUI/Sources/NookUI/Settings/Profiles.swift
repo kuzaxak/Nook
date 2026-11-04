@@ -38,7 +38,11 @@ public struct ProfilesSettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Its spaces move to \u{201C}\(heir(of: pendingDelete)?.name ?? "")\u{201D}. Its logins, cookies and history are deleted.")
+                if pendingDelete?.spaceIDs.isEmpty == true {
+                    Text("No space uses it. Its logins, cookies and history are deleted.")
+                } else {
+                    Text("Its spaces move to \u{201C}\(heir(of: pendingDelete)?.name ?? "")\u{201D}. Its logins, cookies and history are deleted.")
+                }
             }
     }
 
@@ -144,7 +148,11 @@ public struct ProfilesSettingsView: View {
     #endif
 
     private func spaceCount(_ profile: ProfileSummary) -> String {
-        profile.spaceIDs.count == 1 ? "1 Space" : "\(profile.spaceIDs.count) Spaces"
+        switch profile.spaceIDs.count {
+        case 0: "No Spaces"
+        case 1: "1 Space"
+        case let count: "\(count) Spaces"
+        }
     }
 
     /// A profile lives on its spaces, so a new one comes with a space of its own.
@@ -161,7 +169,11 @@ public struct ProfilesSettingsView: View {
 
     private func delete(_ profile: ProfileSummary) {
         guard let heir = heir(of: profile) else { return }
-        for space in profile.spaceIDs { tabs.setProfile(space, to: heir.id) }
+        if profile.spaceIDs.isEmpty {
+            tabs.deleteKeptProfile(profile.id)
+        } else {
+            for space in profile.spaceIDs { tabs.setProfile(space, to: heir.id) }
+        }
         selection = heir.id
     }
 }
@@ -182,7 +194,7 @@ struct ProfileDetailForm: View {
                     set: { tabs.renameProfile(profile.id, to: $0) }
                 ))
                 LabeledContent("Spaces") {
-                    Text(profile.spaceIDs.compactMap { tabs.space($0)?.name }.joined(separator: ", "))
+                    Text(profile.spaceIDs.isEmpty ? "None" : profile.spaceIDs.compactMap { tabs.space($0)?.name }.joined(separator: ", "))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.trailing)
                 }
@@ -289,13 +301,13 @@ struct ProfileDetailForm: View {
     #endif
 
     private func refreshDataSize() async {
-        guard let space = profile.spaceIDs.first, let store = tabs.profile(forSpace: space) else { return }
+        guard let store = tabs.profile(forStore: profile.id) else { return }
         await store.refreshDataStoreStats()
         dataSize = store.estimatedDataSize
     }
 
     private func clearData() async {
-        guard let space = profile.spaceIDs.first, let store = tabs.profile(forSpace: space) else { return }
+        guard let store = tabs.profile(forStore: profile.id) else { return }
         await store.clearAllData()
         dataSize = store.estimatedDataSize
     }

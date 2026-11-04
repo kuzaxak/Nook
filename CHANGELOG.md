@@ -11,6 +11,7 @@
 ### Fixed
 
 - Cmd+W closes the tab instead of the window on Russian and other non-Latin keyboard layouts, and in any window with a tab; it closes the command bar when that is open, a held Cmd+W stops at the empty window, and the File menu lists Close Tab and Close Window
+- Moving a space off a profile no other space uses no longer forces deleting it: Move and Keep Profile leaves it in Settings → Profiles with its logins, cookies and history, ready for a space to use again
 
 ## 1.5.2
 

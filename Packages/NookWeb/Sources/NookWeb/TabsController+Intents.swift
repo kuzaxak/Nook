@@ -747,29 +747,52 @@ extension TabsController {
 
     // MARK: - Profiles
 
-    public var profiles: [ProfileSummary] { tree.profiles }
+    /// The profiles of the spaces, then the kept ones no space uses.
+    public var profiles: [ProfileSummary] { tree.profiles(keeping: device.keptProfiles ?? []) }
+
+    /// The profile moving `spaceID` to `storeID` leaves with no space, which the person keeps or deletes.
+    public func profileLeftEmpty(byMoving spaceID: UUID, to storeID: UUID?) -> ProfileSummary? {
+        tree.profileLeftEmpty(byMoving: spaceID, to: storeID)
+    }
 
     /// Moves a space into the profile with store `storeID`, or a new one when nil. Its pages
-    /// reload on the new store, and the store it left is cleared when no space uses it any more.
-    public func setProfile(_ spaceID: UUID, to storeID: UUID?, name: String? = nil) {
+    /// reload on the new store. The profile it leaves, once no space uses it, is kept with its
+    /// website data and history when `keepingLeftProfile`, else deleted with them.
+    public func setProfile(_ spaceID: UUID, to storeID: UUID?, name: String? = nil, keepingLeftProfile: Bool = false) {
+        let kept = device.keptProfiles ?? []
         guard case .main? = owner(ofSpace: spaceID), let old = profile(forSpace: spaceID),
-              perform(.main, "setProfile", { try $0.setProfile(spaceID, to: storeID, name: name) }) != nil
+              let left = tree.profile(ofSpace: spaceID),
+              perform(.main, "setProfile", { try $0.setProfile(spaceID, to: storeID, name: name, kept: kept) }) != nil
         else { return }
         unloadPagesOnWrongDataStore(items(inSpace: spaceID).map(\.id))
         if let agent = agentSpaceID { unloadPagesOnWrongDataStore(items(inSpace: agent).map(\.id)) }
         for window in regularWindows where window.spaceID == spaceID { sessionDelegate?.windowSpaceChanged(window) }
         if !tree.orderedSpaces.contains(where: { tree.dataStoreID(for: $0.id) == old.id }) {
-            forgetProfile(old.id)
-            Task { await old.clearAllData() }
+            if keepingLeftProfile {
+                keepProfile(left)
+            } else {
+                forgetProfile(old.id)
+                Task { await old.clearAllData() }
+            }
         }
     }
 
+    /// Deletes a kept profile with its logins, cookies and history.
+    public func deleteKeptProfile(_ storeID: UUID) {
+        guard device.keptProfiles?.contains(where: { $0.id == storeID }) == true,
+              let store = profile(forStore: storeID) else { return }
+        forgetProfile(storeID)
+        Task { await store.clearAllData() }
+    }
+
     public func renameProfile(_ storeID: UUID, to name: String) {
+        if updateKeptProfile(storeID, { $0.name = name }) { return }
         perform(.main, "renameProfile") { try $0.renameProfile(storeID, to: name) }
     }
 
     /// The engine the profile's spaces search with; nil follows the app's default.
     public func setSearchEngine(_ engineId: String?, forProfile storeID: UUID) {
+        if updateKeptProfile(storeID, { $0.searchEngineId = engineId }) { return }
         perform(.main, "setSearchEngine") { try $0.setSearchEngine(profile: storeID, engineId: engineId) }
     }
 

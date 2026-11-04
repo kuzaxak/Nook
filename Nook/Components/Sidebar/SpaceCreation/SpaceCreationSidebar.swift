@@ -135,7 +135,7 @@ struct SpaceCreationSidebar: View {
             Text("Profile")
             Spacer(minLength: 0)
             Menu {
-                ForEach(tabs.profiles) { profile in
+                ForEach(tabs.profiles.filter { !$0.spaceIDs.isEmpty }) { profile in
                     Button(profile.name) { loginsFrom = profile.spaceIDs.first }
                 }
                 Divider()

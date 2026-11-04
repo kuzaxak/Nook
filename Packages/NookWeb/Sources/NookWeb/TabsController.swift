@@ -495,10 +495,39 @@ public final class TabsController {
         return tree.orderedSpaces.compactMap { profile(forSpace: $0.id) }.filter { seen.insert($0.id).inserted }
     }
 
+    /// A profile's data store by profile id: the one its spaces use, or a kept profile's.
+    public func profile(forStore storeID: UUID) -> Profile? {
+        if let space = tree.orderedSpaces.first(where: { tree.dataStoreID(for: $0.id) == storeID }) {
+            return profile(forSpace: space.id)
+        }
+        guard let kept = device.keptProfiles?.first(where: { $0.id == storeID }) else { return nil }
+        if let existing = spaceProfiles[storeID] { return existing }
+        let profile = Profile(id: storeID, name: kept.name, icon: "")
+        spaceProfiles[storeID] = profile
+        return profile
+    }
+
     /// Drops a data store no space uses any more.
     func forgetProfile(_ storeID: UUID) {
         spaceProfiles[storeID] = nil
         history?.deleteHistory(forProfile: storeID)
+        device.dropKeptProfile(storeID)
+        save()
+    }
+
+    /// Keeps a data store no space uses any more, with its history, for a space to use again.
+    func keepProfile(_ profile: ProfileSummary) {
+        device.keep(profile)
+        save()
+    }
+
+    /// Changes a kept profile; false when no kept profile has `storeID`.
+    func updateKeptProfile(_ storeID: UUID, _ update: (inout KeptProfile) -> Void) -> Bool {
+        guard var kept = device.keptProfiles, let index = kept.firstIndex(where: { $0.id == storeID }) else { return false }
+        update(&kept[index])
+        device.keptProfiles = kept
+        save()
+        return true
     }
 
     /// The data store a session's page uses: the private window's ephemeral one, else the store

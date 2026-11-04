@@ -351,11 +351,11 @@ struct PrivacySettingsView: View {
         browserManager.historyManager.clearHistory()
     }
 
-    /// Tabs use one store per space; Peek and the base config have used the default.
+    /// Tabs use one store per profile; Peek and the base config have used the default.
     @MainActor
     private func removeWebsiteData(ofTypes dataTypes: Set<String>) async {
         let tabs = browserManager.tabs
-        let dataStores: [WKWebsiteDataStore] = tabs.orderedSpaces.compactMap { tabs.profile(forSpace: $0.id)?.dataStore }
+        let dataStores: [WKWebsiteDataStore] = tabs.profiles.compactMap { tabs.profile(forStore: $0.id)?.dataStore }
             + [WKWebsiteDataStore.default()]
         for dataStore in dataStores {
             await dataStore.removeData(ofTypes: dataTypes, modifiedSince: Date.distantPast)

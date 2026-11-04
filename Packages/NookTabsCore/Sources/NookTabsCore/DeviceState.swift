@@ -25,8 +25,22 @@ public struct DeviceState: Codable, Equatable, Sendable {
     public var lastSeen: [UUID: Date]?
     /// Newest last. Optional because files written before archiving have no such key.
     public var archived: [ClosedEntry]?
+    /// Profiles no space uses, kept with their website data, oldest first. Optional because files
+    /// written before kept profiles have no such key.
+    public var keptProfiles: [KeptProfile]?
 
     public init() {}
+
+    public mutating func keep(_ profile: ProfileSummary) {
+        var list = keptProfiles ?? []
+        list.removeAll { $0.id == profile.id }
+        list.append(KeptProfile(profile))
+        keptProfiles = list
+    }
+
+    public mutating func dropKeptProfile(_ id: UUID) {
+        keptProfiles?.removeAll { $0.id == id }
+    }
 
     public mutating func pushClosed(_ entry: ClosedEntry) {
         closed.append(entry)
@@ -68,6 +82,8 @@ public struct DeviceState: Codable, Equatable, Sendable {
         liveDismissed = liveDismissed?.filter { tree.item($0.key)?.live != nil }
         openers = openers?.filter { tree.item($0.key) != nil && tree.item($0.value) != nil }
         lastSeen = lastSeen?.filter { tree.item($0.key) != nil }
+        let usedStores = Set(tree.profiles.map(\.id))
+        keptProfiles = keptProfiles?.filter { !usedStores.contains($0.id) }
         for i in windows.indices {
             if let spaceID = windows[i].spaceID, tree.space(spaceID) == nil { windows[i].spaceID = nil }
             windows[i].selectedItemBySpace = windows[i].selectedItemBySpace.filter { tree.space($0.key) != nil && tree.item($0.value) != nil }

@@ -17,7 +17,7 @@ public struct SpacesSettingsView: View {
 
     @State private var showAccentPickerFor: UUID?
     @State private var showIconPickerFor: UUID?
-    /// A move that would leave its profile empty, waiting on confirmation.
+    /// A move that would leave its profile with no space, waiting on keep, delete or cancel.
     @State private var pendingMove: (space: UUID, to: UUID?, profile: String)?
 
     public init() {}
@@ -44,15 +44,18 @@ public struct SpacesSettingsView: View {
         }
         .formStyle(.grouped)
         .alert(
-            "Delete the \u{201C}\(pendingMove?.profile ?? "")\u{201D} profile?",
+            "Keep the \u{201C}\(pendingMove?.profile ?? "")\u{201D} profile?",
             isPresented: Binding(get: { pendingMove != nil }, set: { if !$0 { pendingMove = nil } })
         ) {
+            Button("Move and Keep Profile") {
+                if let move = pendingMove { tabs.setProfile(move.space, to: move.to, keepingLeftProfile: true) }
+            }
             Button("Move and Delete Profile", role: .destructive) {
                 if let move = pendingMove { tabs.setProfile(move.space, to: move.to) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("No other space uses it. Its logins, cookies and history will be deleted.")
+            Text("No other space uses it. Keep it in Profiles with its logins, cookies and history to use it again, or delete them.")
         }
     }
 
@@ -75,8 +78,8 @@ public struct SpacesSettingsView: View {
 
     private func move(_ spaceID: UUID, to storeID: UUID?, from current: ProfileSummary?) {
         guard storeID != current?.id else { return }
-        if let current, current.spaceIDs == [spaceID] {
-            pendingMove = (spaceID, storeID, current.name)
+        if let left = tabs.profileLeftEmpty(byMoving: spaceID, to: storeID) {
+            pendingMove = (spaceID, storeID, left.name)
         } else {
             tabs.setProfile(spaceID, to: storeID)
         }

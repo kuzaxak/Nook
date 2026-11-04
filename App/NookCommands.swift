@@ -448,9 +448,9 @@ struct NookCommands: Commands {
 
                 Button("Clear All Website Data") {
                     Task {
-                        // Tabs use one store per space; Peek and the base config have used the default.
+                        // Tabs use one store per profile; Peek and the base config have used the default.
                         let tabs = browserManager.tabs
-                        let dataStores: [WKWebsiteDataStore] = tabs.orderedSpaces.compactMap { tabs.profile(forSpace: $0.id)?.dataStore }
+                        let dataStores: [WKWebsiteDataStore] = tabs.profiles.compactMap { tabs.profile(forStore: $0.id)?.dataStore }
                             + [WKWebsiteDataStore.default()]
                         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
                         for dataStore in dataStores {
