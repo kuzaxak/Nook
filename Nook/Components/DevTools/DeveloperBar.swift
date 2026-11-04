@@ -22,6 +22,28 @@ extension BrowserManager {
         return settings.isDeveloperSite(host)
     }
 
+    /// Turns Developer Mode on or off for `host`. Off, every window whose bar goes with it closes a
+    /// right column that shows a developer tool.
+    func setDeveloperSite(_ host: String, on: Bool) {
+        guard let settings = nookSettings else { return }
+        let barred = windowRegistry?.allWindows.filter { showsDeveloperBar(in: $0) } ?? []
+        settings.setDeveloperSite(host, on: on)
+        closeDeveloperTools(in: barred.filter { !showsDeveloperBar(in: $0) }, developerMode: settings.developerModeEnabled)
+    }
+
+    /// Developer Mode going off beside these windows' pages: a right column that shows a developer
+    /// tool closes, one on the Agent tab stays. `developerMode` is the Settings one it showed under.
+    func closeDeveloperTools(in windows: [BrowserWindowState], developerMode: Bool) {
+        let agent = nookSettings?.showAIAssistant == true
+        withAnimation(NookDesign.Motion.standard) {
+            for window in windows {
+                let tab = DevPanelTab.shown(window.devPanelTab, developerMode: developerMode, agent: agent)
+                let open = DevPanelTab.staysOpen(window.isSidebarAIChatVisible, showing: tab)
+                if open != window.isSidebarAIChatVisible { window.isSidebarAIChatVisible = open }
+            }
+        }
+    }
+
     /// The address bar over the page. The Developer Mode bar takes its place, as in Arc, and
     /// back, forward and the address return to the sidebar.
     func showsTopBar(in windowState: BrowserWindowState) -> Bool {

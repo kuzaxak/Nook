@@ -177,7 +177,7 @@ struct ExtensionLibraryView: View {
                     subtitle: developer ? "On" : "Off",
                     isOn: developer
                 ) {
-                    withAnimation(NookDesign.Motion.spring) { settings.setDeveloperSite(host, on: !developer) }
+                    withAnimation(NookDesign.Motion.spring) { browserManager.setDeveloperSite(host, on: !developer) }
                 }
             }
 

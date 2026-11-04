@@ -10,6 +10,25 @@ import Foundation
 
 public enum DevPanelTab: String, CaseIterable, Sendable {
     case agent, console, network, blocker, perf
+
+    /// The right column's tabs while Developer Mode is on: Agent only with the AI assistant on.
+    public static func tabs(agent: Bool) -> [DevPanelTab] {
+        agent ? allCases : allCases.filter { $0 != .agent }
+    }
+
+    /// The tab the column shows: the AI chat alone while Developer Mode is off in Settings, otherwise
+    /// the one last picked, or the first left when that one is hidden.
+    public static func shown(_ chosen: DevPanelTab, developerMode: Bool, agent: Bool) -> DevPanelTab {
+        guard developerMode else { return .agent }
+        let tabs = tabs(agent: agent)
+        return tabs.contains(chosen) ? chosen : tabs[0]
+    }
+
+    /// Whether the column is still open once Developer Mode goes off beside it: showing a developer
+    /// tool it closes; showing the Agent tab, which is the AI chat, it stays.
+    public static func staysOpen(_ isOpen: Bool, showing tab: DevPanelTab) -> Bool {
+        isOpen && tab == .agent
+    }
 }
 
 /// Something the content blocker did to this page: a load or its cookies blocked, a load moved

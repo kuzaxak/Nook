@@ -666,7 +666,7 @@ class KeyboardShortcutManager {
             case .toggleDeveloperMode:
                 guard let settings = browserManager.nookSettings, let host = tabs.activeWindowSession?.url.host else { break }
                 let on = !settings.isDeveloperSite(host)
-                settings.setDeveloperSite(host, on: on)
+                browserManager.setDeveloperSite(host, on: on)
                 if let window { browserManager.showWindowToast("Developer Mode \(on ? "on" : "off") for \(host)", in: window) }
             }
 

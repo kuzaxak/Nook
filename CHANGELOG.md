@@ -14,6 +14,7 @@
 - The + menu at the bottom of the sidebar names each item beside its icon and shows the New Tab shortcut
 - Right-click on Back or Forward lists the pages that way, nearest first, with their titles and icons, instead of the toolbar's Icon and Text menu
 - A two-finger swipe over the sidebar switches spaces whatever System Settings → Trackpad → Swipe between pages is set to; a mouse's tilt wheel or Shift-scroll moves one space per flick, over the tab list too
+- Turning Developer Mode off (Control-D, the site controls or Settings) closes the right panel in every window where it showed Console, Network, Blocker or Perf; the Agent tab stays open
 
 ## 1.5.2
 

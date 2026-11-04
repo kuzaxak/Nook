@@ -18,11 +18,11 @@ struct DevPanelColumn: View {
     @Environment(\.nookSettings) var nookSettings
 
     private var tabs: [DevPanelTab] {
-        nookSettings.showAIAssistant ? DevPanelTab.allCases : DevPanelTab.allCases.filter { $0 != .agent }
+        DevPanelTab.tabs(agent: nookSettings.showAIAssistant)
     }
 
     private var selectedTab: DevPanelTab {
-        tabs.contains(windowState.devPanelTab) ? windowState.devPanelTab : tabs[0]
+        DevPanelTab.shown(windowState.devPanelTab, developerMode: nookSettings.developerModeEnabled, agent: nookSettings.showAIAssistant)
     }
 
     var body: some View {
