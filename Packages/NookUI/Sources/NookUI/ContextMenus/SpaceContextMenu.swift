@@ -51,7 +51,7 @@ struct SpaceContextMenu: View {
                 }
             }
 
-            if !space.isAgent, let sync = actions?.spaceSync, sync.status.availability != .needsSignedBuild {
+            if !space.isAgent, let sync = actions?.spaceSync, sync.status.availability.takesLevels {
                 Picker(selection: Binding(get: { sync.level(of: space.id) }, set: { sync.setLevel($0, for: space.id) })) {
                     ForEach(SpaceSyncLevel.allCases, id: \.self) { Text($0.title).tag($0) }
                 } label: {

@@ -189,6 +189,9 @@ public enum SpaceSyncAvailability: Equatable, Sendable {
 
     public static let containerID = "iCloud.ee.qdo.nook"
 
+    /// Whether levels can be set: not in an unsigned build, nor while the tabs are read-only.
+    public var takesLevels: Bool { self != .needsSignedBuild && self != .readOnlyTabs }
+
     /// Whether the app's signature grants the container and CloudKit: the values of
     /// `com.apple.developer.icloud-container-identifiers` and `com.apple.developer.icloud-services`.
     public static func isEntitled(containers: [String]?, services: [String]?) -> Bool {

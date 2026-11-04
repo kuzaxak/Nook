@@ -25,9 +25,10 @@ public struct SpacesSettingsView: View {
 
     private var spaces: [SpaceRecord] { tabs.orderedSpaces.filter { !$0.isAgent } }
 
-    /// Sync controls when this build can sync; nil on iOS and in an unsigned build.
+    /// Sync controls when levels can be set; nil on iOS, in an unsigned build and while the tabs
+    /// are read-only.
     private var sync: (any SpaceSyncControls)? {
-        guard let sync = actions?.spaceSync, sync.status.availability != .needsSignedBuild else { return nil }
+        guard let sync = actions?.spaceSync, sync.status.availability.takesLevels else { return nil }
         return sync
     }
 
