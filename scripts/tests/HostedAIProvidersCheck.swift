@@ -18,7 +18,6 @@
 
 import Foundation
 
-/// The real type lives in the sidebar's SwiftUI file, which this check does not compile.
 struct URLCitation: Equatable {}
 
 @main

@@ -136,7 +136,6 @@ extension PageSession {
         }
     }
 
-    /// A failure outranks the AI engine's length limit when a page hits both.
     private func showTranslationNotice(_ notice: PageTranslationNotice) {
         if case .aiLimitReached = notice, translationNotice != nil { return }
         translationNotice = notice

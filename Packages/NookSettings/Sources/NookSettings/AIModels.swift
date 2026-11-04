@@ -308,8 +308,6 @@ public struct AIConfiguration: Codable {
         self.browserToolsConfig = browserToolsConfig
     }
 
-    /// Adds a provider for each of `types` the config lacks, ahead of the custom providers, with the
-    /// type's raw value as its id. Returns whether it added any.
     public mutating func addMissingProviders(_ types: [AIProviderType]) -> Bool {
         let missing = types.filter { type in !providers.contains { $0.id == type.rawValue } }
         let index = providers.firstIndex { $0.providerType == .openAICompatible } ?? providers.endIndex

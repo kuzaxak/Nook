@@ -54,7 +54,6 @@ struct AnthropicProvider: AIProviderProtocol {
         return try Self.parseResponse(data)
     }
 
-    /// A request for `path` under the API's `/v1`, carrying the key and the API version.
     static func request(_ path: String, baseURL: String, apiKey: String) -> URLRequest {
         var request = URLRequest(url: URL(string: "\(baseURL)/v1/\(path)")!)
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
@@ -187,7 +186,6 @@ struct AnthropicProvider: AIProviderProtocol {
         )
     }
 
-    /// The error for a reply other than 200, worded from the API's own error message when it sent one.
     static func failure(status: Int, body: Data) -> AIProviderError {
         switch status {
         case 401: return .invalidAPIKey
