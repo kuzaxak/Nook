@@ -8,6 +8,10 @@
 - Pages can translate with an AI model instead of Apple's on-device translation: Settings → AI → Translation picks the provider and model, a few batches go at once, text the model fails on is translated on this Mac with a line saying why, and private windows always translate on this Mac
 - The sidebar's address shows "Translation Available" under the URL when a page is in another language, as in Arc; click it to translate
 
+### Fixed
+
+- Cmd+W closes the tab instead of the window on Russian and other non-Latin keyboard layouts, and in any window with a tab; it closes the command bar when that is open, a held Cmd+W stops at the empty window, and the File menu lists Close Tab and Close Window
+
 ## 1.5.2
 
 Links from other apps can open in the current space, as in Arc, and ClickUp lists scroll smoothly.

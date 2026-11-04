@@ -86,8 +86,22 @@ struct NookCommands: Commands {
     }
 
     var body: some Commands {
-        CommandGroup(replacing: .newItem) {}
-        CommandGroup(replacing: .windowList) {}
+        Group {
+            CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .windowList) {}
+            // SwiftUI's own Close (⌘W, which closes the key window) and Close All live in this group.
+            CommandGroup(replacing: .saveItem) {
+                Button("Close Tab") {
+                    shortcutManager.closeTab()
+                }
+                .modifier(dynamicShortcut(.closeTab))
+
+                Button("Close Window") {
+                    shortcutManager.closeWindow()
+                }
+                .modifier(dynamicShortcut(.closeWindow))
+            }
+        }
 
         // The Settings scene supplies the standard Settings… item at ⌘,
         CommandGroup(after: .appSettings) {

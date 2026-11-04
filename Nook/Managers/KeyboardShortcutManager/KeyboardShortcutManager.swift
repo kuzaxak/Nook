@@ -286,12 +286,15 @@ class KeyboardShortcutManager {
 
         // Read now: the action runs on the next turn of the run loop, when this event is gone.
         lastShortcutWasControlTab = Self.isControlTab(event)
+        lastShortcutWasRepeat = event.isARepeat
         executeAction(shortcut.action)
         return true
     }
 
     /// Whether the shortcut being run came from Control-Tab, which opens the tab switcher.
     private var lastShortcutWasControlTab = false
+    /// Whether the shortcut being run is a held key's repeat.
+    private var lastShortcutWasRepeat = false
     
     /// Forward a keyboard event directly to the active WebView
     private func forwardEventToWebView(_ event: NSEvent) {
@@ -469,11 +472,38 @@ class KeyboardShortcutManager {
     /// Runs `action` on the active window, as its shortcut would. The command bar runs its
     /// actions through here too.
     func perform(_ action: ShortcutAction) {
+        lastShortcutWasRepeat = false
         executeAction(action)
+    }
+
+    /// Close Tab from its shortcut, the File menu or the command bar, in the key window (see
+    /// `CloseShortcut`).
+    func closeTab(isRepeat: Bool = false) {
+        let keyWindow = NSApp.keyWindow ?? NSApp.mainWindow
+        let state = keyWindow.flatMap { key in windowRegistry?.windows.values.first { $0.window === key } }
+        let shown = state.map {
+            CloseShortcut.BrowserWindow(showsCommandBar: $0.commandPalette?.isVisible == true, showsTab: $0.selectedItemID != nil)
+        }
+        switch CloseShortcut.target(in: shown, isRepeat: isRepeat) {
+        case .commandBar:
+            state?.commandPalette?.close()
+        case .tab:
+            if let state { browserManager?.tabs.closeSelected(in: state) }
+        case .window:
+            closeWindow()
+        case .nothing:
+            break
+        }
+    }
+
+    /// Closes the key window as the standard File → Close does, whatever kind of window it is.
+    func closeWindow() {
+        NSApp.sendAction(#selector(NSWindow.performClose(_:)), to: nil, from: nil)
     }
 
     private func executeAction(_ action: ShortcutAction) {
         guard let browserManager = browserManager else { return }
+        let isRepeat = lastShortcutWasRepeat
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -506,14 +536,7 @@ class KeyboardShortcutManager {
             case .newTab:
                 self.windowRegistry?.activeWindow?.commandPalette?.open()
             case .closeTab:
-                if let window, !window.isCommandPaletteVisible {
-                    // With no tab open (the empty space), Cmd+W closes the window.
-                    if window.selectedItemID == nil {
-                        window.window?.performClose(nil)
-                    } else {
-                        tabs.closeSelected(in: window)
-                    }
-                }
+                self.closeTab(isRepeat: isRepeat)
             case .undoCloseTab:
                 if let window { tabs.reopenLastClosed(in: window) }
             case .nextTab, .previousTab:
@@ -552,7 +575,7 @@ class KeyboardShortcutManager {
             case .newWindow:
                 browserManager.createNewWindow()
             case .closeWindow:
-                browserManager.closeActiveWindow()
+                self.closeWindow()
             case .closeBrowser:
                 browserManager.showQuitDialog()
             case .toggleFullScreen:

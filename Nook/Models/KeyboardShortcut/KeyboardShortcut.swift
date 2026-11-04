@@ -341,7 +341,7 @@ struct KeyCombination: Hashable, Codable {
     init?(from event: NSEvent) {
         // Use charactersIgnoringModifiers for consistent handling of bracket keys
         // This ensures Cmd+[ works correctly on US keyboards where [ requires Shift
-        guard let key = event.charactersIgnoringModifiers?.lowercased(), !key.isEmpty else { return nil }
+        guard let typed = event.charactersIgnoringModifiers?.lowercased(), !typed.isEmpty else { return nil }
 
         var modifiers: Modifiers = []
         if event.modifierFlags.contains(.command) { modifiers.insert(.command) }
@@ -349,9 +349,29 @@ struct KeyCombination: Hashable, Codable {
         if event.modifierFlags.contains(.control) { modifiers.insert(.control) }
         if event.modifierFlags.contains(.shift) { modifiers.insert(.shift) }
 
-        self.key = key
+        let isShortcut = !modifiers.isDisjoint(with: [.command, .control])
+        self.key = isShortcut ? Self.latinKey(typed: typed, characters: event.characters, keyCode: event.keyCode) : typed
         self.modifiers = modifiers
     }
+
+    /// A layout without Latin letters (Russian) reports its own letter in `charactersIgnoringModifiers`
+    /// even with ⌘ or Control held, while macOS menus match ⌘ shortcuts by the Latin character the
+    /// layout's ⌘ keymap types, which `characters` holds. Control types a control character there,
+    /// so the US letter at the key's position stands in.
+    static func latinKey(typed: String, characters: String?, keyCode: UInt16) -> String {
+        guard !typed.unicodeScalars.allSatisfy(\.isASCII) else { return typed }
+        if let characters = characters?.lowercased(), !characters.isEmpty,
+           characters.unicodeScalars.allSatisfy({ (0x21...0x7E).contains($0.value) }) {
+            return characters
+        }
+        return usLetters[keyCode] ?? typed
+    }
+
+    private static let usLetters: [UInt16: String] = [
+        0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x", 8: "c", 9: "v", 11: "b",
+        12: "q", 13: "w", 14: "e", 15: "r", 16: "y", 17: "t", 31: "o", 32: "u", 34: "i", 35: "p",
+        37: "l", 38: "j", 40: "k", 45: "n", 46: "m",
+    ]
 }
 
 // MARK: - Modifiers

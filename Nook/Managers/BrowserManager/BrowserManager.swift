@@ -1235,12 +1235,6 @@ class BrowserManager: ObservableObject {
         }
     }
 
-    /// Close the active window
-    func closeActiveWindow() {
-        guard let activeWindow = windowRegistry?.activeWindow?.window else { return }
-        activeWindow.close()
-    }
-
     /// Toggle full screen for the active window
     func toggleFullScreenForActiveWindow() {
         guard let activeWindow = windowRegistry?.activeWindow?.window else { return }
