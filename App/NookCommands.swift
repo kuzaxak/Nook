@@ -127,17 +127,17 @@ struct NookCommands: Commands {
             
             Divider()
             Button("Open Command Bar") {
-                let currentURL = browserManager.tabs.activeWindowSession?.url.absoluteString ?? ""
+                let currentURL = browserManager.frontPage?.url.absoluteString ?? ""
                 windowRegistry.activeWindow?.commandPalette?.open(prefill: currentURL, navigateCurrentTab: true)
             }
             .modifier(dynamicShortcut(.focusAddressBar))
-            .disabled(browserManager.tabs.activeWindowSession == nil)
+            .disabled(browserManager.frontPage == nil)
 
             Button("Copy Current URL") {
-                browserManager.copyCurrentURL()
+                browserManager.perform(.copyURL)
             }
             .modifier(dynamicShortcut(.copyCurrentURL))
-            .disabled(browserManager.tabs.activeWindowSession == nil)
+            .disabled(browserManager.frontPage == nil)
 
             let selectedItem = windowRegistry.activeWindow?.selectedItemID
             Button(selectedItem.map(browserManager.tabs.isBookmark) == true ? "Remove Bookmark" : "Bookmark Tab") {
@@ -153,10 +153,10 @@ struct NookCommands: Commands {
 
             Divider()
             Button("Print…") {
-                browserManager.printCurrentPage()
+                browserManager.perform(.print)
             }
             .modifier(dynamicShortcut(.printPage))
-            .disabled(browserManager.tabs.activeWindowSession == nil)
+            .disabled(browserManager.frontPage == nil)
         }
 
         // Sidebar commands
@@ -173,12 +173,12 @@ struct NookCommands: Commands {
             .disabled(!nookSettings.showAIAssistant)
 
             Button("Toggle Picture in Picture") {
-                browserManager.tabs.activeWindowSession?.requestPictureInPicture()
+                browserManager.perform(.pictureInPicture)
             }
             .modifier(dynamicShortcut(.togglePictureInPicture))
             .disabled(
-                browserManager.tabs.activeWindowSession == nil
-                    || !(browserManager.tabs.activeWindowSession.map { $0.hasVideoContent || $0.hasPiPActive } ?? false)
+                browserManager.frontPage == nil
+                    || !(browserManager.frontPage.map { $0.hasVideoContent || $0.hasPiPActive } ?? false)
             )
 
             if tabOrganizerManager.isAvailable {
@@ -203,68 +203,68 @@ struct NookCommands: Commands {
         CommandGroup(after: .windowSize) {
 
             Button("Find in Page") {
-                browserManager.showFindBar()
+                browserManager.perform(.find)
             }
             .modifier(dynamicShortcut(.findInPage))
-            .disabled(browserManager.tabs.activeWindowSession == nil)
+            .disabled(browserManager.frontPage == nil)
 
             Button("Reload Page") {
-                browserManager.tabs.activeWindowSession?.refresh()
+                browserManager.perform(.reload)
             }
             .modifier(dynamicShortcut(.refresh))
-            .disabled(browserManager.tabs.activeWindowSession == nil)
+            .disabled(browserManager.frontPage == nil)
 
             Button("Reload with Standard Fingerprinting Protection") {
-                browserManager.tabs.activeWindowSession?.reloadWithoutEnhancedFingerprintingProtection()
+                browserManager.perform(.reloadWithStandardProtection)
             }
-            .disabled(browserManager.tabs.activeWindowSession?.usesEnhancedFingerprintingProtection != true)
+            .disabled(browserManager.frontPage?.usesEnhancedFingerprintingProtection != true)
 
-            Button(browserManager.tabs.activeWindowSession?.isTranslated == true ? "Show Original" : "Translate Page") {
-                browserManager.tabs.activeWindowSession?.toggleTranslation()
+            Button(browserManager.frontPage?.isTranslated == true ? "Show Original" : "Translate Page") {
+                browserManager.perform(.translate)
             }
-            .disabled(browserManager.tabs.activeWindowSession?.canTranslate != true)
+            .disabled(browserManager.frontPage?.canTranslate != true)
 
             Divider()
 
             Button("Zoom In") {
-                browserManager.zoomInCurrentTab()
+                browserManager.perform(.zoomIn)
             }
             .modifier(dynamicShortcut(.zoomIn))
-            .disabled(browserManager.tabs.activeWindowSession == nil)
+            .disabled(browserManager.frontPage == nil)
 
             Button("Zoom Out") {
-                browserManager.zoomOutCurrentTab()
+                browserManager.perform(.zoomOut)
             }
             .modifier(dynamicShortcut(.zoomOut))
-            .disabled(browserManager.tabs.activeWindowSession == nil)
+            .disabled(browserManager.frontPage == nil)
 
             Button("Actual Size") {
-                browserManager.resetZoomCurrentTab()
+                browserManager.perform(.actualSize)
             }
             .modifier(dynamicShortcut(.actualSize))
-            .disabled(browserManager.tabs.activeWindowSession == nil)
+            .disabled(browserManager.frontPage == nil)
 
             Divider()
 
             Button("Hard Reload (Ignore Cache)") {
-                browserManager.hardReloadCurrentPage()
+                browserManager.perform(.hardReload)
             }
             .modifier(dynamicShortcut(.hardReload))
-            .disabled(browserManager.tabs.activeWindowSession == nil)
+            .disabled(browserManager.frontPage == nil)
 
             Divider()
 
             Button("Web Inspector") {
-                browserManager.openWebInspector()
+                browserManager.perform(.webInspector)
             }
             .modifier(dynamicShortcut(.openDevTools))
-            .disabled(browserManager.tabs.activeWindowSession == nil)
+            .disabled(browserManager.frontPage == nil)
 
             Button("Developer Mode for This Site") {
-                shortcutManager.perform(.toggleDeveloperMode)
+                browserManager.perform(.developerMode)
             }
             .modifier(dynamicShortcut(.toggleDeveloperMode))
-            .disabled(browserManager.tabs.activeWindowSession?.url.host == nil)
+            .disabled(browserManager.frontPage?.url.host == nil)
 
             if nookSettings.developerModeEnabled {
                 Button("Developer Panel") {
@@ -283,33 +283,33 @@ struct NookCommands: Commands {
                 .modifier(dynamicShortcut(.openPerformancePanel))
 
                 Button("Pick Element") {
-                    browserManager.startElementPicker()
+                    browserManager.perform(.pickElement)
                 }
                 .modifier(dynamicShortcut(.pickElement))
-                .disabled(browserManager.tabs.activeWindowSession == nil)
+                .disabled(browserManager.frontPage == nil)
             }
 
             Button("Copy Screenshot") {
-                shortcutManager.perform(.copyScreenshot)
+                browserManager.perform(.copyScreenshot)
             }
             .modifier(dynamicShortcut(.copyScreenshot))
-            .disabled(browserManager.tabs.activeWindowSession == nil)
+            .disabled(browserManager.frontPage == nil)
 
             Button("Capture in Portrait Mode") {
                 shortcutManager.perform(.capturePortrait)
             }
             .modifier(dynamicShortcut(.capturePortrait))
-            .disabled(browserManager.tabs.activeWindowSession == nil)
+            .disabled(browserManager.frontPage == nil)
 
             Divider()
 
-            Button(browserManager.tabs.activeWindowSession?.isAudioMuted == true ? "Unmute Audio" : "Mute Audio") {
-                browserManager.tabs.activeWindowSession?.toggleMute()
+            Button(browserManager.frontPage?.isAudioMuted == true ? "Unmute Audio" : "Mute Audio") {
+                browserManager.perform(.mute)
             }
             .modifier(dynamicShortcut(.muteUnmuteAudio))
             .disabled(
-                browserManager.tabs.activeWindowSession == nil
-                    || browserManager.tabs.activeWindowSession?.hasAudioContent != true)
+                browserManager.frontPage == nil
+                    || browserManager.frontPage?.hasAudioContent != true)
         }
 
         Group {
@@ -339,9 +339,9 @@ struct NookCommands: Commands {
             CommandMenu("Privacy") {
                 Menu("Clear Cookies") {
                     Button("Clear Cookies for Current Site") {
-                        browserManager.clearCurrentPageCookies()
+                        browserManager.perform(.clearSiteCookies)
                     }
-                    .disabled(browserManager.tabs.activeWindowSession?.url.host == nil)
+                    .disabled(browserManager.frontPage?.url.host == nil)
 
                     Button("Clear Expired Cookies") {
                         browserManager.clearExpiredCookies()
@@ -366,9 +366,9 @@ struct NookCommands: Commands {
 
                 Menu("Clear Cache") {
                     Button("Clear Cache for Current Site") {
-                        browserManager.clearCurrentPageCache()
+                        browserManager.perform(.clearSiteCache)
                     }
-                    .disabled(browserManager.tabs.activeWindowSession?.url.host == nil)
+                    .disabled(browserManager.frontPage?.url.host == nil)
 
                     Button("Clear Stale Cache") {
                         browserManager.clearStaleCache()
@@ -445,7 +445,7 @@ struct NookCommands: Commands {
                 Divider()
 
                 Button("Chrome Web Store") {
-                    browserManager.tabs.activeWindowSession?.load(URL(string: "https://chromewebstore.google.com")!)
+                    browserManager.frontPage?.load(URL(string: "https://chromewebstore.google.com")!)
                 }
 
                 #if DEBUG
@@ -464,9 +464,9 @@ struct NookCommands: Commands {
                 .disabled(windowRegistry.activeWindow?.spaceID == nil)
 
                 Button("Boost This Site...") {
-                    browserManager.boostCurrentSite()
+                    browserManager.perform(.boost)
                 }
-                .disabled(browserManager.tabs.activeWindowSession == nil)
+                .disabled(browserManager.frontPage == nil)
             }
         }
     }

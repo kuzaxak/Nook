@@ -17,7 +17,7 @@ struct BoostOverlay: View {
     @EnvironmentObject var browserManager: BrowserManager
     @Environment(BrowserWindowState.self) private var windowState
 
-    private var session: PageSession? { browserManager.tabs.selectedSession(in: windowState) }
+    private var session: PageSession? { browserManager.frontPage(in: windowState) }
 
     var body: some View {
         content.task(id: windowState.isBoostPanelVisible) { await browserManager.nookSettings?.waitForBoosts() }

@@ -154,9 +154,9 @@ struct WindowView: View {
             if browserManager.shouldShowZoomPopup {
                 ZoomPopupView(
                     zoomManager: browserManager.zoomManager,
-                    onZoomIn: { browserManager.zoomInCurrentTab() },
-                    onZoomOut: { browserManager.zoomOutCurrentTab() },
-                    onZoomReset: { browserManager.resetZoomCurrentTab() },
+                    onZoomIn: { browserManager.perform(.zoomIn) },
+                    onZoomOut: { browserManager.perform(.zoomOut) },
+                    onZoomReset: { browserManager.perform(.actualSize) },
                     onDismiss: { browserManager.shouldShowZoomPopup = false }
                 )
                 .transition(.scale(scale: 0.0, anchor: .top))
@@ -372,7 +372,7 @@ struct WindowView: View {
                     .zIndex(2000)
                     .overlay(alignment: .topTrailing) {
                         if windowState.isPortraitCaptureVisible,
-                           let session = browserManager.tabs.selectedSession(in: windowState) {
+                           let session = browserManager.frontPage(in: windowState) {
                             PortraitCaptureView(session: session)
                                 .environmentObject(browserManager)
                                 .environment(windowState)

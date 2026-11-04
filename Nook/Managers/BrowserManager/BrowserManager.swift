@@ -784,14 +784,6 @@ class BrowserManager: ObservableObject {
         }
     }
 
-    func showFindBar() {
-        if findManager.isFindBarVisible {
-            findManager.hideFindBar()
-        } else {
-            findManager.showFindBar(for: tabs.activeWindowSession)
-        }
-    }
-
     // MARK: - Dialog Methods
 
     func showQuitDialog() {
@@ -850,18 +842,13 @@ class BrowserManager: ObservableObject {
         openSettings(tab: .spaces)
     }
 
-    /// Opens the Boost panel over the selected page. Nothing is saved until the person saves.
+    /// Opens the Boost panel over the page in front. Nothing is saved until the person saves.
     func openBoostPanel(in windowState: BrowserWindowState) {
-        guard let url = tabs.selectedSession(in: windowState)?.url,
+        guard let url = frontPage(in: windowState)?.url,
               url.scheme == "http" || url.scheme == "https",
               !Boost.normalizeHost(url.host ?? "").isEmpty
         else { return }
         windowState.isBoostPanelVisible = true
-    }
-
-    func boostCurrentSite() {
-        guard let windowState = windowRegistry?.activeWindow else { return }
-        openBoostPanel(in: windowState)
     }
 
     func openSettings(tab: SettingsTabs) {

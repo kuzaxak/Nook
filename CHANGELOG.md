@@ -15,6 +15,7 @@
 ### Fixed
 
 - Cmd+W closes the tab instead of the window on Russian and other non-Latin keyboard layouts, and in any window with a tab; it closes the command bar or a Peek when one is open, as in Arc, a held Cmd+W stops at the empty window, and the File menu lists Close Tab and Close Window
+- Shortcuts and menu commands act on the Peek when one is open, as in Arc: reload, Back and Forward, find, zoom, Copy URL, print, the address in the command bar, translate, mute, picture in picture, Web Inspector and the developer tools no longer reach the tab behind it
 - Moving a space off a profile no other space uses no longer forces deleting it: Move and Keep Profile leaves it in Settings → Profiles with its logins, cookies and history, ready for a space or an imported .nookspace file to use again
 - A link opened in the background (Command-click, middle click, Open Link in New Tab) loads at once and fills in its title and icon, as in Arc, instead of waiting until you select it
 - The + menu at the bottom of the sidebar names each item beside its icon and shows the New Tab shortcut

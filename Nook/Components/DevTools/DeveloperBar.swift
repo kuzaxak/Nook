@@ -10,6 +10,7 @@
 
 import AppKit
 import SwiftUI
+import WebKit
 import NookDesign
 import NookWeb
 import NookUI
@@ -73,8 +74,8 @@ extension BrowserManager {
         }
     }
 
-    func copyScreenshot(in windowState: BrowserWindowState) {
-        guard let webView = tabs.selectedSession(in: windowState)?.webView else { return }
+    func copyScreenshot(of webView: WKWebView?, in windowState: BrowserWindowState) {
+        guard let webView else { return }
         webView.takeSnapshot(with: nil) { [weak self, weak windowState] image, _ in
             guard let image, let windowState else { return }
             NSPasteboard.general.clearContents()
@@ -144,13 +145,13 @@ struct DeveloperBar: View {
                 separator
                 tool("photo.on.rectangle.angled", "Capture in Portrait Mode", shortcut: .capturePortrait,
                      isOn: windowState.isPortraitCaptureVisible) { browserManager.togglePortraitCapture(in: windowState) }
-                tool("camera", "Copy Screenshot", shortcut: .copyScreenshot) { browserManager.copyScreenshot(in: windowState) }
+                tool("camera", "Copy Screenshot", shortcut: .copyScreenshot) { browserManager.perform(.copyScreenshot) }
                 separator
                 tool("terminal", "Console", shortcut: .openDevPanel, isOn: devTabShowing(.console)) { browserManager.toggleDevPanel(.console) }
                 tool("network", "Network", shortcut: .openNetworkPanel, isOn: devTabShowing(.network)) { browserManager.toggleDevPanel(.network) }
-                tool("scope", "Pick Element", shortcut: .pickElement) { browserManager.startElementPicker() }
+                tool("scope", "Pick Element", shortcut: .pickElement) { browserManager.perform(.pickElement) }
                 separator
-                tool("hammer", "Web Inspector", shortcut: .openDevTools) { browserManager.openWebInspector() }
+                tool("hammer", "Web Inspector", shortcut: .openDevTools) { browserManager.perform(.webInspector) }
                 tool("gauge.with.needle", "Performance", shortcut: .openPerformancePanel, isOn: devTabShowing(.perf)) { browserManager.toggleDevPanel(.perf) }
             }
         }

@@ -7,19 +7,142 @@
 import AppKit
 import SwiftUI
 import WebKit
+import NookWeb
 
 extension BrowserManager {
-    // MARK: - Cookie Management Methods
+    // MARK: - Page in Front
 
-    func clearCurrentPageCookies() {
-        guard let currentTab = tabs.activeWindowSession,
-            let host = currentTab.url.host
-        else { return }
-
-        Task {
-            await cookieManager.deleteCookiesForDomain(host)
+    /// The page shortcuts and menu commands act on in `window` (`FrontPage`). Nil when the window
+    /// shows no page, or while another window holds its selected tab's page.
+    func frontPage(in window: BrowserWindowState) -> PageSession? {
+        let peek = peekManager.page(in: window)
+        switch FrontPage(peek: peek?.itemID, selectedTab: window.selectedItemID) {
+        case .peek?: return peek
+        case .tab?: return tabs.controllableSession(in: window)
+        case nil: return nil
         }
     }
+
+    /// The active window's page in front.
+    var frontPage: PageSession? {
+        windowRegistry?.activeWindow.flatMap { frontPage(in: $0) }
+    }
+
+    /// `window`'s own view of its page in front.
+    func frontWebView(in window: BrowserWindowState) -> WKWebView? {
+        guard let page = frontPage(in: window) else { return nil }
+        return getWebView(for: page.itemID, in: window.id) ?? page.webView
+    }
+
+    /// Runs `command` on the active window's page in front.
+    func perform(_ command: PageCommand) {
+        guard let window = windowRegistry?.activeWindow, let page = frontPage(in: window) else { return }
+        let webView = frontWebView(in: window)
+        switch command {
+        case .goBack:
+            page.goBack(in: webView)
+        case .goForward:
+            if webView?.canGoForward == true { webView?.goForward() }
+        case .reload:
+            page.refresh()
+        case .clearCookiesAndReload:
+            clearCookies(of: page)
+            page.refresh()
+        case .hardReload:
+            guard let host = page.url.host else { return }
+            Task { @MainActor in
+                await cacheManager.clearCacheForDomainExcludingCookies(host)
+                webView?.reloadFromOrigin()
+            }
+        case .reloadWithStandardProtection:
+            page.reloadWithoutEnhancedFingerprintingProtection()
+        case .find:
+            if findManager.isFindBarVisible {
+                findManager.hideFindBar()
+            } else {
+                findManager.showFindBar(for: page)
+            }
+        case .zoomIn:
+            guard let webView else { return }
+            zoomManager.zoomIn(for: webView, tabId: page.itemID)
+            shouldShowZoomPopup = true
+        case .zoomOut:
+            guard let webView else { return }
+            zoomManager.zoomOut(for: webView, tabId: page.itemID)
+            shouldShowZoomPopup = true
+        case .actualSize:
+            guard let webView else { return }
+            zoomManager.resetZoom(for: webView, tabId: page.itemID)
+            shouldShowZoomPopup = true
+        case .copyURL:
+            copyURL(of: page, in: window)
+        case .print:
+            webView?.nookPrint()
+        case .webInspector:
+            openWebInspector(on: page.activeWebView)
+        case .pickElement:
+            withDeveloperCapture { page.startDevPicker() }
+        case .copyScreenshot:
+            copyScreenshot(of: webView, in: window)
+        case .developerMode:
+            guard let settings = nookSettings, let host = page.url.host else { return }
+            let on = !settings.isDeveloperSite(host)
+            setDeveloperSite(host, on: on)
+            showWindowToast("Developer Mode \(on ? "on" : "off") for \(host)", in: window)
+        case .pictureInPicture:
+            page.requestPictureInPicture()
+        case .mute:
+            page.toggleMute()
+        case .translate:
+            page.toggleTranslation()
+        case .clearSiteCookies:
+            clearCookies(of: page)
+        case .clearSiteCache:
+            guard let host = page.url.host else { return }
+            Task { await cacheManager.clearCacheForDomain(host) }
+        case .boost:
+            openBoostPanel(in: window)
+        }
+    }
+
+    private func clearCookies(of page: PageSession) {
+        guard let host = page.url.host else { return }
+        Task { await cookieManager.deleteCookiesForDomain(host) }
+    }
+
+    func copyURL(of page: PageSession, in window: BrowserWindowState) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(page.storableURL.absoluteString, forType: .string)
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .drawCompleted)
+        window.isShowingCopyURLToast = true
+        Task { [weak window] in
+            try? await Task.sleep(for: .seconds(2))
+            window?.isShowingCopyURLToast = false
+        }
+    }
+
+    private func openWebInspector(on webView: WKWebView) {
+        // `_inspector` is WebKit SPI with no public spelling; the alert covers a WebKit without it.
+        let selector = NSSelectorFromString("_inspector")
+        guard webView.responds(to: selector),
+              let inspector = webView.perform(selector)?.takeUnretainedValue() as? NSObject else {
+            showWebInspectorAlert()
+            return
+        }
+        inspector.perform(NSSelectorFromString("show"))
+        inspector.perform(NSSelectorFromString("attach"))
+    }
+
+    private func showWebInspectorAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Open Web Inspector"
+        alert.informativeText = "To open the Web Inspector:\n\n1. Right-click on the page and select 'Inspect Element'\n\nOr enable the Develop menu in Safari Settings → Advanced, then use Develop → [Your App]"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    // MARK: - Cookie Management Methods
 
     func clearAllCookies() {
         Task {
@@ -34,34 +157,6 @@ extension BrowserManager {
     }
 
     // MARK: - Cache Management
-
-    func clearCurrentPageCache() {
-        guard let currentTab = tabs.activeWindowSession,
-            let host = currentTab.url.host
-        else { return }
-
-        Task {
-            await cacheManager.clearCacheForDomain(host)
-        }
-    }
-
-    /// Clears site cache for current page excluding cookies, then reloads from origin.
-    func hardReloadCurrentPage() {
-        guard let currentTab = tabs.activeWindowSession,
-            let host = currentTab.url.host,
-            let activeWindowId = windowRegistry?.activeWindow?.id
-        else { return }
-        Task { @MainActor in
-            await cacheManager.clearCacheForDomainExcludingCookies(host)
-            // Use the WebView that's actually visible in the current window
-            if let webView = getWebView(for: currentTab.itemID, in: activeWindowId) {
-                webView.reloadFromOrigin()
-            } else {
-                // Fallback to the tab's default webView
-                currentTab.webView?.reloadFromOrigin()
-            }
-        }
-    }
 
     func clearStaleCache() {
         Task {
@@ -87,23 +182,6 @@ extension BrowserManager {
         }
     }
 
-    // MARK: - Window-Aware Tab Operations for Commands
-
-    /// Refresh the current tab in the active window
-    func refreshCurrentTabInActiveWindow() {
-        tabs.activeWindowSession?.refresh()
-    }
-
-    /// Toggle mute for the current tab in the active window
-    func toggleMuteCurrentTabInActiveWindow() {
-        tabs.activeWindowSession?.toggleMute()
-    }
-
-    /// Request picture-in-picture for the current tab in the active window
-    func requestPiPForCurrentTabInActiveWindow() {
-        tabs.activeWindowSession?.requestPictureInPicture()
-    }
-
     /// An Escape the page left alone (`EscapeKey`). Closes the innermost thing the window shows:
     /// a page's own full screen, then Peek. The window itself stays as it is.
     func escapePressed(in nsWindow: NSWindow) {
@@ -118,26 +196,6 @@ extension BrowserManager {
         }
     }
 
-    /// Check if the current tab in the active window has video content
-    func currentTabHasVideoContent() -> Bool {
-        return tabs.activeWindowSession?.hasVideoContent ?? false
-    }
-
-    /// Check if the current tab in the active window has PiP active
-    func currentTabHasPiPActive() -> Bool {
-        return tabs.activeWindowSession?.hasPiPActive ?? false
-    }
-
-    /// Check if the current tab in the active window is muted
-    func currentTabIsMuted() -> Bool {
-        return tabs.activeWindowSession?.isAudioMuted ?? false
-    }
-
-    /// Check if the current tab in the active window has audio content
-    func currentTabHasAudioContent() -> Bool {
-        return tabs.activeWindowSession?.hasAudioContent ?? false
-    }
-
     /// A tooltip with the action's shortcut, as Arc's show it: "Copy URL (⇧⌘C)".
     func help(_ title: String, shortcut action: ShortcutAction) -> String {
         guard let shortcut = keyboardShortcutManager?.shortcut(for: action), shortcut.isEnabled,
@@ -145,118 +203,7 @@ extension BrowserManager {
         return "\(title) (\(shortcut.keyCombination.displayString))"
     }
 
-    // MARK: - URL Utilities
-    func copyCurrentURL() {
-        if let url = tabs.activeWindowSession?.storableURL.absoluteString {
-            #if DEBUG
-            print("Attempting to copy URL: \(url)")
-            #endif
-
-            NSPasteboard.general.clearContents()
-            let success = NSPasteboard.general.setString(url, forType: .string)
-            let e = NSHapticFeedbackManager.defaultPerformer
-            e.perform(.generic, performanceTime: .drawCompleted)
-            #if DEBUG
-            print("Clipboard operation success: \(success)")
-            #endif
-
-            // Show toast on active window
-            if let windowState = windowRegistry?.activeWindow {
-                windowState.isShowingCopyURLToast = true
-
-                Task { [weak windowState] in
-                    try? await Task.sleep(for: .seconds(2))
-                    windowState?.isShowingCopyURLToast = false
-                }
-            }
-        } else {
-            #if DEBUG
-            print("No URL found to copy")
-            #endif
-        }
-    }
-
-    // MARK: - Web Inspector
-    func openWebInspector() {
-        guard let currentTab = tabs.activeWindowSession else {
-            #if DEBUG
-            print("No current tab to inspect")
-            #endif
-            return
-        }
-
-        // `_inspector` is WebKit SPI with no public spelling; the alert covers a WebKit without it.
-        let webView = currentTab.activeWebView
-        let selector = NSSelectorFromString("_inspector")
-        guard webView.responds(to: selector),
-              let inspector = webView.perform(selector)?.takeUnretainedValue() as? NSObject else {
-            showWebInspectorAlert()
-            return
-        }
-        inspector.perform(NSSelectorFromString("show"))
-        inspector.perform(NSSelectorFromString("attach"))
-    }
-
-    private func showWebInspectorAlert() {
-        let alert = NSAlert()
-        alert.messageText = "Open Web Inspector"
-        alert.informativeText = "To open the Web Inspector:\n\n1. Right-click on the page and select 'Inspect Element'\n\nOr enable the Develop menu in Safari Settings → Advanced, then use Develop → [Your App]"
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
-
-    // MARK: - Printing
-
-    /// The print panel for the active window's page, a PDF included.
-    func printCurrentPage() {
-        guard let windowState = windowRegistry?.activeWindow,
-              let session = tabs.controllableSession(in: windowState),
-              let webView = getWebView(for: session.itemID, in: windowState.id)
-        else { return }
-        webView.nookPrint()
-    }
-
     // MARK: - Zoom Management
-
-    /// Zoom in for the current tab
-    func zoomInCurrentTab() {
-        guard let windowState = windowRegistry?.activeWindow,
-            let currentTab = tabs.activeWindowSession,
-            let webView = getWebView(for: currentTab.itemID, in: windowState.id)
-        else {
-            return
-        }
-
-        zoomManager.zoomIn(for: webView, tabId: currentTab.itemID)
-        shouldShowZoomPopup = true
-    }
-
-    /// Zoom out for the current tab
-    func zoomOutCurrentTab() {
-        guard let windowState = windowRegistry?.activeWindow,
-            let currentTab = tabs.activeWindowSession,
-            let webView = getWebView(for: currentTab.itemID, in: windowState.id)
-        else {
-            return
-        }
-
-        zoomManager.zoomOut(for: webView, tabId: currentTab.itemID)
-        shouldShowZoomPopup = true
-    }
-
-    /// Reset zoom to 100% for the current tab
-    func resetZoomCurrentTab() {
-        guard let windowState = windowRegistry?.activeWindow,
-            let currentTab = tabs.activeWindowSession,
-            let webView = getWebView(for: currentTab.itemID, in: windowState.id)
-        else {
-            return
-        }
-
-        zoomManager.resetZoom(for: webView, tabId: currentTab.itemID)
-        shouldShowZoomPopup = true
-    }
 
     /// Reset zoom when a tab navigates, so a page never inherits the previous page's zoom.
     func loadZoomForTab(_ tabId: UUID) {

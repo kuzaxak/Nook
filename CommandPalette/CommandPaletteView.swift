@@ -572,8 +572,8 @@ struct CommandPaletteView: View {
 
     private var returnPlacement: String {
         if commandPalette.addSplit != nil { return "the right pane" }
-        if commandPalette.shouldNavigateCurrentTab, browserManager.tabs.controllableSession(in: windowState) != nil {
-            return "this tab"
+        if commandPalette.shouldNavigateCurrentTab, let page = browserManager.frontPage(in: windowState) {
+            return page.isDetached ? "this Peek" : "this tab"
         }
         return browserManager.tabs.newTabAnchorTitle(in: windowState).map { "a new tab below \u{201C}\($0)\u{201D}" }
             ?? "a new tab at the top of Tabs"
@@ -630,7 +630,7 @@ struct CommandPaletteView: View {
             open(historyEntry.url)
         case .url, .search:
             // A page another window holds is not navigated from here; the text opens a new tab.
-            if commandPalette.shouldNavigateCurrentTab, let session = browserManager.tabs.controllableSession(in: windowState) {
+            if commandPalette.shouldNavigateCurrentTab, let session = browserManager.frontPage(in: windowState) {
                 session.typedVisitPending = true
                 session.navigate(to: suggestion.text)
             } else {
@@ -648,9 +648,14 @@ struct CommandPaletteView: View {
         commandPalette.close()
     }
 
-    /// Loads `url` in the selected page when the palette was opened to navigate it, else in a new tab.
+    /// Loads `url` in the page in front when the palette was opened to navigate it, else in a new tab.
     private func open(_ url: URL) {
-        guard commandPalette.shouldNavigateCurrentTab, windowState.selectedItemID != nil else { return openInNewTab(url) }
+        guard commandPalette.shouldNavigateCurrentTab, let page = browserManager.frontPage(in: windowState) else { return openInNewTab(url) }
+        if page.isDetached {
+            page.typedVisitPending = true
+            page.load(url)
+            return
+        }
         let id = browserManager.tabs.open(url: url, in: windowState, placement: .replaceCurrent)
         id.flatMap(browserManager.tabs.session(for:))?.typedVisitPending = true
     }

@@ -300,9 +300,7 @@ class KeyboardShortcutManager {
     /// Forward a keyboard event directly to the active WebView
     private func forwardEventToWebView(_ event: NSEvent) {
         guard let windowState = windowRegistry?.activeWindow,
-              let tabId = windowState.selectedItemID,
-              let windowId = windowRegistry?.activeWindow?.id,
-              let webView = browserManager?.getWebView(for: tabId, in: windowId) else {
+              let webView = browserManager?.frontWebView(in: windowState) else {
             return
         }
         
@@ -516,26 +514,10 @@ class KeyboardShortcutManager {
             let window = self.windowRegistry?.activeWindow
 
             switch action {
-            // Navigation
-            case .goBack:
-                // Use window-specific webview like the UI buttons do
-                if let window = self.windowRegistry?.activeWindow, let session = tabs.controllableSession(in: window) {
-                    session.goBack(in: browserManager.getWebView(for: session.itemID, in: window.id))
-                }
-            case .goForward:
-                // Use window-specific webview like the UI buttons do
-                if let window = self.windowRegistry?.activeWindow,
-                   let itemID = window.selectedItemID,
-                   let webView = browserManager.getWebView(for: itemID, in: window.id) {
-                    if webView.canGoForward {
-                        webView.goForward()
-                    }
-                }
-            case .refresh:
-                tabs.activeWindowSession?.refresh()
-            case .clearCookiesAndRefresh:
-                browserManager.clearCurrentPageCookies()
-                tabs.activeWindowSession?.refresh()
+            case .goBack, .goForward, .refresh, .clearCookiesAndRefresh, .hardReload, .findInPage,
+                 .zoomIn, .zoomOut, .actualSize, .copyCurrentURL, .printPage, .openDevTools, .pickElement,
+                 .copyScreenshot, .toggleDeveloperMode, .togglePictureInPicture, .muteUnmuteAudio, .translatePage:
+                if let command = action.pageCommand { browserManager.perform(command) }
 
             // Tab Management
             case .newTab:
@@ -591,18 +573,12 @@ class KeyboardShortcutManager {
             // Tools & Features
             case .openCommandPalette:
                 self.windowRegistry?.activeWindow?.commandPalette?.open()
-            case .openDevTools:
-                browserManager.openWebInspector()
             case .openDevPanel:
                 browserManager.toggleDevPanel(.console)
-            case .pickElement:
-                browserManager.startElementPicker()
             case .openNetworkPanel:
                 browserManager.toggleDevPanel(.network)
             case .openPerformancePanel:
                 browserManager.toggleDevPanel(.perf)
-            case .copyScreenshot:
-                if let window { browserManager.copyScreenshot(in: window) }
             case .capturePortrait:
                 if let window { browserManager.togglePortraitCapture(in: window) }
             case .viewDownloads:
@@ -612,34 +588,15 @@ class KeyboardShortcutManager {
             case .expandAllFolders:
                 if let spaceID = window?.spaceID { tabs.setAllFolders(open: true, space: spaceID) }
 
-            // NEW: Missing actions that were only in NookCommands
             case .focusAddressBar:
-                let currentURL = tabs.activeWindowSession?.url.absoluteString ?? ""
+                let currentURL = browserManager.frontPage?.url.absoluteString ?? ""
                 self.windowRegistry?.activeWindow?.commandPalette?.open(prefill: currentURL, navigateCurrentTab: true)
-            case .findInPage:
-                browserManager.showFindBar()
-            case .zoomIn:
-                browserManager.zoomInCurrentTab()
-            case .zoomOut:
-                browserManager.zoomOutCurrentTab()
-            case .actualSize:
-                browserManager.resetZoomCurrentTab()
 
             // NEW: Menu actions that were missing ShortcutAction definitions
             case .toggleSidebar:
                 browserManager.toggleSidebar()
             case .toggleAIAssistant:
                 browserManager.toggleAISidebar()
-            case .togglePictureInPicture:
-                tabs.activeWindowSession?.requestPictureInPicture()
-            case .copyCurrentURL:
-                browserManager.copyCurrentURL()
-            case .printPage:
-                browserManager.printCurrentPage()
-            case .hardReload:
-                browserManager.hardReloadCurrentPage()
-            case .muteUnmuteAudio:
-                tabs.activeWindowSession?.toggleMute()
             case .installExtension:
                 browserManager.showExtensionInstallDialog()
             case .customizeSpaceGradient:
@@ -658,8 +615,6 @@ class KeyboardShortcutManager {
                 guard let window, let selected = window.selectedItemID else { break }
                 tabs.reveal(selected, in: window)
                 SidebarRenameState.shared.itemID = selected
-            case .translatePage:
-                tabs.activeWindowSession?.toggleTranslation()
             case .toggleExtensionLibrary:
                 browserManager.toggleExtensionLibrary()
             case .manageExtensions:
@@ -670,11 +625,6 @@ class KeyboardShortcutManager {
                 let isDark = settings.appearanceMode == .dark
                     || (settings.appearanceMode == .system && NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
                 settings.appearanceMode = isDark ? .light : .dark
-            case .toggleDeveloperMode:
-                guard let settings = browserManager.nookSettings, let host = tabs.activeWindowSession?.url.host else { break }
-                let on = !settings.isDeveloperSite(host)
-                browserManager.setDeveloperSite(host, on: on)
-                if let window { browserManager.showWindowToast("Developer Mode \(on ? "on" : "off") for \(host)", in: window) }
             }
 
         }

@@ -15,11 +15,6 @@ import NookWeb
 extension BrowserManager {
     private static let devLog = Logger(subsystem: "com.gstudios.nook", category: "DevTools")
 
-    /// Cmd+Shift+X: the picker on the active window's page.
-    func startElementPicker() {
-        withDeveloperCapture { [weak self] in self?.tabs.activeWindowSession?.startDevPicker() }
-    }
-
     func installDevPickHandler() {
         tabs.onDevPick = { [weak self] session, element in
             Task { @MainActor in await self?.handleDevPick(session, element) }

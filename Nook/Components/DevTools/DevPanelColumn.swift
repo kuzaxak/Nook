@@ -49,7 +49,7 @@ struct DevPanelColumn: View {
     }
 
     private var session: PageSession? {
-        browserManager.tabs.selectedSession(in: windowState)
+        browserManager.frontPage(in: windowState)
     }
 
     private var tabBar: some View {

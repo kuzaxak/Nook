@@ -166,7 +166,9 @@ struct TopBarView: View {
                         }
                     }
 
-                Button("Copy URL", systemImage: "link") { browserManager.copyCurrentURL() }
+                Button("Copy URL", systemImage: "link") {
+                    if let page = browserManager.tabs.controllableSession(in: windowState) { browserManager.copyURL(of: page, in: windowState) }
+                }
                     .labelStyle(.iconOnly)
                     .buttonStyle(NookIconButtonStyle(size: NookDesign.Size.iconButton, radius: NookDesign.Radius.sm))
                     .help(browserManager.help("Copy URL", shortcut: .copyCurrentURL))
