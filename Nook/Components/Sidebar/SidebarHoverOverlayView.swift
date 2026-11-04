@@ -53,6 +53,7 @@ struct SidebarHoverOverlayView: View {
                         // Clip the floating surface, not descendants: the expanded address
                         // panel is anchored here but deliberately extends over the page.
                         .background {
+                            TabDragSinkAnchor()
                             sidebarBackground
                                 .nookFloatingSurface(in: NookDesign.Radius.shape(cornerRadius))
                         }
@@ -84,4 +85,10 @@ struct SidebarHoverOverlayView: View {
             .overlay(windowState.isIncognito ? NookDesign.Surface.privateTint : Color.clear)
             .overlay(Rectangle().fill(NookDesign.Surface.agentGradient).opacity(isAgent ? NookDesign.Surface.agentChromeOpacity : 0))
     }
+}
+
+/// Keeps a tab dropped between the floating sidebar's drop zones off the page under it.
+private struct TabDragSinkAnchor: NSViewRepresentable {
+    func makeNSView(context: Context) -> TabDragSink { TabDragSink(types: [.nookTabItem]) }
+    func updateNSView(_ nsView: TabDragSink, context: Context) {}
 }
