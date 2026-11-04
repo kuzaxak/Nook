@@ -228,14 +228,14 @@ class AIConfigService {
         if engine == .ai, translationModel == nil {
             let provider = translationProvider ?? translationProviders.first
             config.translationProviderId = provider?.id
-            config.translationModelId = provider.flatMap { modelsForProvider($0.id).first?.id }
+            config.translationModelId = provider.flatMap { config.translationModels(for: $0.id).first?.id }
         }
         save()
     }
 
     func setTranslationProvider(_ providerId: String) {
         config.translationProviderId = providerId
-        config.translationModelId = modelsForProvider(providerId).first?.id
+        config.translationModelId = config.translationModels(for: providerId).first?.id
         save()
     }
 
@@ -398,7 +398,9 @@ class AIConfigService {
               !provider.apiKey.isEmpty else { return }
         var request = URLRequest(url: URL(string: "\(provider.baseURL)/models")!)
         request.setValue("Bearer \(provider.apiKey)", forHTTPHeaderField: "Authorization")
-        openAIModels = await fetchModels(request) { try OpenAICompatibleProvider.models(from: $0, providerId: provider.id) }
+        openAIModels = await fetchModels(request) {
+            try OpenAICompatibleProvider.models(from: $0, providerId: provider.id).filter { AIProviderType.openAI.isChatModel($0.id) }
+        }
     }
 
     func fetchAnthropicModels() async {

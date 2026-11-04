@@ -203,6 +203,21 @@ struct HostedAIProvidersCheck {
         precondition(openAI.map(\.displayName) == openAI.map(\.id))
         precondition(openAI.allSatisfy { $0.providerId == "openai" && $0.capabilities.toolCalling && !$0.isCustom })
 
+        let catalog = [
+            "gpt-5", "gpt-5-mini", "gpt-6-luna", "GPT-4.1", "chatgpt-4o-latest", "o1", "o3-mini", "o4-mini", "o5",
+            "ft:gpt-4o-mini:acme::abc123",
+            "text-embedding-3-large", "tts-1", "gpt-4o-mini-tts", "whisper-1", "dall-e-3", "omni-moderation-latest",
+            "gpt-image-1", "gpt-4o-realtime-preview", "gpt-4o-audio-preview", "gpt-4o-transcribe", "gpt-4o-search-preview",
+            "o4-mini-deep-research", "gpt-5-pro", "o3-pro", "gpt-5-codex", "codex-mini-latest", "sora-2", "babbage-002",
+            "gpt-3.5-turbo-instruct", "computer-use-preview", "omni-1"
+        ]
+        precondition(catalog.filter(AIProviderType.openAI.isChatModel) == [
+            "gpt-5", "gpt-5-mini", "gpt-6-luna", "GPT-4.1", "chatgpt-4o-latest", "o1", "o3-mini", "o4-mini", "o5",
+            "ft:gpt-4o-mini:acme::abc123"
+        ], "OpenAI's list offers only models that take chat completions")
+        precondition(AIProviderType.openAICompatible.isChatModel("text-embedding-nomic") && AIProviderType.openRouter.isChatModel("openai/gpt-image-1"),
+                     "another server's list is taken as it comes")
+
         let refused = Data(#"{"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}"#.utf8)
         precondition((try? AnthropicProvider.models(from: refused, providerId: "anthropic")) == nil)
         precondition((try? OpenAICompatibleProvider.models(from: refused, providerId: "openai")) == nil)

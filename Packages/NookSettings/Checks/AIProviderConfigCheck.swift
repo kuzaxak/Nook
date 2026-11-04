@@ -85,6 +85,13 @@ struct AIProviderConfigCheck {
         precondition(config.translationProviders(hasKey: hasKey).map(\.id) == ["openai", "ollama"],
                      "Apple Intelligence, a provider without its key and a switched-off one cannot translate")
 
+        var listed = config
+        listed.models.insert(AIModelConfig(id: "text-embedding-3-small", displayName: "text-embedding-3-small", providerId: "openai"), at: 0)
+        listed.models.append(AIModelConfig(id: "whisper-1", displayName: "whisper-1", providerId: "openai"))
+        precondition(listed.translationModels(for: "openai").map(\.id) == ["gpt-6-luna"], "an OpenAI model that cannot chat is not offered")
+        precondition(listed.translationModels(for: "ollama").map(\.id) == ["gemma"])
+        precondition(listed.translationModels(for: "gone").isEmpty)
+
         config.translationEngine = .ai
         config.translationProviderId = "openai"
         config.translationModelId = "gpt-6-luna"

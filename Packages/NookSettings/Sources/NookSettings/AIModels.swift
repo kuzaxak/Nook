@@ -52,6 +52,25 @@ public enum AIProviderType: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+extension AIProviderType {
+    private static let openAIChatPrefixes = ["gpt-", "chatgpt-", "ft:gpt"]
+    /// Speech, image, embedding and moderation models, and the ones only the Responses API serves.
+    private static let openAINonChatParts = [
+        "embedding", "tts", "whisper", "dall-e", "moderation", "image", "realtime", "audio",
+        "transcribe", "search", "-pro", "codex", "instruct"
+    ]
+
+    /// Whether `modelId` takes chat completions. Only OpenAI's own list mixes in other kinds of
+    /// model; any other provider's list is taken as it comes.
+    public func isChatModel(_ modelId: String) -> Bool {
+        guard self == .openAI else { return true }
+        let id = modelId.lowercased()
+        let reasoning = id.first == "o" && id.dropFirst().first?.isNumber == true
+        return (reasoning || Self.openAIChatPrefixes.contains { id.hasPrefix($0) })
+            && !Self.openAINonChatParts.contains { id.contains($0) }
+    }
+}
+
 public struct AIProviderConfig: Codable, Identifiable, Equatable {
     public let id: String
     public var displayName: String
@@ -308,6 +327,11 @@ public struct AIConfiguration: Codable {
             provider.providerType != .appleIntelligence && provider.isEnabled
                 && (!provider.providerType.requiresAPIKey || hasKey(provider))
         }
+    }
+
+    public func translationModels(for providerId: String) -> [AIModelConfig] {
+        guard let type = providers.first(where: { $0.id == providerId })?.providerType else { return [] }
+        return models.filter { $0.providerId == providerId && type.isChatModel($0.id) }
     }
 
     /// The chosen provider and model for page translation, while both still exist and can be used.

@@ -535,7 +535,7 @@ struct SettingsAITab: View {
                 }
 
                 if let provider {
-                    let models = configService.modelsForProvider(provider.id)
+                    let models = configService.config.translationModels(for: provider.id)
                     if models.isEmpty {
                         Text("Add a \(provider.displayName) model under Models below to translate with it.")
                             .font(NookDesign.Font.caption)
