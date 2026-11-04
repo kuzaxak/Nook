@@ -30,9 +30,9 @@ struct SpaceSyncTests {
         mutating func fetch(_ cloud: Cloud, now: Date = fixedNow) -> SpaceSyncInbound {
             for id in Set(cloud.journal[cursor...]) {
                 if let entry = cloud.records[id] {
-                    state.inbox.add(entry.record, systemFields: entry.tag)
+                    state.fetched(entry.record, systemFields: entry.tag)
                 } else {
-                    state.inbox.delete(id)
+                    state.fetchedDeletion(id)
                 }
             }
             cursor = cloud.journal.count
@@ -56,7 +56,7 @@ struct SpaceSyncTests {
                 var saved: [SyncRecord] = []
                 var tags: [UUID: Data] = [:]
                 var refused = false
-                for record in state.outgoing(pending.saves, in: tree).values {
+                for record in state.outgoing(pending.saves, in: tree, now: now).values {
                     if let server = cloud.records[record.id], state.systemFields[record.id] != server.tag {
                         state.inbox.add(server.record, systemFields: server.tag)
                         refused = true
@@ -78,10 +78,19 @@ struct SpaceSyncTests {
                     cloud.records[id] = nil
                     cloud.journal.append(id)
                 }
-                state.didSend(saved: saved, systemFields: tags, deleted: Array(pending.deletes))
+                state.didSend(saved: saved, systemFields: tags, deleted: Array(pending.deletes), now: now)
                 if refused { apply(now) }
             }
             Issue.record("sending did not settle")
+        }
+
+        /// What a new engine fetches: every record iCloud has, and no deletions.
+        mutating func refetch(_ cloud: Cloud, now: Date = fixedNow) {
+            state.beginRefetch()
+            for entry in cloud.records.values { state.fetched(entry.record, systemFields: entry.tag) }
+            cursor = cloud.journal.count
+            apply(now)
+            state.endRefetch()
         }
 
         mutating func sync(_ cloud: inout Cloud, now: Date = fixedNow) {
@@ -441,7 +450,7 @@ struct SpaceSyncTests {
         #expect(pending.saves == [work.news])
         let before = a.tree
 
-        for record in a.state.outgoing(pending.saves, in: a.tree).values {
+        for record in a.state.outgoing(pending.saves, in: a.tree, now: later(10)).values {
             a.state.inbox.add(record, systemFields: Data("echo".utf8))
         }
         let inbound = a.apply(later(11))
@@ -486,7 +495,7 @@ struct SpaceSyncTests {
         #expect(cloud.records.count == work.pinnedIDs.count)
     }
 
-    @Test func turningASpaceOnUploadsItAndAsksForAFullFetch() throws {
+    @Test func turningASpaceOnOrWideningItUploadsAndAsksForAFullFetch() throws {
         let work = try Work()
         var state = SpaceSyncState()
 
@@ -494,23 +503,24 @@ struct SpaceSyncTests {
         #expect(fromOff)
         #expect(state.pendingChanges(in: work.tree).saves == work.pinnedIDs)
         let fromPinned = state.setLevel(.everything, for: work.space, now: fixedNow)
-        #expect(!fromPinned)
+        #expect(fromPinned)
         #expect(state.pendingChanges(in: work.tree).saves == work.pinnedIDs.union(work.openTabIDs))
     }
 
-    @Test func goingBackToFavoritesAndPinnedDeletesOpenTabRecordsAndKeepsTheTabs() throws {
+    @Test func goingBackToFavoritesAndPinnedForgetsOpenTabsWithoutDeletingThem() throws {
         var (a, b, work, cloud) = try pair(.everything)
         a.state.setLevel(.pinned, for: work.space, now: later(10))
-        #expect(a.pending.deletes == work.openTabIDs)
-        a.sync(&cloud)
-        b.sync(&cloud)
+        #expect(a.pending.deletes.isEmpty)
+        a.sync(&cloud, now: later(10))
+        b.sync(&cloud, now: later(20))
 
-        #expect(Set(cloud.records.keys) == work.pinnedIDs)
+        #expect(work.openTabIDs.isSubset(of: Set(cloud.records.keys)))
         for mac in [a, b] {
             #expect(work.openTabIDs.allSatisfy { mac.tree.item($0) != nil })
+            #expect(work.openTabIDs.allSatisfy { mac.state.shadow[$0] == nil })
             #expect(mac.state.level(of: work.space) == .pinned)
+            #expect(mac.pending == ([], []))
         }
-        #expect(b.pending == ([], []))
     }
 
     /// Off by choice, or Off because an account change reset this Mac and it fetches everything
@@ -547,5 +557,176 @@ struct SpaceSyncTests {
         #expect(!SpaceSyncAvailability.isEntitled(containers: [container], services: ["CloudDocuments"]))
         #expect(SpaceSyncAvailability.isEntitled(containers: [container], services: ["CloudKit"]))
         #expect(SpaceSyncAvailability.isEntitled(containers: [container], services: ["*"]))
+    }
+
+    // MARK: - Leaving sync
+
+    @Test func aTabOnALinkThatIsNotAWebAddressStaysOnEveryMac() throws {
+        var (a, b, work, cloud) = try pair(.everything)
+        try a.tree.setURL(work.search, URL(string: "file:///tmp/x.pdf")!, now: later(10))
+        #expect(a.pending.deletes.isEmpty)
+        a.sync(&cloud, now: later(10))
+        b.sync(&cloud, now: later(20))
+        a.fetch(cloud, now: later(25))
+
+        for mac in [a, b] {
+            #expect(mac.tree.item(work.search) != nil)
+            #expect(mac.tree.item(work.result) != nil)
+        }
+        #expect(cloud.records[work.search] != nil)
+        #expect(cloud.records[work.result] != nil)
+
+        try a.tree.setURL(work.search, url("search"), now: later(30))
+        a.sync(&cloud, now: later(30))
+        b.sync(&cloud, now: later(40))
+        a.sync(&cloud, now: later(50))
+
+        for mac in [a, b] {
+            #expect(mac.tree.item(work.search)?.url == url("search"))
+            #expect(mac.tree.item(work.result) != nil)
+            #expect(mac.pending == ([], []))
+        }
+        #expect(cloud.records[work.result] != nil)
+    }
+
+    @Test func aReopenedTabStaysWhenItsOwnDeletionComesBack() throws {
+        var (a, b, work, cloud) = try pair(.pinned)
+        let closed = try a.tree.close(work.wiki, now: later(10)).closed
+        a.send(&cloud, now: later(10))
+        try a.tree.reopen(closed, fallback: .tabs(spaceID: work.space), now: later(12))
+        a.fetch(cloud, now: later(15))
+        #expect(a.tree.item(work.wiki) != nil)
+
+        a.send(&cloud, now: later(15))
+        b.sync(&cloud, now: later(20))
+        #expect(cloud.records[work.wiki] != nil)
+        #expect(b.tree.item(work.wiki) != nil)
+    }
+
+    @Test func aTabUndoneAfterItsDeletionReachedAnotherMacComesBackThere() throws {
+        var (a, b, work, cloud) = try pair(.pinned)
+        let undo = try a.tree.close(work.wiki, now: later(10)).change
+        a.sync(&cloud, now: later(10))
+        b.sync(&cloud, now: later(20))
+        #expect(b.tree.item(work.wiki) == nil)
+
+        a.tree.apply(undo)
+        a.sync(&cloud, now: later(30))
+        b.sync(&cloud, now: later(40))
+        a.sync(&cloud, now: later(50))
+
+        #expect(a.tree.item(work.wiki) != nil)
+        #expect(b.tree.item(work.wiki) != nil)
+        #expect(cloud.records[work.wiki] != nil)
+    }
+
+    @Test func aRecordThisMacRefusesIsNotDeletedFromICloud() throws {
+        var (_, b, work, cloud) = try pair(.pinned)
+        _ = try b.tree.close(work.wiki, now: later(50))
+        b.state.forgetRecords()
+        b.refetch(cloud, now: later(60))
+        b.send(&cloud, now: later(60))
+
+        #expect(b.tree.item(work.wiki) == nil)
+        #expect(b.state.shadow[work.wiki] == nil)
+        #expect(cloud.records[work.wiki] != nil)
+    }
+
+    @Test func unpinningOnOneMacMovesTheTabsToTabsOnTheOther() throws {
+        var (a, b, work, cloud) = try pair(.pinned)
+        try b.tree.move(work.wiki, to: .tabs(spaceID: work.space), after: nil, now: later(10))
+        try b.tree.move(work.docs, to: .tabs(spaceID: work.space), after: nil, now: later(10))
+        b.sync(&cloud, now: later(10))
+        a.sync(&cloud, now: later(20))
+
+        for mac in [a, b] {
+            #expect(mac.tree.item(work.wiki)?.parent == .tabs(spaceID: work.space))
+            #expect(mac.tree.item(work.docs)?.parent == .tabs(spaceID: work.space))
+            #expect(mac.tree.item(work.old)?.parent == .folder(itemID: work.archive))
+            #expect(mac.tree.item(work.spec)?.parent == .folder(itemID: work.docs))
+            #expect(mac.state.shadow[work.wiki] == nil)
+            #expect(mac.pending == ([], []))
+        }
+        #expect(cloud.records[work.wiki]?.record.string(Key.section) == "tabs")
+    }
+
+    // MARK: - Order of arrival
+
+    @Test func itemsFetchedBeforeTheirSpaceWaitForIt() throws {
+        let work = try Work()
+        var cloud = Cloud()
+        var a = Mac(work.tree)
+        a.state.setLevel(.pinned, for: work.space, now: fixedNow)
+        a.sync(&cloud)
+
+        var b = Mac(TabTree.firstLaunch(homeURL: url("home"), now: fixedNow))
+        for entry in cloud.records.values where entry.record.type == .item {
+            b.state.fetched(entry.record, systemFields: entry.tag)
+        }
+        b.apply(fixedNow)
+        #expect(b.tree.item(work.wiki) == nil)
+        let space = try #require(cloud.records[work.space])
+        b.state.fetched(space.record, systemFields: space.tag)
+        b.apply(fixedNow)
+
+        var expected = try #require(a.tree.spaceSnapshot(work.space))
+        expected.tabs = []
+        #expect(b.tree.spaceSnapshot(work.space) == expected)
+        #expect(b.state.inbox.isEmpty)
+    }
+
+    @Test func anIncomingParentOutsideItsSyncedSpaceIsNotFollowed() throws {
+        var (_, b, work, cloud) = try pair(.pinned)
+        let made = b.tree.ensureAgentSpace(loginsFrom: work.space, now: fixedNow)
+        let agent = try #require(made).id
+        let agentTab = UUID(), live = UUID()
+        try b.tree.createTab(id: agentTab, url: url("agent"), title: "Agent", in: .tabs(spaceID: agent), after: nil, now: fixedNow)
+        try b.tree.createFolder(id: live, title: "PRs", in: .pinned(spaceID: work.space), after: nil, live: .githubPulls, now: fixedNow)
+        let entry = try #require(cloud.records[work.wiki])
+
+        for (step, parent) in [agentTab, live].enumerated() {
+            var wiki = entry.record
+            wiki.fields[Key.parent] = .string(parent.uuidString)
+            wiki.times["position"] = SpaceSyncCodec.milliseconds(later(TimeInterval(10 + step)))
+            b.state.fetched(wiki, systemFields: entry.tag)
+            b.apply(later(TimeInterval(10 + step)))
+            #expect(b.tree.item(work.wiki)?.parent == .pinned(spaceID: work.space))
+        }
+    }
+
+    // MARK: - Limits and starting over
+
+    @Test func aRecordTooLargeForICloudStaysOnThisMac() throws {
+        var work = try Work()
+        try work.tree.rename(work.wiki, customTitle: String(repeating: "x", count: 1_100_000), now: fixedNow)
+        var state = SpaceSyncState()
+        state.setLevel(.pinned, for: work.space, now: fixedNow)
+
+        #expect(state.pendingChanges(in: work.tree).saves == work.pinnedIDs.subtracting([work.wiki]))
+        #expect(state.tooLarge(in: work.tree) == [work.wiki])
+    }
+
+    @Test func aFullFetchForgetsRecordsICloudNoLongerHasAndDeletesNothing() throws {
+        var (a, _, work, cloud) = try pair(.pinned)
+        cloud.records[work.wiki] = nil
+        a.refetch(cloud, now: later(10))
+
+        #expect(a.state.shadow[work.wiki] == nil)
+        #expect(a.tree.item(work.wiki) != nil)
+        #expect(a.pending.saves == [work.wiki])
+        #expect(a.pending.deletes.isEmpty)
+    }
+
+    @Test(arguments: [false, true])
+    func aZoneGoneFromICloudDeletesNothingHere(reuploading: Bool) throws {
+        var (a, _, work, _) = try pair(.everything)
+        let tree = a.tree
+        a.state.zoneLost(reuploading: reuploading)
+
+        #expect(a.tree == tree)
+        #expect(a.state.shadow.isEmpty)
+        #expect(a.pending.deletes.isEmpty)
+        #expect(a.state.level(of: work.space) == (reuploading ? .everything : .off))
+        #expect(a.pending.saves == (reuploading ? work.pinnedIDs.union(work.openTabIDs) : []))
     }
 }

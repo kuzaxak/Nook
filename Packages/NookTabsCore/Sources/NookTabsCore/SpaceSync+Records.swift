@@ -5,8 +5,8 @@
 //
 //  A space and its items as records, read from the same snapshot a `.nookspace` file holds, and
 //  records back into spaces and items. What never syncs is left out here: the Agent space, live
-//  folders and their pages, tabs whose link is not a web address with what they opened, and the
-//  favorites another space holds.
+//  folders and their pages, tabs whose link is not a web address with what they opened, records
+//  too large for iCloud, and the favorites another space holds.
 //
 
 import Foundation
@@ -15,6 +15,20 @@ extension SpaceSyncState {
     private typealias Key = SyncRecord.Key
 
     public func records(of tree: TabTree) -> [UUID: SyncRecord] {
+        var tooLarge: Set<UUID> = []
+        return records(of: tree, tooLarge: &tooLarge)
+    }
+
+    /// Items left out of sync because their record is larger than iCloud takes.
+    public func tooLarge(in tree: TabTree) -> Set<UUID> {
+        var tooLarge: Set<UUID> = []
+        _ = records(of: tree, tooLarge: &tooLarge)
+        return tooLarge
+    }
+
+    /// Also holds a tab or folder moved from a synced section into one this Mac does not sync
+    /// (unpinned at Favorites & Pinned), with its new place, so the other Macs move it too.
+    func records(of tree: TabTree, tooLarge: inout Set<UUID>) -> [UUID: SyncRecord] {
         var out: [UUID: SyncRecord] = [:]
         for space in tree.orderedSpaces where !space.isAgent {
             let level = self.level(of: space.id)
@@ -30,10 +44,18 @@ extension SpaceSyncState {
             times["level"] = max(modified, levelTimes[space.id] ?? 0)
             out[space.id] = SyncRecord(type: .space, id: space.id, fields: fields, times: times)
 
-            func add(_ entries: [SpaceSnapshot.Entry], _ section: SyncSection, under parent: UUID?) {
+            func movedOut(_ id: UUID) -> Bool {
+                guard let agreed = shadow[id], agreed.uuid(Key.space) == space.id, let section = agreed.section else { return false }
+                return level.syncs(section)
+            }
+            func add(_ entries: [SpaceSnapshot.Entry], _ section: SyncSection, under parent: UUID?, leaving: Bool) {
                 for entry in entries {
                     guard let item = tree.items[entry.id], item.live == nil else { continue }
                     if entry.kind == .tab, entry.url.flatMap(TabTree.webURL) == nil { continue }
+                    guard !leaving || movedOut(entry.id) else {
+                        add(entry.children, section, under: entry.id, leaving: leaving)
+                        continue
+                    }
                     var fields: [String: SyncValue] = [
                         Key.space: .string(space.id.uuidString), Key.section: .string(section.rawValue),
                         Key.kind: .string(entry.kind.rawValue), Key.order: .string(item.order.rawValue), Key.title: .string(entry.title),
@@ -42,20 +64,39 @@ extension SpaceSyncState {
                     fields[Key.url] = entry.url.map { .string($0) }
                     fields[Key.customTitle] = entry.customTitle.map { .string($0) }
                     let modified = SpaceSyncCodec.milliseconds(item.modifiedAt)
-                    out[entry.id] = SyncRecord(type: .item, id: entry.id, fields: fields,
-                                               times: SyncRecord.RecordType.item.groups.mapValues { _ in modified })
-                    add(entry.children, section, under: entry.id)
+                    let record = SyncRecord(type: .item, id: entry.id, fields: fields,
+                                            times: SyncRecord.RecordType.item.groups.mapValues { _ in modified })
+                    guard record.byteCount <= SyncRecord.maxBytes else {
+                        tooLarge.insert(entry.id)
+                        continue
+                    }
+                    out[entry.id] = record
+                    add(entry.children, section, under: entry.id, leaving: leaving)
                 }
             }
-            add(snapshot.favorites.filter { tree.items[$0.id]?.parent == .favorites(spaceID: space.id) }, .favorites, under: nil)
-            add(snapshot.pinned, .pinned, under: nil)
-            if level.syncs(.tabs) { add(snapshot.tabs, .tabs, under: nil) }
+            add(snapshot.favorites.filter { tree.items[$0.id]?.parent == .favorites(spaceID: space.id) }, .favorites, under: nil, leaving: false)
+            add(snapshot.pinned, .pinned, under: nil, leaving: false)
+            add(snapshot.tabs, .tabs, under: nil, leaving: !level.syncs(.tabs))
         }
         return out
     }
 }
 
 extension SyncRecord {
+    /// CloudKit takes at most 1 MB per record, and encryption makes the fields it stores larger
+    /// than the values counted by `byteCount`.
+    public static let maxBytes = 900_000
+
+    var byteCount: Int {
+        fields.reduce(times.count * 16) { total, field in
+            switch field.value {
+            case .string(let text): return total + field.key.utf8.count + text.utf8.count
+            case .bytes(let data): return total + field.key.utf8.count + data.count
+            case .int: return total + field.key.utf8.count + 8
+            }
+        }
+    }
+
     /// The record as this build reads it back, so a field a newer build writes differently never
     /// looks like a change made here.
     func normalized() -> SyncRecord {
@@ -115,6 +156,11 @@ enum SyncMerge {
         guard let shadow else { return modified }
         let seen = shadow.times[group] ?? 0
         return values(local, keys) == values(shadow, keys) ? seen : max(modified, seen + 1)
+    }
+
+    static func samePosition(_ a: SyncRecord, _ b: SyncRecord) -> Bool {
+        let keys = SyncRecord.RecordType.item.groups["position"] ?? []
+        return values(a, keys) == values(b, keys)
     }
 
     static func outgoing(_ local: SyncRecord, shadow: SyncRecord?) -> SyncRecord {
