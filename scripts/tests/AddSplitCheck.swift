@@ -36,6 +36,14 @@ struct AddSplitCheck {
         precondition(!adding.shows(selectedItemID: current, split: showing))
         precondition(adding.rightItem(choosing: opened, selectedItemID: other, split: nil) == nil)
 
+        // The bar lists the window's own space's tabs and pages to open: another space's tab
+        // would switch spaces, and folders and actions fill no pane.
+        let space = UUID(), elsewhere = UUID()
+        precondition(AddSplit.offers(.tab(spaceID: space), windowSpace: space))
+        precondition(!AddSplit.offers(.tab(spaceID: elsewhere), windowSpace: space), "another space's tab")
+        precondition(AddSplit.offers(.page, windowSpace: space), "an address, a search or a history entry")
+        precondition(!AddSplit.offers(.other, windowSpace: space), "a folder or an action")
+
         // The bar holds the empty pane while it is open for it. Escape, a click outside and the
         // pane's close button all close the bar, which drops it; opening the bar for anything
         // else (Cmd+T, Cmd+L) drops it too.

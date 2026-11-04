@@ -90,10 +90,10 @@ struct CommandPaletteView: View {
     /// The Return row first, then what the search found. Index -1 means the Return row, or the
     /// first row in a scope, which has no Return row.
     private var visibleSuggestions: [SearchManager.SearchSuggestion] {
-        var found = searchManager.suggestions
+        var found = searchManager.suggestions.filter(isOffered)
         switch scope {
-        case .actions: return actionRows(matching: text, wordPrefixOnly: false)
-        case .choices(let action): return choiceRows(for: action, matching: text)
+        case .actions: return actionRows(matching: text, wordPrefixOnly: false).filter(isOffered)
+        case .choices(let action): return choiceRows(for: action, matching: text).filter(isOffered)
         case .some: return Array(found.prefix(SearchManager.scopedLimit))
         case nil: break
         }
@@ -113,6 +113,18 @@ struct CommandPaletteView: View {
         let actions = activeSiteSearch == nil && commandPalette.addSplit == nil && text.count >= 2
             ? Array(actionRows(matching: text, wordPrefixOnly: true).prefix(2)) : []
         return [primary] + actions + rest.prefix(8 - actions.count)
+    }
+
+    /// Every row, except while the bar fills Add Split View's empty pane, when `AddSplit.offers` decides.
+    private func isOffered(_ row: SearchManager.SearchSuggestion) -> Bool {
+        guard commandPalette.addSplit != nil else { return true }
+        let kind: AddSplit.Row
+        switch row.type {
+        case .tab(let match): kind = .tab(spaceID: browserManager.tabs.spaceID(of: match.itemID))
+        case .url, .search, .history: kind = .page
+        case .folder, .action: kind = .other
+        }
+        return AddSplit.offers(kind, windowSpace: windowState.spaceID)
     }
 
     /// What Return does with what was typed: the completed address, the address, or a search.
@@ -160,6 +172,9 @@ struct CommandPaletteView: View {
     private var wordStops: Set<Character> {
         PaletteText.stops(from: nookSettings.paletteWordStops)
     }
+
+    /// The field's text while empty, which Add Split View's empty pane shows too.
+    static let placeholder = "Search or enter URL..."
 
     let commandPaletteWidth: CGFloat = 765
     let commandPaletteHorizontalPadding: CGFloat = 10
@@ -256,7 +271,7 @@ struct CommandPaletteView: View {
                                     TextField(
                                         activeSiteSearch.map { "Search \($0.name)..." }
                                             ?? scope.map { "Search \($0.label)..." }
-                                            ?? "Search or enter URL...",
+                                            ?? Self.placeholder,
                                         text: $text
                                     )
                                     .textFieldStyle(.plain)
@@ -373,6 +388,12 @@ struct CommandPaletteView: View {
                 Spacer()
             }
 
+            // The empty pane's close button, above the bar's click-away background.
+            if let pane {
+                SplitPaneButton(systemImage: "xmark", help: "Close Split View") { commandPalette.close() }
+                    .position(x: pane.maxX - paletteFrame.minX - NookDesign.Spacing.sm - NookDesign.Size.rowButton / 2,
+                              y: pane.minY - paletteFrame.minY + NookDesign.Spacing.sm + NookDesign.Size.navRow / 2)
+            }
         }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { paletteFrame = $0 }
         .allowsHitTesting(isVisible)
@@ -961,8 +982,10 @@ struct CommandPaletteView: View {
     // MARK: - Opening Rows
 
     /// Cmd+Return: the row opens in a background tab and the bar stays open with its query, so
-    /// several can be opened in a row. An open tab is switched to, as with Return.
+    /// several can be opened in a row. An open tab is switched to, as with Return. Filling Add
+    /// Split View's empty pane, it does what Return does.
     private func openTargetInBackground() {
+        guard commandPalette.addSplit == nil else { return handleReturn() }
         guard let row = targetSuggestion else { return }
         guard let url = url(for: row) else {
             selectSuggestion(row)

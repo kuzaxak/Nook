@@ -111,7 +111,7 @@ final class SplitPaneView: NSView {
 }
 
 /// Add Split View's right pane until the command bar fills it. Not a tab, so there is no page:
-/// only the strip, with the bar's placeholder and a close button.
+/// only the strip with the bar's placeholder. The bar draws the pane's close button.
 final class EmptySplitPaneView: NSView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
@@ -123,13 +123,13 @@ final class EmptySplitPaneView: NSView {
     private let maskLayer = CAShapeLayer()
     private weak var settings: NookSettingsService?
 
-    init(frame: NSRect, settings: NookSettingsService?, onClose: @escaping () -> Void) {
+    init(frame: NSRect, settings: NookSettingsService?) {
         self.settings = settings
         super.init(frame: frame)
         wantsLayer = true
         layer?.mask = maskLayer
         viewDidChangeEffectiveAppearance()
-        let strip = NSHostingView(rootView: EmptySplitPaneStrip(onClose: onClose))
+        let strip = NSHostingView(rootView: EmptySplitPaneStrip())
         strip.translatesAutoresizingMaskIntoConstraints = false
         strip.safeAreaRegions = []
         addSubview(strip)
@@ -151,16 +151,11 @@ final class EmptySplitPaneView: NSView {
 }
 
 private struct EmptySplitPaneStrip: View {
-    let onClose: () -> Void
-
     var body: some View {
-        Text("Search or Enter URL…")
+        Text(CommandPaletteView.placeholder)
             .font(NookDesign.Font.secondary)
             .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(alignment: .trailing) {
-                SplitPaneButton(systemImage: "xmark", help: "Close Split View", action: onClose)
-            }
+            .frame(maxWidth: .infinity)
             .frame(height: NookDesign.Size.navRow)
     }
 }
@@ -212,7 +207,7 @@ private extension NSLayoutConstraint {
     }
 }
 
-private struct SplitPaneButton: View {
+struct SplitPaneButton: View {
     let systemImage: String
     let help: String
     let action: () -> Void

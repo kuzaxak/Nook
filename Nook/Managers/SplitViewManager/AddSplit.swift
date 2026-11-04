@@ -32,4 +32,24 @@ struct AddSplit: Equatable {
         guard shows(selectedItemID: selectedItemID, split: split), itemID != leftItemID else { return nil }
         return itemID
     }
+
+    /// A command bar row as Add Split View sees it.
+    enum Row {
+        /// An open tab in that space.
+        case tab(spaceID: UUID?)
+        /// An address, a search or a history entry, which opens in a new tab.
+        case page
+        /// A folder or an action.
+        case other
+    }
+
+    /// Whether the bar lists `row` while it fills the empty pane: a tab of the window's space, so
+    /// choosing it keeps the space, or a page to open there.
+    static func offers(_ row: Row, windowSpace: UUID?) -> Bool {
+        switch row {
+        case .tab(let spaceID): return spaceID != nil && spaceID == windowSpace
+        case .page: return true
+        case .other: return false
+        }
+    }
 }

@@ -662,9 +662,7 @@ struct TabCompositorWrapper: NSViewRepresentable {
             let left = contentSubviews.compactMap { $0 as? SplitPaneView }.first { $0.side == .left && $0.itemID == adding.leftItemID }
                 ?? SplitPaneView(frame: leftRect, side: .left, itemID: adding.leftItemID, browserManager: browserManager, windowState: windowState, hoverManager: hoverManager)
             let empty = contentSubviews.compactMap { $0 as? EmptySplitPaneView }.first
-                ?? EmptySplitPaneView(frame: rightRect, settings: browserManager.nookSettings) { [weak windowState] in
-                    windowState?.commandPalette?.close()
-                }
+                ?? EmptySplitPaneView(frame: rightRect, settings: browserManager.nookSettings)
             removeContentViews(contentSubviews.filter { $0 !== left && $0 !== empty })
             for pane in [left, empty] where pane.superview !== containerView { containerView.addSubview(pane) }
             left.frame = leftRect
