@@ -95,6 +95,8 @@ public final class TabsController {
     @ObservationIgnored public let translationCaches: TranslationCaches
     /// A page started loading with no window showing it: a link opened in the background.
     @ObservationIgnored public var onPageLoadedInBackground: ((PageSession) -> Void)?
+    /// The main tree changed; space sync reads it to find what to send.
+    @ObservationIgnored public var onTreeChanged: (() -> Void)?
 
     /// Launch argument that redirects tab state, e.g. `-NookStateDir /tmp/bench`.
     /// Read from the argument domain only, never from persisted defaults, so a stray written
@@ -199,6 +201,13 @@ public final class TabsController {
         store.save(tree, device)
     }
 
+    /// Writes the queued state now and waits for it, so state kept about the tree elsewhere is
+    /// never newer on disk than the tree.
+    public func saveNow() {
+        store.save(tree, device)
+        store.flush()
+    }
+
     /// Writes now, with every regular window's current frame. Called at quit; windows closing
     /// afterwards keep their records so they all reopen.
     public func flushSync() {
@@ -262,6 +271,7 @@ public final class TabsController {
                 if undoable { pushUndo(change) }
                 device.prune(against: tree)
                 save()
+                if !change.isEmpty { onTreeChanged?() }
                 return change
             case .privateWindow(let window):
                 var copy = window.privateTree ?? TabTree()

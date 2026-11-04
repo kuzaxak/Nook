@@ -848,9 +848,9 @@ extension TabsController {
     }
 
     /// Deletes a space; its items go to the reopen history and its website data is cleared
-    /// unless another space shares it.
+    /// unless another space shares it, or kept in Profiles with `keepingLeftProfile`.
     /// Windows showing it move to another space.
-    public func deleteSpace(_ spaceID: UUID) {
+    public func deleteSpace(_ spaceID: UUID, keepingLeftProfile: Bool = false) {
         guard let owner = owner(ofSpace: spaceID) else { return }
         // Favorites other spaces still show move to one of them instead of closing.
         if let heir = tree(owner).favoriteSpaces(sharedWith: spaceID).first(where: { $0 != spaceID }) {
@@ -867,6 +867,7 @@ extension TabsController {
         // person's space, so it is never cleared, and its tabs stay out of the reopen history.
         let isAgent = source.space(spaceID)?.isAgent == true
         let deleted = isAgent ? nil : profile(forSpace: spaceID)
+        let left = source.profile(ofSpace: spaceID)
         var closed: [ClosedEntry] = []
         guard perform(owner, "deleteSpace", { tree in
             let result = try tree.deleteSpace(spaceID)
@@ -888,9 +889,13 @@ extension TabsController {
         }
         if case .main = owner, let profile = deleted,
            !tree.orderedSpaces.contains(where: { tree.dataStoreID(for: $0.id) == profile.id }) {
-            // Its cookies and logins go with it, since no other space uses this data store.
-            forgetProfile(profile.id)
-            Task { await clearData(of: profile) }
+            if keepingLeftProfile, let left {
+                keepProfile(left)
+            } else {
+                // Its cookies and logins go with it, since no other space uses this data store.
+                forgetProfile(profile.id)
+                Task { await clearData(of: profile) }
+            }
             // The Agent space may have borrowed its logins from this one.
             if let agent = agentSpaceID { unloadPagesOnWrongDataStore(items(inSpace: agent).map(\.id)) }
         }
