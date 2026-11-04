@@ -57,13 +57,9 @@ private struct Mac {
     }
 
     mutating func fetch(_ records: [CKRecord], now: Date) {
-        for record in records {
-            guard let synced = SyncRecord(record) else {
-                check(false, "\(record.recordType) \(record.recordID.recordName) reads back as no record")
-                continue
-            }
-            state.fetched(synced, systemFields: record.archivedSystemFields)
-        }
+        _ = state.fetched(records, deletions: [])
+        check(records.allSatisfy { state.inbox.records[UUID(uuidString: $0.recordID.recordName)!] != nil },
+              "every fetched record of this Mac's zone reaches the inbox")
         let inbound = state.receive(into: tree, now: now)
         tree.apply(inbound.change)
         state.prune(against: tree, now: now)
@@ -147,6 +143,18 @@ struct SpaceSyncCloudKitCheck {
         let joined = c.state.outgoing(c.state.pendingChanges(in: c.tree).saves, in: c.tree, now: later.addingTimeInterval(3), device: c.device)
             .values.map { $0.record(in: c.state.zoneID, systemFields: nil) }
         check(!joined.isEmpty && joined.allSatisfy { $0.recordID.zoneID.ownerName == ownerAccount }, "a joined Mac's saves go into the owner's zone")
+        let otherZone = CKRecordZone.ID(zoneName: "Spaces", ownerName: "_someoneElse")
+        let stray = CKRecord(recordType: "Space", recordID: CKRecord.ID(recordName: UUID().uuidString, zoneID: otherZone))
+        stray.encryptedValues["name"] = "Elsewhere" as NSString
+        let strayShare = CKShare(recordZoneID: otherZone)
+        let ownShare = CKShare(recordZoneID: c.state.zoneID)
+        let strayFetch = c.state.fetched([stray, strayShare], deletions: [(CKRecord.ID(recordName: work.uuidString, zoneID: otherZone), "Space")])
+        check(c.state.inbox.isEmpty, "a joined Mac takes in nothing from another zone its shared database holds")
+        check(strayFetch.share == nil && !strayFetch.shareDeleted, "another zone's share is not this Mac's")
+        let ownFetch = c.state.fetched([ownShare], deletions: [])
+        check(ownFetch.share === ownShare, "the joined zone's share is read")
+        let gone = c.state.fetched([], deletions: [(ownShare.recordID, CKRecord.SystemType.share)])
+        check(gone.shareDeleted, "the joined zone's share deleted is noticed")
         c.state.leaveSharedZone()
         check(c.state.databaseScope == .private && c.state.zoneID.ownerName == CKCurrentUserDefaultName, "leaving goes back to Mac C's own zone")
 

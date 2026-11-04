@@ -70,6 +70,30 @@ extension SpaceSyncState {
 
     /// The zone-wide share of `zoneID`, which CloudKit always names `CKRecordNameZoneWideShare`.
     var shareRecordID: CKRecord.ID { CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: zoneID) }
+
+    /// Takes in what a fetch returned for this Mac's zone. A shared database holds a zone for
+    /// every share the account joined, so records of any other zone are left out. Returns the
+    /// zone's share when it came or went.
+    mutating func fetched(_ records: [CKRecord], deletions: [(id: CKRecord.ID, type: CKRecord.RecordType)]) -> (share: CKShare?, shareDeleted: Bool) {
+        let zone = zoneID
+        var share: CKShare?
+        for record in records where record.recordID.zoneID == zone {
+            if let zoneShare = record as? CKShare {
+                share = zoneShare
+            } else if let synced = SyncRecord(record) {
+                fetched(synced, systemFields: record.archivedSystemFields)
+            }
+        }
+        var shareDeleted = false
+        for deletion in deletions where deletion.id.zoneID == zone {
+            if deletion.type == CKRecord.SystemType.share {
+                shareDeleted = true
+            } else if let id = UUID(uuidString: deletion.id.recordName) {
+                fetchedDeletion(id)
+            }
+        }
+        return (share, shareDeleted)
+    }
 }
 
 extension CKRecord {

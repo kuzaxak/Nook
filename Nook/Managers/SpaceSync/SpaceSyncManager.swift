@@ -626,28 +626,16 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
                 zoneLost(reuploading: deletion.reason == .encryptedDataReset)
             }
         case .fetchedRecordZoneChanges(let changes):
-            for modification in changes.modifications {
-                if let share = modification.record as? CKShare {
-                    shareChanged(share)
-                    continue
-                }
-                guard let record = SyncRecord(modification.record) else { continue }
-                state.fetched(record, systemFields: modification.record.archivedSystemFields)
-            }
-            for deletion in changes.deletions {
-                if deletion.recordType == CKRecord.SystemType.share {
-                    shareDeleted()
-                    continue
-                }
-                if let id = UUID(uuidString: deletion.recordID.recordName) { state.fetchedDeletion(id) }
-            }
+            let fetched = state.fetched(changes.modifications.map(\.record), deletions: changes.deletions.map { ($0.recordID, $0.recordType) })
+            if let share = fetched.share { shareChanged(share) }
+            if fetched.shareDeleted { shareDeleted() }
             scheduleSave()
         case .sentRecordZoneChanges(let sent):
             didSend(sent)
         case .sentDatabaseChanges(let sent):
             for failure in sent.failedZoneSaves { note(failure.error) }
         case .didFetchRecordZoneChanges(let fetched):
-            if let error = fetched.error {
+            if let error = fetched.error, fetched.zoneID == state.zoneID {
                 fetchFailed = true
                 if error.code == .zoneNotFound {
                     zoneLost(reuploading: false)
