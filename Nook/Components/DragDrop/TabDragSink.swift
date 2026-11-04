@@ -11,7 +11,7 @@
 
 import AppKit
 
-final class TabDragSink: NSView {
+final class TabDragSink: NSView, TabDropTarget {
     init(types: [NSPasteboard.PasteboardType]) {
         super.init(frame: .zero)
         registerForDraggedTypes(types)
@@ -20,7 +20,12 @@ final class TabDragSink: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { [] }
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { [] }
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { false }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { TabDropRouter.shared.updated(sender, at: self) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { TabDropRouter.shared.updated(sender, at: self) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { TabDropRouter.shared.exited(sender, at: self) }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { TabDropRouter.shared.perform(sender, at: self) }
+
+    func tabDragUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { [] }
+    func tabDragExited() {}
+    func tabDragPerform(_ sender: NSDraggingInfo) -> Bool { false }
 }

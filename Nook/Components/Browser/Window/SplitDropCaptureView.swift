@@ -2,7 +2,7 @@
 import AppKit
 import WebKit
 
-final class SplitDropCaptureView: NSView {
+final class SplitDropCaptureView: NSView, TabDropTarget {
     weak var browserManager: BrowserManager?
     weak var splitManager: SplitViewManager?
     var windowId: UUID?
@@ -40,10 +40,22 @@ final class SplitDropCaptureView: NSView {
 
     // MARK: - Dragging
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        draggingUpdated(sender)
+        TabDropRouter.shared.updated(sender, at: self)
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        TabDropRouter.shared.updated(sender, at: self)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        TabDropRouter.shared.exited(sender, at: self)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        TabDropRouter.shared.perform(sender, at: self)
+    }
+
+    func tabDragUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         isDragActive = true
         guard let windowId, let sm = splitManager else { return [] }
         sm.updateDragLocation(convert(sender.draggingLocation, from: nil), for: windowId)
@@ -59,7 +71,7 @@ final class SplitDropCaptureView: NSView {
         return SplitDrop.operation(allowed: sender.draggingSourceOperationMask)
     }
 
-    override func draggingExited(_ sender: NSDraggingInfo?) {
+    func tabDragExited() {
         isDragActive = false
         if let windowId {
             splitManager?.updateDragLocation(nil, for: windowId)
@@ -67,7 +79,7 @@ final class SplitDropCaptureView: NSView {
         }
     }
 
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+    func tabDragPerform(_ sender: NSDraggingInfo) -> Bool {
         isDragActive = false
         guard let windowId, let sm = splitManager else { return false }
         sm.updateDragLocation(nil, for: windowId)

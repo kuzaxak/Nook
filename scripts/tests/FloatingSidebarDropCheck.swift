@@ -1,5 +1,5 @@
 // Licensed under GPL-3.0. See LICENSE.
-// swiftc Nook/Components/DragDrop/TabDragSink.swift scripts/tests/FloatingSidebarDropCheck.swift -o /tmp/fsd && /tmp/fsd
+// swiftc Nook/Components/DragDrop/TabDropRouter.swift Nook/Components/DragDrop/TabDragSink.swift scripts/tests/FloatingSidebarDropCheck.swift -o /tmp/fsd && /tmp/fsd
 //
 // The sidebar revealed by hovering the window's edge floats over the page. A tab dropped between
 // its drop zones must land on neither the zones nor the page under it, which would split the window.

@@ -26,44 +26,44 @@ class NookDropZoneCoordinator: NSObject {
 
 // MARK: - NookDropZoneNSView
 
-class NookDropZoneNSView: NSView {
+class NookDropZoneNSView: NSView, TabDropTarget {
     weak var coordinator: NookDropZoneCoordinator?
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        guard let coordinator = coordinator,
-              NookDragItem.fromPasteboard(sender.draggingPasteboard) != nil else { return [] }
-        MainActor.assumeIsolated {
-            coordinator.manager.cursorEnteredZone(coordinator.zoneID)
-        }
-        updatePosition(sender)
-        return .move
+        TabDropRouter.shared.updated(sender, at: self)
     }
 
     override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        TabDropRouter.shared.updated(sender, at: self)
+    }
+
+    override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        TabDropRouter.shared.exited(sender, at: self)
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        TabDropRouter.shared.perform(sender, at: self)
+    }
+
+    func tabDragUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard let coordinator, NookDragItem.fromPasteboard(sender.draggingPasteboard) != nil else { return [] }
         coordinator.manager.cursorEnteredZone(coordinator.zoneID)
         updatePosition(sender)
         return .move
     }
 
-    override func draggingExited(_ sender: (any NSDraggingInfo)?) {
-        guard let coordinator = coordinator else { return }
-        MainActor.assumeIsolated {
-            coordinator.manager.cursorExitedZone(coordinator.zoneID)
-        }
+    func tabDragExited() {
+        guard let coordinator else { return }
+        coordinator.manager.cursorExitedZone(coordinator.zoneID)
     }
 
-    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        guard let coordinator = coordinator,
-              let item = NookDragItem.fromPasteboard(sender.draggingPasteboard) else { return false }
+    func tabDragPerform(_ sender: NSDraggingInfo) -> Bool {
+        guard let coordinator, let item = NookDragItem.fromPasteboard(sender.draggingPasteboard) else { return false }
         let point = flippedPoint(sender)
-        let width = bounds.width
-        MainActor.assumeIsolated {
-            let position = NookDragSessionManager.position(in: coordinator.zoneID, layout: coordinator.layout, point: point, width: width)
-            let screenFrame = window?.convertToScreen(convert(bounds, to: nil)) ?? .zero
-            coordinator.manager.finishDrag(at: position, layout: coordinator.layout, zoneScreenFrame: screenFrame) {
-                coordinator.onDrop(item.tabId, position)
-            }
+        let position = NookDragSessionManager.position(in: coordinator.zoneID, layout: coordinator.layout, point: point, width: bounds.width)
+        let screenFrame = window?.convertToScreen(convert(bounds, to: nil)) ?? .zero
+        coordinator.manager.finishDrag(at: position, layout: coordinator.layout, zoneScreenFrame: screenFrame) {
+            coordinator.onDrop(item.tabId, position)
         }
         return true
     }
@@ -77,11 +77,7 @@ class NookDropZoneNSView: NSView {
 
     private func updatePosition(_ sender: NSDraggingInfo) {
         guard let coordinator = coordinator else { return }
-        let point = flippedPoint(sender)
-        let width = bounds.width
-        MainActor.assumeIsolated {
-            coordinator.manager.updateDropPosition(for: coordinator.zoneID, layout: coordinator.layout, localPoint: point, zoneWidth: width)
-        }
+        coordinator.manager.updateDropPosition(for: coordinator.zoneID, layout: coordinator.layout, localPoint: flippedPoint(sender), zoneWidth: bounds.width)
     }
 }
 
