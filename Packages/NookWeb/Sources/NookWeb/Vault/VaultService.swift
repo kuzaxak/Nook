@@ -6,6 +6,7 @@
 //  The app-wide side of the Pawl Vault bridge: the setting, the socket client, the status
 //  Settings shows, and the per-web-view bridges. Status comes from `hello`, asked when the
 //  setting turns on, at most every few seconds on navigation, and before every passkey request.
+//  The bridges also carry passkey requests to USB security keys while that setting is on.
 //
 
 #if os(macOS)
@@ -21,10 +22,12 @@ public final class VaultService {
     public private(set) var status: VaultStatus?
 
     @ObservationIgnored public weak var presenter: VaultPresenter?
+    @ObservationIgnored public weak var securityKeyPresenter: SecurityKeyPresenter?
     @ObservationIgnored let client = VaultClient()
     @ObservationIgnored private let settings: NookSettingsService
     @ObservationIgnored private var lastNavigationRefresh: ContinuousClock.Instant?
     @ObservationIgnored private var settingObserver: NSObjectProtocol?
+    @ObservationIgnored private var securityKeysObserver: NSObjectProtocol?
 
     /// The bundled Public Suffix List, read on the first passkey request.
     static let suffixes: PublicSuffixList = {
@@ -39,10 +42,17 @@ public final class VaultService {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.settingChanged() }
         }
+        securityKeysObserver = NotificationCenter.default.addObserver(
+            forName: NookSettingsService.securityKeysEnabledDidChange, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { VaultBridge.syncAll() }
+        }
         if settings.pawlVaultEnabled { Task { await refresh() } }
     }
 
     public var isEnabled: Bool { settings.pawlVaultEnabled }
+
+    public var securityKeysEnabled: Bool { settings.securityKeysEnabled }
 
     /// Paired and unlocked as of the last `hello`.
     public var isConnected: Bool { isEnabled && status == .connected }
@@ -95,6 +105,11 @@ public final class VaultService {
     /// A new document committed in `webView`: requests and pickers from the old one end.
     public func pageCommitted(in webView: WKWebView) {
         VaultBridge.bridge(for: webView)?.pageCommitted(origin: webView.url.flatMap(WebAuthnPolicy.origin(of:)))
+    }
+
+    /// The web content process ended: the page's requests, pickers and sheets end with it.
+    public func pageEnded(in webView: WKWebView) {
+        VaultBridge.bridge(for: webView)?.documentChanged()
     }
 
     private func settingChanged() {

@@ -6,10 +6,10 @@
 //  One web view's link to Pawl Vault. Passwords and one-time codes: the form script and its
 //  handler live in the isolated NookAutofill world; Nook shows the accounts for the frame's
 //  origin (for a code field, those with a code) and fills through that world after the user
-//  picks one. Passkeys: while the vault is connected, a page-world shim replaces the
-//  suppression script and posts to the reply handler `nookPasskey`. The origin always comes
-//  from WebKit's frame info, and nothing is signed or filled without Nook's own picker or
-//  confirmation first.
+//  picks one. Passkeys: while the vault is connected or security keys are on, a page-world
+//  shim replaces the suppression script and posts to the reply handler `nookPasskey`; with
+//  both, a sheet first asks which to use. The origin always comes from WebKit's frame info,
+//  and nothing is signed or filled without Nook's own picker, confirmation or sheet first.
 //
 
 #if os(macOS)
@@ -27,6 +27,8 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
     private static let suppressionMarker = "// Nook Passkey Suppression"
     private static let autofillSource = resource("vault-autofill")
     private static let passkeySource = resource("vault-passkey")
+    private static let vaultPasskeySource = passkeySource.replacingOccurrences(of: "__NOOK_PLATFORM__", with: "true")
+    private static let securityKeyPasskeySource = passkeySource.replacingOccurrences(of: "__NOOK_PLATFORM__", with: "false")
     private static let live = NSHashTable<VaultBridge>.weakObjects()
 
     private static func resource(_ name: String) -> String {
@@ -54,6 +56,8 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
     private var focusGeneration = 0
     /// The main frame's origin as of its last commit; a subframe must match it.
     private var committedOrigin: String?
+    /// The request whose security key sheet is up, and its ceremony once one runs.
+    private var keyRequest: (id: Int, sheet: SecurityKeySheet, ceremony: SecurityKeyCeremony?)?
 
     private init(session: PageSession, service: VaultService, webView: WKWebView) {
         self.session = session
@@ -92,21 +96,26 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
     }
 
     /// Form script while the setting is on; passkey shim and handler while the vault is
-    /// connected, the suppression script otherwise. Scripts apply from the next document.
+    /// connected or security keys are on, the suppression script otherwise. The shim offers a
+    /// platform authenticator only with the vault. Scripts apply from the next document.
     private func syncScripts() {
         guard let controller, let service else { return }
         let autofill = service.isEnabled
-        let passkeys = service.isConnected
+        let passkeys = service.isConnected || service.securityKeysEnabled
+        let shim = service.isConnected ? Self.vaultPasskeySource : Self.securityKeyPasskeySource
         // Read the bridged array fully before removeAllUserScripts() (Release-only trap).
         let all = Array(controller.userScripts)
         func has(_ marker: String) -> Bool { all.contains { $0.source.hasPrefix(marker) } }
-        if has(Self.autofillMarker) != autofill || has(Self.passkeyMarker) != passkeys || has(Self.suppressionMarker) == passkeys {
+        let passkeyScriptCurrent = passkeys
+            ? all.contains { $0.source == shim }
+            : has(Self.suppressionMarker) && !has(Self.passkeyMarker)
+        if has(Self.autofillMarker) != autofill || !passkeyScriptCurrent {
             let ours = [Self.autofillMarker, Self.passkeyMarker, Self.suppressionMarker]
             let keep = all.nookOwned.filter { script in !ours.contains { script.source.hasPrefix($0) } }
             controller.removeAllUserScripts()
             keep.forEach(controller.addUserScript)
             controller.addUserScript(passkeys
-                ? WKUserScript(source: Self.passkeySource, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page)
+                ? WKUserScript(source: shim, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .page)
                 : BrowserConfiguration.passkeySuppressionScript)
             if autofill {
                 controller.addUserScript(WKUserScript(
@@ -119,6 +128,7 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
             passkeyHandlerInstalled = passkeys
         }
         if !passkeys { endPasskeyRequests(.notAllowed) }
+        if !service.securityKeysEnabled { endKeyRequest() }
     }
 
     /// A new main-frame document committed with `origin`.
@@ -138,6 +148,15 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
         inFlight = [:]
         conditionalGets = [:]
         modalGetID = nil
+        endKeyRequest()
+    }
+
+    /// Cancels the security key ceremony or choice under way; its sheet then closes.
+    private func endKeyRequest() {
+        guard let request = keyRequest else { return }
+        keyRequest = nil
+        request.ceremony?.cancel()
+        request.sheet.interrupt()
     }
 
     private func closePicker() {
@@ -319,6 +338,7 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
             inFlight.removeValue(forKey: requestID)?.fail(.abort)
             conditionalGets.removeValue(forKey: requestID)
             if modalGetID == requestID { closePicker() }
+            if keyRequest?.id == requestID { endKeyRequest() }
             reply.finish()
         case "get", "create":
             let context: PageContext
@@ -326,12 +346,14 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
             case .success(let value): context = value
             case .failure(let error): return reply.fail(error)
             }
+            guard let route = route(op, body) else { return reply.fail(.notAllowed) }
             inFlight[requestID] = reply
+            let origin = message.frameInfo.securityOrigin
             Task {
-                if op == "get" {
-                    await get(body, id: requestID, context: context, reply: reply)
-                } else {
-                    await create(body, context: context, reply: reply)
+                switch route {
+                case .vault: await vault(op, body, id: requestID, context: context, reply: reply)
+                case .securityKey: await securityKey(op, body, id: requestID, origin: origin, context: context, reply: reply)
+                case .choice: await choose(op, body, id: requestID, origin: origin, context: context, reply: reply)
                 }
             }
         default:
@@ -339,9 +361,37 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
         }
     }
 
+    private enum Route {
+        case vault, securityKey, choice
+    }
+
+    /// Conditional requests are the vault's; with security keys on, the rest go to a key, or
+    /// to a choice between the two while the vault is connected. An attachment the page names
+    /// settles it.
+    private func route(_ op: String, _ body: [String: Any]) -> Route? {
+        guard let service else { return nil }
+        let vault: Route? = service.isEnabled ? .vault : nil
+        if op == "get", body["mediation"] as? String == "conditional" { return vault }
+        guard service.securityKeysEnabled else { return vault }
+        guard service.isConnected else { return .securityKey }
+        switch (body["authenticatorSelection"] as? [String: Any])?["authenticatorAttachment"] as? String {
+        case "platform" where op == "create": return .vault
+        case "cross-platform" where op == "create": return .securityKey
+        default: return .choice
+        }
+    }
+
+    private func vault(_ op: String, _ body: [String: Any], id: Int, context: PageContext, reply: PasskeyReply) async {
+        if op == "get" {
+            await get(body, id: id, context: context, reply: reply)
+        } else {
+            await create(body, context: context, reply: reply)
+        }
+    }
+
     /// Origin from WebKit; the main frame or a frame with its origin; HTTPS or local HTTP.
     private func context(for message: WKScriptMessage) -> Result<PageContext, WebAuthnError> {
-        guard service?.isEnabled == true, let webView = message.webView else { return .failure(.notAllowed) }
+        guard let service, service.isEnabled || service.securityKeysEnabled, let webView = message.webView else { return .failure(.notAllowed) }
         let security = message.frameInfo.securityOrigin
         guard let origin = WebAuthnPolicy.origin(scheme: security.protocol, host: security.host, port: security.port)
         else { return .failure(.security) }
@@ -458,6 +508,82 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
                     reply.fail(WebAuthnError(error as? VaultClientError ?? .malformedResponse, creating: true))
                 }
             }
+        }
+    }
+}
+
+extension VaultBridge {
+    // MARK: - Security keys
+
+    /// "Pawl Vault" or "Security key" on the sheet; the vault's own flow runs unchanged.
+    private func choose(_ op: String, _ body: [String: Any], id: Int, origin: WKSecurityOrigin, context: PageContext,
+                        reply: PasskeyReply) async {
+        guard let presenter = service?.securityKeyPresenter, let webView else { return reply.fail(.notAllowed) }
+        let sheet = SecurityKeySheet(host: context.host, creating: op == "create")
+        guard presenter.present(sheet, in: webView) else { return reply.fail(.notAllowed) }
+        keyRequest = (id, sheet, nil)
+        let answer = await sheet.ask(.choose)
+        let current = keyRequest?.id == id && reply.isPending
+        if case .securityKey? = answer, current {
+            return await securityKey(op, body, id: id, origin: origin, context: context, reply: reply, sheet: sheet)
+        }
+        if keyRequest?.id == id { keyRequest = nil }
+        presenter.dismiss(sheet)
+        guard case .vault? = answer, current else { return reply.fail(.notAllowed) }
+        await vault(op, body, id: id, context: context, reply: reply)
+    }
+
+    /// One ceremony with the keys plugged in, on `chosen` or a new sheet. The request is built
+    /// from WebKit's origin for the frame and checked before any sheet appears.
+    private func securityKey(_ op: String, _ body: [String: Any], id: Int, origin: WKSecurityOrigin, context: PageContext,
+                             reply: PasskeyReply, sheet chosen: SecurityKeySheet? = nil) async {
+        let presenter = service?.securityKeyPresenter
+        func end(_ error: WebAuthnError) {
+            chosen.map { presenter?.dismiss($0) }
+            if keyRequest?.id == id { keyRequest = nil }
+            reply.fail(error)
+        }
+        let request: SecurityKeyCeremony.Request
+        let clientDataJSON: Data
+        var credProps = false
+        if op == "get" {
+            switch SecurityKeyOptions.get(body, scheme: origin.protocol, host: origin.host, port: origin.port,
+                                          suffixes: VaultService.suffixes) {
+            case .success(let value):
+                request = .get(value)
+                clientDataJSON = value.clientDataJSON
+            case .failure(let error):
+                return end(error)
+            }
+        } else {
+            switch SecurityKeyOptions.create(body, scheme: origin.protocol, host: origin.host, port: origin.port,
+                                             suffixes: VaultService.suffixes) {
+            case .success(let value):
+                request = .create(value)
+                clientDataJSON = value.clientDataJSON
+                credProps = value.credProps
+            case .failure(let error):
+                return end(error)
+            }
+        }
+
+        let sheet = chosen ?? SecurityKeySheet(host: context.host, creating: op == "create")
+        guard reply.isPending, !SecurityKeyCeremony.isRunning, let presenter, let webView,
+              chosen != nil || presenter.present(sheet, in: webView)
+        else { return end(.notAllowed) }
+        let ceremony = SecurityKeyCeremony(request, source: HIDSecurityKeySource(), user: sheet)
+        sheet.onCancel = { [weak ceremony] in ceremony?.cancel() }
+        keyRequest = (id, sheet, ceremony)
+        let result = await ceremony.run()
+        presenter.dismiss(sheet)
+        if keyRequest?.id == id { keyRequest = nil }
+        switch result {
+        case .success(.created(let credential)):
+            reply.succeed(SecurityKeyReply.created(credential, clientDataJSON: clientDataJSON, credProps: credProps))
+        case .success(.asserted(let assertion)):
+            reply.succeed(SecurityKeyReply.asserted(assertion, clientDataJSON: clientDataJSON))
+        case .failure(let error):
+            reply.fail(error)
         }
     }
 }

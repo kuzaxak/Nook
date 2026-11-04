@@ -65,6 +65,9 @@ extension PageSession: WKNavigationDelegate {
         jsDialogCount = 0
         jsDialogsSuppressed = false
         resetTranslation()
+        #if os(macOS)
+        controller?.vault?.pageCommitted(in: webView)
+        #endif
 
         if let newURL = webView.url {
             self.url = newURL
@@ -159,9 +162,6 @@ extension PageSession: WKNavigationDelegate {
         }
 
         injectPageObservers(into: webView)
-        #if os(macOS)
-        controller?.vault?.pageCommitted(in: webView)
-        #endif
         offerTranslationIfNeeded()
         updateNavigationStateEnhanced(source: "didCommit")
 
@@ -211,6 +211,9 @@ extension PageSession: WKNavigationDelegate {
 
         Self.log.error("WebContent process terminated for item \(self.itemID.uuidString, privacy: .public) (crash #\(self.webProcessCrashCount) in window)")
         loadingState = .idle
+        #if os(macOS)
+        controller?.vault?.pageEnded(in: webView)
+        #endif
 
         // No window shows this tab: unload instead of respawning a process in the background
         // (often the system reclaiming memory). Selecting the tab restores its saved URL.

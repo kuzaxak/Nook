@@ -54,7 +54,8 @@ public enum WebAuthnPolicy {
         return rpId != hostSuffix && !hostSuffix.hasSuffix("." + rpId)
     }
 
-    private static func isIPAddress(_ host: String) -> Bool {
+    /// An IPv6 literal or a dotted IPv4 address, neither of which WebAuthn treats as a domain.
+    public static func isIPAddress(_ host: String) -> Bool {
         host.contains(":") || host.split(separator: ".").allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isNumber) }
     }
 }

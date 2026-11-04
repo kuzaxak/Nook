@@ -1,11 +1,14 @@
 // Nook Vault Passkeys
 // Licensed under GPL-3.0. See LICENSE.
 //
-// Page-world shim, installed only while Pawl Vault is connected, in place of the passkey
-// suppression script. navigator.credentials.get/create with `publicKey` go to Nook's
-// nookPasskey handler, which takes the origin from WebKit, checks the rpId, shows its own
-// picker or confirmation and only then asks the vault. Everything else goes to WebKit.
+// Page-world shim, installed in place of the passkey suppression script while Pawl Vault is
+// connected or security keys are on. navigator.credentials.get/create with `publicKey` go to
+// Nook's nookPasskey handler, which takes the origin from WebKit, checks the rpId, shows its
+// own picker, confirmation or security key sheet and only then asks the vault or the key.
+// Everything else goes to WebKit. `platform` is true while the vault is connected: only then
+// does the page see a platform authenticator and conditional mediation.
 (() => {
+  const platform = __NOOK_PLATFORM__;
   if (!window.PublicKeyCredential || !window.CredentialsContainer) return;
   const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nookPasskey;
   if (!handler) return;
@@ -68,16 +71,18 @@
     return object;
   }
   function credential(reply, response, responseJSON) {
+    const attachment = reply.authenticatorAttachment || 'platform';
+    const extensions = () => JSON.parse(JSON.stringify(reply.clientExtensionResults || {}));
     return make(window.PublicKeyCredential, {
       id: reply.id,
       rawId: decode(reply.id),
       type: 'public-key',
-      authenticatorAttachment: 'platform',
+      authenticatorAttachment: attachment,
       response,
-      getClientExtensionResults: () => ({}),
+      getClientExtensionResults: extensions,
       toJSON: () => ({
-        id: reply.id, rawId: reply.id, type: 'public-key', authenticatorAttachment: 'platform',
-        response: responseJSON, clientExtensionResults: {},
+        id: reply.id, rawId: reply.id, type: 'public-key', authenticatorAttachment: attachment,
+        response: responseJSON, clientExtensionResults: extensions(),
       }),
     });
   }
@@ -94,23 +99,32 @@
     });
   }
   function attestation(reply) {
-    const response = make(window.AuthenticatorAttestationResponse, {
+    const transports = reply.transports || ['internal'];
+    const values = {
       clientDataJSON: decode(reply.clientDataJSON),
       attestationObject: decode(reply.attestationObject),
-      getTransports: () => ['internal'],
+      getTransports: () => transports.slice(),
       getAuthenticatorData: () => decode(reply.authenticatorData),
       getPublicKeyAlgorithm: () => reply.publicKeyAlgorithm,
-    });
-    return credential(reply, response, {
+    };
+    const json = {
       clientDataJSON: reply.clientDataJSON, attestationObject: reply.attestationObject,
-      authenticatorData: reply.authenticatorData, transports: ['internal'],
+      authenticatorData: reply.authenticatorData, transports: transports.slice(),
       publicKeyAlgorithm: reply.publicKeyAlgorithm,
-    });
+    };
+    if ('publicKey' in reply) {
+      values.getPublicKey = () => (reply.publicKey ? decode(reply.publicKey) : null);
+      if (reply.publicKey) json.publicKey = reply.publicKey;
+    }
+    return credential(reply, make(window.AuthenticatorAttestationResponse, values), json);
   }
 
   container.get = function get(options) {
     if (!options || !options.publicKey) return nativeGet.apply(this, arguments);
     const key = options.publicKey;
+    if (options.mediation === 'conditional' && !platform) {
+      return Promise.reject(new DOMException('Conditional mediation is not supported.', 'NotSupportedError'));
+    }
     let payload;
     try {
       payload = {
@@ -119,6 +133,7 @@
         allowCredentials: (key.allowCredentials || []).map(c => encode(c.id)),
         userVerification: key.userVerification || 'preferred',
         mediation: options.mediation === 'conditional' ? 'conditional' : 'optional',
+        timeout: typeof key.timeout === 'number' ? key.timeout : null,
       };
     } catch (error) {
       return Promise.reject(error);
@@ -137,6 +152,9 @@
         user: { id: encode(key.user.id), name: key.user.name || '', displayName: key.user.displayName || '' },
         pubKeyCredParams: (key.pubKeyCredParams || []).map(p => p.alg),
         excludeCredentials: (key.excludeCredentials || []).map(c => encode(c.id)),
+        authenticatorSelection: selection(key.authenticatorSelection),
+        credProps: !!(key.extensions && key.extensions.credProps),
+        timeout: typeof key.timeout === 'number' ? key.timeout : null,
       };
     } catch (error) {
       return Promise.reject(error);
@@ -144,6 +162,16 @@
     return request('create', payload, options.signal).then(attestation);
   };
 
-  PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = () => Promise.resolve(true);
-  PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(true);
+  function selection(value) {
+    const out = {};
+    if (!value) return out;
+    for (const name of ['authenticatorAttachment', 'residentKey', 'userVerification']) {
+      if (typeof value[name] === 'string') out[name] = value[name];
+    }
+    if (typeof value.requireResidentKey === 'boolean') out.requireResidentKey = value.requireResidentKey;
+    return out;
+  }
+
+  PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = () => Promise.resolve(platform);
+  PublicKeyCredential.isConditionalMediationAvailable = () => Promise.resolve(platform);
 })();

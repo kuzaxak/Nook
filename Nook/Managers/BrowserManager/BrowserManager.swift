@@ -425,6 +425,7 @@ class BrowserManager: ObservableObject {
     var externalMiniWindowManager = ExternalMiniWindowManager()
     let peekManager = PeekManager()
     let autofillManager = AutofillManager()
+    let securityKeySheets = SecurityKeySheetPresenter()
 
     // TEMPORARY: Will be removed when cross-window coordination is eliminated
     weak var webViewCoordinator: WebViewCoordinator?
@@ -504,6 +505,7 @@ class BrowserManager: ObservableObject {
         }
         let vault = VaultService(settings: settings)
         vault.presenter = autofillManager
+        vault.securityKeyPresenter = securityKeySheets
         self.tabs.vault = vault
         if case .readOnly(let reason) = tabs.loadOutcome {
             TabsController.presentReadOnlyAlert(reason: reason, directory: tabs.directory)
