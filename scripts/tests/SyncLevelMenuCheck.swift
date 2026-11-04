@@ -35,7 +35,7 @@ private final class Sync: SpaceSyncControls {
     var cloudDevices: [String] = []
     func removeFromICloud(_ spaceID: UUID) {}
     func syncReport() -> String { "" }
-    func shareWithAnotherAccount() {}
+    func invite(code: String) async -> SpaceSyncInviteResult { .failed(message: "") }
     func stopSharing() {}
     func joinSharedSync(link: String) {}
     func leaveSharedSync() {}

@@ -36,7 +36,6 @@ final class SpaceSyncManager: SpaceSyncControls {
     @ObservationIgnored private var queueTask: Task<Void, Never>?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var registeredForPushes = false
-    @ObservationIgnored private var sharingPicker: NSSharingServicePicker?
     /// The person asked to leave the joined zone and CloudKit has not answered yet.
     @ObservationIgnored private var leaving = false
     /// Owners whose share this Mac looked up this session, found or not.
@@ -110,22 +109,101 @@ final class SpaceSyncManager: SpaceSyncControls {
 
     // MARK: - Sharing
 
-    func shareWithAnotherAccount() {
-        guard let container, engine != nil, state.database == .private else { return }
-        Task {
-            do {
-                let share: CKShare
-                if let existing = try await zoneShare(in: container) {
-                    share = try await onlyInvited(existing, in: container)
-                } else {
-                    share = try await createShare(in: container)
-                }
-                shareChanged(share)
-                presentSharing(share, container: container)
-            } catch {
-                note(error)
-            }
+    private static let leaveBeforeInviting = "Leave the shared sync before inviting others."
+
+    /// Shares this account's zone with the account that has this code, making the share on the
+    /// first invite. Switching iCloud account, or joining another account's sync, while it runs
+    /// stops it before its next write, and it reports no invite.
+    func invite(code text: String) async -> SpaceSyncInviteResult {
+        guard let container, engine != nil, status.availability == .available, let account = state.account else {
+            return .failed(message: "iCloud is not available right now.")
         }
+        guard state.database == .private else { return .failed(message: Self.leaveBeforeInviting) }
+        guard let code = SpaceSyncInviteCode.parse(text) else {
+            return .failed(message: "That is not an invite code. Copy it again from the Mac you are inviting.")
+        }
+        func interrupted() -> SpaceSyncInviteResult? {
+            if state.account != account {
+                return .failed(message: "The iCloud account changed before the invite finished. Invite again.")
+            }
+            return state.database == .private ? nil : .failed(message: Self.leaveBeforeInviting)
+        }
+        do {
+            let existing = try await zoneShare(in: container)
+            let participants = existing?.participants.map {
+                (recordName: $0.userIdentity.userRecordID?.recordName, status: Self.status($0.acceptanceStatus))
+            } ?? []
+            var invitee: CKShare.Participant?
+            switch SpaceSyncInviteDecision(code: code, account: account, participants: participants) {
+            case .ownCode:
+                return .failed(message: "That is this iCloud account's own code. Copy the code from the Mac you are inviting.")
+            case .alreadyInvited:
+                break
+            case .invite:
+                invitee = try await participant(code, in: container)
+                if invitee == nil {
+                    return .failed(message: "No iCloud account has that code. Copy it again from the Mac you are inviting.")
+                }
+            }
+            if let interrupted = interrupted() { return interrupted }
+            var share: CKShare
+            if let existing {
+                share = try await onlyInvited(existing, in: container)
+            } else {
+                share = try await createShare(in: container)
+            }
+            if let invitee {
+                if let interrupted = interrupted() { return interrupted }
+                share = try await adding(invitee, as: code, to: share, in: container)
+            }
+            if let interrupted = interrupted() { return interrupted }
+            shareChanged(share)
+            guard let link = share.url else { return .failed(message: "iCloud gave the share no link. Invite again.") }
+            return .invited(link: link)
+        } catch {
+            log.error("Space sync invite error \((error as? CKError)?.code.rawValue ?? -1, privacy: .public)")
+            return .failed(message: Self.text(error))
+        }
+    }
+
+    /// The participant CloudKit makes for the account with this user record name, nil when no
+    /// account has it: CloudKit then fails that one lookup with Invalid Arguments (12).
+    private func participant(_ code: String, in container: CKContainer) async throws -> CKShare.Participant? {
+        let found = OSAllocatedUnfairLock<Result<CKShare.Participant, Error>?>(initialState: nil)
+        return try await withCheckedThrowingContinuation { continuation in
+            let operation = CKFetchShareParticipantsOperation(userIdentityLookupInfos: [
+                CKUserIdentity.LookupInfo(userRecordID: CKRecord.ID(recordName: code)),
+            ])
+            operation.perShareParticipantResultBlock = { _, result in found.withLock { $0 = result } }
+            operation.fetchShareParticipantsResultBlock = { result in
+                switch (found.withLock { $0 }, result) {
+                case (.success(let participant)?, _):
+                    continuation.resume(returning: participant)
+                case (.failure(let error as CKError)?, _) where error.code == .invalidArguments:
+                    continuation.resume(returning: nil)
+                case (.failure(let error)?, _), (nil, .failure(let error)):
+                    continuation.resume(throwing: error)
+                case (nil, .success):
+                    continuation.resume(returning: nil)
+                }
+            }
+            container.add(operation)
+        }
+    }
+
+    /// The share saved with this participant able to change the spaces, in place of any earlier
+    /// participant with the same code, such as one removed before.
+    private func adding(_ participant: CKShare.Participant, as code: String, to share: CKShare,
+                        in container: CKContainer) async throws -> CKShare {
+        for old in share.participants where old.userIdentity.userRecordID?.recordName == code {
+            share.removeParticipant(old)
+        }
+        participant.permission = .readWrite
+        participant.role = .privateUser
+        share.addParticipant(participant)
+        let saved = try await container.privateCloudDatabase.modifyRecords(saving: [share], deleting: []).saveResults[share.recordID]?.get()
+        guard let saved = saved as? CKShare else { throw CKError(.internalError) }
+        return saved
     }
 
     func stopSharing() {
@@ -152,6 +230,8 @@ final class SpaceSyncManager: SpaceSyncControls {
         Task {
             do {
                 if let metadata = try await container.shareMetadatas(for: [url])[url]?.get() { accept(metadata) }
+            } catch let error as CKError where error.code == .unknownItem {
+                note(error, as: SpaceSyncErrorText.notInvited)
             } catch {
                 note(error)
             }
@@ -294,8 +374,9 @@ final class SpaceSyncManager: SpaceSyncControls {
     }
 
     /// An iCloud sharing link opened from another app, Nook being the default browser. A share of
-    /// these spaces goes to the prompt to join; any other link is left to `open` as a page. False
-    /// when it is no sharing link at all.
+    /// these spaces goes to the prompt to join; any other link is left to `open` as a page, and
+    /// Settings says when this account is not invited to it. False when it is no sharing link at
+    /// all.
     func openShareLink(_ url: URL, otherwise open: @escaping () -> Void) -> Bool {
         guard SpaceSyncShareLink.parse(url.absoluteString) != nil else { return false }
         guard let container else {
@@ -303,12 +384,17 @@ final class SpaceSyncManager: SpaceSyncControls {
             return true
         }
         Task {
-            if let metadata = try? await container.shareMetadatas(for: [url])[url]?.get(),
-               metadata.containerIdentifier == SpaceSyncAvailability.containerID {
-                accept(metadata)
-            } else {
-                open()
+            do {
+                if let metadata = try await container.shareMetadatas(for: [url])[url]?.get(),
+                   metadata.containerIdentifier == SpaceSyncAvailability.containerID {
+                    return accept(metadata)
+                }
+            } catch let error as CKError where error.code == .unknownItem {
+                note(error, as: SpaceSyncErrorText.notInvited)
+            } catch {
+                log.error("Space sync link error \((error as? CKError)?.code.rawValue ?? -1, privacy: .public)")
             }
+            open()
         }
         return true
     }
@@ -416,19 +502,6 @@ final class SpaceSyncManager: SpaceSyncControls {
         return saved
     }
 
-    /// The system's sharing popover at the pointer, which has just clicked Share in Settings:
-    /// it invites people by Messages, Mail or a link, and only they can join.
-    private func presentSharing(_ share: CKShare, container: CKContainer) {
-        guard let window = NSApp.keyWindow, let view = window.contentView else { return }
-        let provider = NSItemProvider()
-        provider.registerCKShare(share, container: container, allowedSharingOptions: CKAllowedSharingOptions(
-            allowedParticipantPermissionOptions: .readWrite, allowedParticipantAccessOptions: .specifiedRecipientsOnly))
-        let picker = NSSharingServicePicker(items: [provider])
-        sharingPicker = picker
-        let point = view.convert(window.mouseLocationOutsideOfEventStream, from: nil)
-        picker.show(relativeTo: NSRect(origin: point, size: .zero), of: view, preferredEdge: .minY)
-    }
-
     /// The zone's share is gone: the owner stopped sharing.
     private func shareDeleted() {
         if state.database == .shared {
@@ -447,7 +520,8 @@ final class SpaceSyncManager: SpaceSyncControls {
             state.shared(participants: share.participants.map { participant in
                 let identity = participant.userIdentity
                 return SpaceSyncParticipant(
-                    name: identity.nameComponents.flatMap(Self.name) ?? "Invited person",
+                    name: SpaceSyncParticipant.name(identityName: identity.nameComponents.flatMap(Self.name),
+                                                    recordName: identity.userRecordID?.recordName),
                     status: Self.status(participant.acceptanceStatus), isOwner: participant.role == .owner)
             })
         }
@@ -707,6 +781,7 @@ final class SpaceSyncManager: SpaceSyncControls {
         if status.lastError != state.lastError { status.lastError = state.lastError }
         let accountID = state.account.map(SpaceSyncCodec.accountID)
         if status.accountID != accountID { status.accountID = accountID }
+        if status.inviteCode != state.account { status.inviteCode = state.account }
         let spaces = state.cloudSpaces(in: tabs.tree)
         if cloudSpaces != spaces { cloudSpaces = spaces }
         let devices = state.cloudDevices
@@ -718,18 +793,22 @@ final class SpaceSyncManager: SpaceSyncControls {
         if status.joinOffers != state.joinOffers { status.joinOffers = state.joinOffers }
     }
 
-    private func note(_ error: Error) {
-        let code = (error as? CKError)?.code
-        log.error("Space sync error \(code?.rawValue ?? -1, privacy: .public)")
-        switch code {
-        case .quotaExceeded?: state.lastError = "iCloud storage is full. Nook syncs again when there is room."
-        case .networkUnavailable?, .networkFailure?: state.lastError = "No network connection. Nook syncs when it is back."
-        case .requestRateLimited?, .zoneBusy?, .serviceUnavailable?: state.lastError = "iCloud is busy. Nook tries again shortly."
-        case .notAuthenticated?: state.lastError = "Sign in to iCloud to sync spaces."
-        default: state.lastError = Self.isOutdatedSchema(error) ? SpaceSyncErrorText.outdatedSchema : error.localizedDescription
-        }
+    private func note(_ error: Error, as text: String? = nil) {
+        log.error("Space sync error \((error as? CKError)?.code.rawValue ?? -1, privacy: .public)")
+        state.lastError = text ?? Self.text(error)
         publish()
         scheduleSave()
+    }
+
+    /// The error as Settings words it.
+    private static func text(_ error: Error) -> String {
+        switch (error as? CKError)?.code {
+        case .quotaExceeded?: return "iCloud storage is full. Nook syncs again when there is room."
+        case .networkUnavailable?, .networkFailure?: return "No network connection. Nook syncs when it is back."
+        case .requestRateLimited?, .zoneBusy?, .serviceUnavailable?: return "iCloud is busy. Nook tries again shortly."
+        case .notAuthenticated?: return "Sign in to iCloud to sync spaces."
+        default: return isOutdatedSchema(error) ? SpaceSyncErrorText.outdatedSchema : error.localizedDescription
+        }
     }
 
     /// A save refused because iCloud's production schema lacks a field this build writes.

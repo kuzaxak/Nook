@@ -396,4 +396,55 @@ struct SpaceSyncSharingTests {
         #expect(guest.state.acceptance(containerID: container, zoneName: zone, zoneOwner: Self.ownerAccount, isOwner: false, zoneWide: true, readWrite: true) == .alreadyJoined)
         #expect(guest.state.acceptance(containerID: container, zoneName: zone, zoneOwner: "_third", isOwner: false, zoneWide: true, readWrite: true) == .alreadyJoined)
     }
+
+    // MARK: - Inviting
+
+    @Test func anInviteCodeIsReadFromWhatThePersonPastes() {
+        #expect(SpaceSyncInviteCode.parse(Self.guestAccount) == Self.guestAccount)
+        #expect(SpaceSyncInviteCode.parse(" \t\(Self.guestAccount)\n") == Self.guestAccount)
+        #expect(SpaceSyncInviteCode.parse(Self.guestAccount.uppercased()) == Self.guestAccount)
+        #expect(SpaceSyncInviteCode.parse(String(Self.guestAccount.dropFirst())) == Self.guestAccount)
+        #expect(SpaceSyncInviteCode.parse("12AE184189470032BBD84B751BC2E85D") == Self.guestAccount)
+        for bad in ["", "_", "c2e85d", "__12ae184189470032bbd84b751bc2e85d", "_12ae184189470032bbd84b751bc2e85",
+                    "_12ae184189470032bbd84b751bc2e85d0", "_12ae184189470032bbd84b751bc2e85g", "_12ae1841 89470032bbd84b751bc2e85d",
+                    "-12ae184189470032bbd84b751bc2e85d", "_１2ae184189470032bbd84b751bc2e85d", "__defaultOwner__",
+                    "https://www.icloud.com/share/0aBcD_eFgHiJkLmNoPqRsTuVw#Nook_Spaces"] {
+            #expect(SpaceSyncInviteCode.parse(bad) == nil, "accepted \(bad)")
+        }
+    }
+
+    @Test func invitingThisAccountsOwnCodeIsRefused() {
+        let decision = SpaceSyncInviteDecision(code: Self.ownerAccount, account: Self.ownerAccount, participants: [
+            (recordName: "__defaultOwner__", status: .accepted),
+        ])
+        #expect(decision == .ownCode)
+        #expect(SpaceSyncInviteDecision(code: Self.ownerAccount, account: Self.ownerAccount, participants: []) == .ownCode)
+    }
+
+    @Test(arguments: [SpaceSyncParticipant.Status.pending, .accepted])
+    func invitingAnAccountAlreadyInvitedOrJoinedLeavesTheShareAsItIs(status: SpaceSyncParticipant.Status) {
+        let decision = SpaceSyncInviteDecision(code: Self.guestAccount, account: Self.ownerAccount, participants: [
+            (recordName: "__defaultOwner__", status: .accepted),
+            (recordName: "_99ae184189470032bbd84b751bc2e85d", status: .removed),
+            (recordName: Self.guestAccount, status: status),
+        ])
+        #expect(decision == .alreadyInvited)
+    }
+
+    @Test func invitingAnAccountNotInTheShareOrRemovedFromItInvitesIt() {
+        #expect(SpaceSyncInviteDecision(code: Self.guestAccount, account: Self.ownerAccount, participants: []) == .invite)
+        #expect(SpaceSyncInviteDecision(code: Self.guestAccount, account: Self.ownerAccount, participants: [
+            (recordName: "__defaultOwner__", status: .accepted),
+            (recordName: nil, status: .pending),
+            (recordName: "_99ae184189470032bbd84b751bc2e85d", status: .accepted),
+            (recordName: Self.guestAccount, status: .removed),
+        ]) == .invite)
+    }
+
+    @Test func aPersonInTheShareIsNamedByNameElseByAccountID() {
+        #expect(SpaceSyncParticipant.name(identityName: "Vladimir", recordName: Self.guestAccount) == "Vladimir")
+        #expect(SpaceSyncParticipant.name(identityName: nil, recordName: Self.guestAccount) == "Account c2e85d")
+        #expect(SpaceSyncParticipant.name(identityName: nil, recordName: Self.ownerAccount) == "Account e62a57")
+        #expect(SpaceSyncParticipant.name(identityName: nil, recordName: nil) == "Invited person")
+    }
 }

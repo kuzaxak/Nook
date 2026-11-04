@@ -134,6 +134,54 @@ public enum SpaceSyncShareLink {
     }
 }
 
+/// The code a Mac on another account shows in Settings for the owner to invite it: its CloudKit
+/// user record name.
+public enum SpaceSyncInviteCode {
+    /// The code in pasted text: `_` and 32 hex digits in any case, the `_` optional; nil for
+    /// anything else.
+    public static func parse(_ text: String) -> String? {
+        let code = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hex = code.hasPrefix("_") ? code.dropFirst() : Substring(code)
+        guard hex.count == 32, hex.allSatisfy({ $0.isASCII && $0.isHexDigit }) else { return nil }
+        return "_" + hex.lowercased()
+    }
+}
+
+/// What inviting the account with a code does to this account's share.
+public enum SpaceSyncInviteDecision: Equatable, Sendable {
+    /// The code is this account's own.
+    case ownCode
+    /// The account is invited or has joined already: the share stays as it is.
+    case alreadyInvited
+    case invite
+
+    /// `participants` are the share's, by user record name where CloudKit gives one.
+    public init(code: String, account: String, participants: [(recordName: String?, status: SpaceSyncParticipant.Status)]) {
+        if code == account {
+            self = .ownCode
+        } else if participants.contains(where: { $0.recordName == code && ($0.status == .pending || $0.status == .accepted) }) {
+            self = .alreadyInvited
+        } else {
+            self = .invite
+        }
+    }
+}
+
+/// How an invite by code ended, for Settings to show.
+public enum SpaceSyncInviteResult: Equatable, Sendable {
+    /// The share's link, for the invited Mac to open.
+    case invited(link: URL)
+    case failed(message: String)
+}
+
+extension SpaceSyncParticipant {
+    /// The name Settings lists someone in the share by: their name when CloudKit gives one, else
+    /// their account ID, as their Mac's Settings shows it.
+    public static func name(identityName: String?, recordName: String?) -> String {
+        identityName ?? recordName.map { "Account " + SpaceSyncCodec.accountID($0) } ?? "Invited person"
+    }
+}
+
 extension SpaceSyncState {
     private typealias Key = SyncRecord.Key
 

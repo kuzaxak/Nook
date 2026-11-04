@@ -13,6 +13,8 @@ import NookDesign
 import NookWeb
 #if os(macOS)
 import AppKit
+#else
+import UIKit
 #endif
 
 public struct SpacesSettingsView: View {
@@ -27,6 +29,10 @@ public struct SpacesSettingsView: View {
     @State private var pendingRemoval: SpaceSyncCloudSpace?
     @State private var joining = false
     @State private var joinLink = ""
+    @State private var inviting = false
+    @State private var inviteCode = ""
+    @State private var invitedLink: URL?
+    @State private var inviteFailure: String?
     @State private var confirmingStopSharing = false
     @State private var confirmingLeave = false
     @State private var confirmingOldCopyRemoval = false
@@ -89,6 +95,27 @@ public struct SpacesSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Paste the link someone on another iCloud account shared with you. Before anything syncs, Nook asks whether the spaces this Mac syncs now move in with theirs.")
+        }
+        .alert("Invite with Code", isPresented: $inviting) {
+            TextField("Invite code", text: $inviteCode)
+            Button("Invite") { invite(inviteCode) }
+                .disabled(SpaceSyncInviteCode.parse(inviteCode) == nil)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("On the Mac you are inviting, open Settings \u{2192} Spaces and copy its invite code.")
+        }
+        .alert("Invited", isPresented: Binding(get: { invitedLink != nil }, set: { if !$0 { invitedLink = nil } }),
+               presenting: invitedLink) { link in
+            Button("Copy Link") { Self.copy(link.absoluteString) }
+            Button("Done", role: .cancel) {}
+        } message: { link in
+            Text("\(link.absoluteString)\n\nThe link is copied. Send it to that Mac and open it there, or paste it in Join Shared Sync\u{2026}")
+        }
+        .alert("Couldn\u{2019}t Invite", isPresented: Binding(get: { inviteFailure != nil }, set: { if !$0 { inviteFailure = nil } }),
+               presenting: inviteFailure) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { message in
+            Text(message)
         }
         .alert("Stop sharing these spaces?", isPresented: $confirmingStopSharing) {
             Button("Stop Sharing", role: .destructive) { sync?.stopSharing() }
@@ -302,16 +329,29 @@ public struct SpacesSettingsView: View {
                 Button(offer.name.map { "Join \($0)\u{2019}s Sync\u{2026}" } ?? "Join Shared Sync\u{2026}") { sync.joinOffer(offer.owner) }
             }
         }
+        if status.mode == .own, let code = status.inviteCode {
+            LabeledContent("Invite code") {
+                HStack {
+                    Text(code)
+                        .font(NookDesign.Font.mono)
+                        .textSelection(.enabled)
+                    Button("Copy") { Self.copy(code) }
+                }
+            }
+            Text("To join another iCloud account\u{2019}s sync, send this code to the Mac that shares it.")
+                .font(NookDesign.Font.caption)
+                .foregroundStyle(.secondary)
+        }
         HStack {
             switch status.mode {
             case .own:
-                Button("Share with Another iCloud Account\u{2026}") { sync.shareWithAnotherAccount() }
+                Button("Invite with Code\u{2026}", action: startInviting)
                 Button("Join Shared Sync\u{2026}") {
                     joinLink = ""
                     joining = true
                 }
             case .sharing:
-                Button("Share with Another iCloud Account\u{2026}") { sync.shareWithAnotherAccount() }
+                Button("Invite with Code\u{2026}", action: startInviting)
                 Button("Stop Sharing\u{2026}", role: .destructive) { confirmingStopSharing = true }
             case .joined:
                 Button("Leave Shared Sync\u{2026}", role: .destructive) { confirmingLeave = true }
@@ -327,6 +367,33 @@ public struct SpacesSettingsView: View {
                 Spacer()
             }
         }
+    }
+
+    private func startInviting() {
+        inviteCode = ""
+        inviting = true
+    }
+
+    private func invite(_ code: String) {
+        guard let sync else { return }
+        Task {
+            switch await sync.invite(code: code) {
+            case .invited(let link):
+                Self.copy(link.absoluteString)
+                invitedLink = link
+            case .failed(let message):
+                inviteFailure = message
+            }
+        }
+    }
+
+    private static func copy(_ text: String) {
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #else
+        UIPasteboard.general.string = text
+        #endif
     }
 
     /// Names the Macs that synced the old copy, since one running a version of Nook from before

@@ -24,9 +24,9 @@ import NookTabsCore
     func removeFromICloud(_ spaceID: UUID)
     /// What the last fetch did with each record: ids, types, levels and times only.
     func syncReport() -> String
-    /// Shares this account's zone with people on other iCloud accounts, through the system's
-    /// sharing popover.
-    func shareWithAnotherAccount()
+    /// Shares this account's zone with the iCloud account whose invite code the person pasted,
+    /// as its Mac's Settings shows it. Only invited accounts can join.
+    func invite(code: String) async -> SpaceSyncInviteResult
     func stopSharing()
     /// Joins another account's shared zone from its pasted sharing link.
     func joinSharedSync(link: String)

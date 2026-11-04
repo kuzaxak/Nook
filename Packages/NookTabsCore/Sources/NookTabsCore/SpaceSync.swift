@@ -215,6 +215,9 @@ public enum SpaceSyncDevice {
 /// CloudKit refusals Settings words for the person.
 public enum SpaceSyncErrorText {
     public static let outdatedSchema = "iCloud hasn't been updated for this version of Nook yet; sync resumes once it is."
+    /// A sharing link this account cannot open: CloudKit answers Unknown Item (11) alike when
+    /// the account was never invited and when the share is gone.
+    public static let notInvited = "This Mac's iCloud account is not invited to that link, or sharing stopped. Send this Mac's invite code to the person sharing, then open the link again."
 
     /// Whether CloudKit refused a save because its production schema lacks a record type or field
     /// the save carries, or defines one differently. It answers Invalid Arguments (12), or Server
@@ -262,6 +265,9 @@ public struct SpaceSyncStatus: Equatable, Sendable {
     public var isSyncing = false
     /// The iCloud account this Mac syncs with, as `SpaceSyncCodec.accountID` gives it.
     public var accountID: String?
+    /// The full CloudKit user record name of that account, which the owner of another account's
+    /// share invites this Mac by.
+    public var inviteCode: String?
     public var mode: SpaceSyncMode = .own
     /// The people this account's zone is shared with, its owner left out.
     public var participants: [SpaceSyncParticipant] = []
