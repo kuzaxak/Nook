@@ -41,6 +41,7 @@ final class NookDragSourceCoordinator: NSObject, NSDraggingSource {
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        TabDropRouter.shared.end()
         manager.nativeDragEnded()
     }
 }

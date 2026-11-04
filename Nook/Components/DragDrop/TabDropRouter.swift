@@ -34,10 +34,15 @@ import AppKit
         return owner?.tabDragUpdated(sender) ?? []
     }
 
-    /// `draggingExited:` of `receiver`. The drag stays with the view it was handed to while the
-    /// pointer is still over that view.
+    /// `draggingExited:` of `receiver`. AppKit leaving a view the drag was already handed away
+    /// from, to the view under the pointer, leaves the drag with that view.
     func exited(_ sender: NSDraggingInfo?, at receiver: TabDropTarget) {
-        if let sender, let current, Self.owner(of: sender, at: receiver) === current { return }
+        if let sender, let current, current !== receiver, Self.owner(of: sender, at: receiver) === current { return }
+        end()
+    }
+
+    /// The drag session ended, dropped, refused or cancelled with Escape.
+    func end() {
         current?.tabDragExited()
         current = nil
     }

@@ -56,6 +56,10 @@ final class SplitDropCaptureView: NSView, TabDropTarget {
         TabDropRouter.shared.perform(sender, at: self)
     }
 
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        TabDropRouter.shared.end()
+    }
+
     func tabDragUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         isDragActive = true
         guard let windowId, let sm = splitManager else { return [] }

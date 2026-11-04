@@ -106,6 +106,29 @@ struct TabDropRoutingCheck {
         precondition(router.updated(Info(header), at: tabs) == [])
         precondition(!router.perform(Info(header), at: tabs))
         precondition(tabs.log == ["updated", "exited"])
+        reset()
+
+        // A drag that ends with nothing dropped: Escape, a release the target refused, or a pane
+        // let go where it already is. AppKit exits the view it holds, or only ends the session;
+        // either way the target holding the drag lets go, so the page takes clicks again.
+        _ = router.updated(Info(overPage), at: page)
+        router.exited(Info(overPage), at: page)
+        precondition(page.log == ["updated", "exited"], "Escape over the page target AppKit holds")
+        reset()
+        page.answer = []
+        _ = router.updated(Info(overPage), at: page)
+        router.exited(Info(overPage), at: page)
+        router.end()
+        precondition(page.log == ["updated", "exited"], "a release the page refused")
+        page.answer = nil
+        reset()
+        _ = router.updated(Info(overPage), at: tabs)
+        router.exited(Info(overPage), at: tabs)
+        precondition(page.log == ["updated"], "AppKit letting go of the zone it still holds")
+        router.end()
+        precondition(page.log == ["updated", "exited"], "the session's end lets the page target go")
+        router.end()
+        precondition(page.log == ["updated", "exited"] && tabs.log.isEmpty, "an end with nothing held")
         print("TabDropRoutingCheck passed")
     }
 
@@ -120,6 +143,8 @@ struct TabDropRoutingCheck {
     final class Target: NSView, TabDropTarget {
         let name: String
         var log: [String] = []
+        /// What it answers, if not its usual.
+        var answer: NSDragOperation?
         init(_ name: String, _ frame: NSRect) {
             self.name = name
             super.init(frame: frame)
@@ -130,7 +155,7 @@ struct TabDropRoutingCheck {
 
         func tabDragUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
             log.append("updated")
-            return name == "page" ? .copy : .move
+            return answer ?? (name == "page" ? .copy : .move)
         }
         func tabDragExited() { log.append("exited") }
         func tabDragPerform(_ sender: NSDraggingInfo) -> Bool {

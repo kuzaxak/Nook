@@ -24,6 +24,7 @@ final class TabDragSink: NSView, TabDropTarget {
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { TabDropRouter.shared.updated(sender, at: self) }
     override func draggingExited(_ sender: NSDraggingInfo?) { TabDropRouter.shared.exited(sender, at: self) }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { TabDropRouter.shared.perform(sender, at: self) }
+    override func draggingEnded(_ sender: NSDraggingInfo) { TabDropRouter.shared.end() }
 
     func tabDragUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { [] }
     func tabDragExited() {}

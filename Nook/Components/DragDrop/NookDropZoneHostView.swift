@@ -45,6 +45,10 @@ class NookDropZoneNSView: NSView, TabDropTarget {
         TabDropRouter.shared.perform(sender, at: self)
     }
 
+    override func draggingEnded(_ sender: any NSDraggingInfo) {
+        TabDropRouter.shared.end()
+    }
+
     func tabDragUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard let coordinator, NookDragItem.fromPasteboard(sender.draggingPasteboard) != nil else { return [] }
         coordinator.manager.cursorEnteredZone(coordinator.zoneID)
