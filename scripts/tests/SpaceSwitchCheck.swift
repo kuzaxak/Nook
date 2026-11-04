@@ -169,6 +169,22 @@ struct SpaceSwitchCheck {
         precondition(strip.frame.minX == -500 && !pager.isTracking)
         precondition(strip.subviews.allSatisfy { $0.frame.width == 250 })
         print("PASS: resize mid-settle")
+
+        // Past the first page with a listener, the fingers drive the listener one to one and the
+        // strip holds still.
+        var pulls: [PageLeadingPull] = []
+        coordinator.onLeadingOverscroll = { pulls.append($0) }
+        selection = 0
+        coordinator.refresh(to: 0, animated: false)
+        precondition(pager.beginDrag())
+        for step in 1...3 { pager.drag(.changed, delta: 40, time: 4 + Double(step) * 0.01) }
+        guard case .changed(let distance) = pulls.last, distance == 120 else { preconditionFailure("The pull is heard as it goes, got \(pulls)") }
+        precondition(shown() == 0, "The first page holds still under a pull, at \(shown())")
+        pager.drag(.ended, delta: 0, time: 4.04)
+        guard case .ended(let released, _) = pulls.last, released == 120 else { preconditionFailure("The release is heard, got \(pulls)") }
+        precondition(!pager.isTracking && strip.frame.minX == 0 && shown() == 0 && selection == 0)
+        coordinator.onLeadingOverscroll = nil
+        print("PASS: a pull past the first page goes to its listener and the strip holds")
     }
 
     /// Real scroll events dispatched over a page holding a vertical list, as the sidebar's tabs are.
