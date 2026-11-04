@@ -46,6 +46,9 @@ struct OpenAICompatibleProvider: AIProviderProtocol {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Without streaming nothing arrives until the reply is complete, which takes a reasoning
+        // model longer than URLRequest's default minute.
+        request.timeoutInterval = 600
 
         if !apiKey.isEmpty {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")

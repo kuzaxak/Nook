@@ -203,7 +203,9 @@ class AIConfigService {
 
     // MARK: - Page Translation
 
-    /// Room for a 40-text batch's JSON reply, and for a reasoning model's thinking before it.
+    /// Thinking counts against the same cap as the reply. A 4,000-character batch's JSON reply takes
+    /// at most about 5,000 tokens, which leaves the rest for thinking; a reply cut off at the cap is
+    /// not valid JSON, so only that batch goes on device.
     private static let translationMaxTokens = 16_384
 
     private static func hasKey(_ provider: AIProviderConfig) -> Bool { !provider.apiKey.isEmpty }
@@ -251,13 +253,17 @@ class AIConfigService {
         else { return .ai(nil) }
         let modelId = target.model.id
         let model: AITranslationModel = { instructions, request in
-            try await client.sendMessage(
-                messages: [AIMessage(role: .system, content: instructions), AIMessage(role: .user, content: request)],
-                model: modelId,
-                config: AIGenerationConfig(temperature: 0, maxTokens: Self.translationMaxTokens, systemPrompt: instructions, streamingEnabled: false),
-                tools: [],
-                onStream: { _ in }
-            ).content
+            do {
+                return try await client.sendMessage(
+                    messages: [AIMessage(role: .system, content: instructions), AIMessage(role: .user, content: request)],
+                    model: modelId,
+                    config: AIGenerationConfig(temperature: 0, maxTokens: Self.translationMaxTokens, systemPrompt: instructions, streamingEnabled: false),
+                    tools: [],
+                    onStream: { _ in }
+                ).content
+            } catch let error as AIProviderError where error.failsEveryRequest {
+                throw AITranslationModelUnavailable(reason: error.localizedDescription)
+            }
         }
         return .ai(model)
     }

@@ -95,11 +95,58 @@ public enum PageTranslationNotice: Equatable {
     }
 }
 
+/// What an `AITranslationModel` throws when no request can succeed, such as a rejected key or a
+/// model the provider does not have, so the rest of the page goes on device.
+public struct AITranslationModelUnavailable: LocalizedError {
+    public let reason: String
+
+    public init(reason: String) {
+        self.reason = reason
+    }
+
+    public var errorDescription: String? { reason }
+}
+
 enum AIPageTranslation {
     static let batchSize = 40
+    static let batchCharacterLimit = 4_000
     static let parallelBatches = 3
     static let pageCharacterLimit = 100_000
-    static let replyTimeout: Duration = .seconds(60)
+
+    private static let offline: Set<URLError.Code> = [
+        .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+        .internationalRoamingOff, .dataNotAllowed
+    ]
+
+    /// The reply arrives in one piece, after any thinking, so the wait grows with the batch.
+    static func replyTimeout(forCharacters characters: Int) -> Duration {
+        min(.seconds(30) + .milliseconds(25 * characters), .seconds(300))
+    }
+
+    /// Batches in page order of up to `batchSize` texts and `batchCharacterLimit` characters; a
+    /// longer text goes alone.
+    static func batches(_ nodes: [TranslationNode]) -> [[TranslationNode]] {
+        var batches: [[TranslationNode]] = []
+        var characters = 0
+        for node in nodes {
+            if let last = batches.last, last.count < batchSize, characters + node.text.count <= batchCharacterLimit {
+                batches[batches.count - 1].append(node)
+                characters += node.text.count
+            } else {
+                batches.append([node])
+                characters = node.text.count
+            }
+        }
+        return batches
+    }
+
+    /// Whether `error` means no later request can succeed either. A timeout, a server error or a
+    /// refusal fails only its own batch.
+    static func stopsModel(_ error: Error) -> Bool {
+        if error is AITranslationModelUnavailable { return true }
+        guard let error = error as? URLError else { return false }
+        return offline.contains(error.code)
+    }
 
     static let instructions = """
     You translate the text of a web page for Nook, a web browser. The user message is JSON: \
@@ -190,12 +237,12 @@ final class AIPageTranslator {
     private let model: AITranslationModel
     private let context: AITranslationContext
     private let characterLimit: Int
-    private let timeout: Duration
+    private let timeout: (Int) -> Duration
     private let onNotice: (PageTranslationNotice) -> Void
     private var remainingCharacters: Int
     private var limitReached = false
     private var pending: [TranslationNode] = []
-    /// Set once a request to the model fails, so the rest of the page goes on device.
+    /// Set once the model cannot be reached at all, so the rest of the page goes on device.
     private var modelFailure: String?
     private var onDeviceFailed = false
     private var lastNotice: PageTranslationNotice?
@@ -204,7 +251,7 @@ final class AIPageTranslator {
         model: @escaping AITranslationModel,
         context: AITranslationContext,
         characterLimit: Int = AIPageTranslation.pageCharacterLimit,
-        timeout: Duration = AIPageTranslation.replyTimeout,
+        timeout: @escaping (Int) -> Duration = AIPageTranslation.replyTimeout(forCharacters:),
         onNotice: @escaping (PageTranslationNotice) -> Void
     ) {
         self.model = model
@@ -219,11 +266,8 @@ final class AIPageTranslator {
     /// each batch's translations as it lands. Returns early when the task is cancelled.
     func translate(_ nodes: [TranslationNode], onDevice: Translate?, apply: @escaping ([String: String]) async -> Void) async {
         admit(nodes)
-        let batches = stride(from: 0, to: pending.count, by: AIPageTranslation.batchSize).map {
-            Array(pending[$0..<min($0 + AIPageTranslation.batchSize, pending.count)])
-        }
+        let batches = AIPageTranslation.batches(pending)
         let model = model
-        let timeout = timeout
         await withTaskGroup(of: (Int, Result<String, Error>).self) { group in
             var next = 0
             var running = 0
@@ -231,6 +275,7 @@ final class AIPageTranslator {
                 while modelFailure == nil, running < AIPageTranslation.parallelBatches, next < batches.count {
                     let index = next
                     let request = AIPageTranslation.request(for: batches[index], context: context)
+                    let timeout = timeout(batches[index].reduce(0) { $0 + $1.text.count })
                     group.addTask {
                         do {
                             return (index, .success(try await AIPageTranslation.reply(from: model, request: request, timeout: timeout)))
@@ -275,7 +320,7 @@ final class AIPageTranslator {
         switch reply {
         case .failure(let error):
             let reason = AIPageTranslation.reason(for: error)
-            modelFailure = reason
+            if AIPageTranslation.stopsModel(error) { modelFailure = reason }
             await translateOnDevice(batch, reason: reason, onDevice: onDevice, apply: apply)
         case .success(let text):
             do {

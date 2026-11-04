@@ -182,4 +182,14 @@ enum AIProviderError: LocalizedError {
         case .insecureURL(let url): return "Custom provider URL must use HTTPS for non-local connections: \(url)"
         }
     }
+
+    /// A rejected key, a forbidden account, an unknown model or an insecure URL: retrying with
+    /// another request cannot help.
+    var failsEveryRequest: Bool {
+        switch self {
+        case .invalidAPIKey, .insecureURL: return true
+        case .httpError(let status, _): return status == 403 || status == 404
+        case .invalidResponse, .rateLimited, .refused, .networkError, .unsupportedFeature: return false
+        }
+    }
 }

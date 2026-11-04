@@ -24,6 +24,7 @@ struct AIPageTranslationCheck {
         await invalidReplies()
         await modelFailure()
         await timeout()
+        await batching()
         await parallel()
         await cancellation()
         print("AIPageTranslationCheck passed")
@@ -153,22 +154,35 @@ struct AIPageTranslationCheck {
 
     @MainActor
     static func modelFailure() async {
-        let model = FakeModel { ids in ids.first == "0" ? .fail : .translate }
+        // A rejected key or no network: every later request would fail the same way.
+        for failure in [FakeModel.Answer.reject, .offline] {
+            let model = FakeModel { ids in ids.first == "0" ? failure : .translate }
+            let page = FakePage()
+            let translator = AIPageTranslator(model: model.model, context: context, onNotice: page.note)
+            await translator.translate(nodes(200), onDevice: page.onDevice, apply: page.apply)
+            let sent = await model.requests()
+            precondition(sent.count == 3, "after the model cannot be reached, nothing more goes to it")
+            precondition((0..<40).allSatisfy { page.applied[String($0)] == "ON Text \($0)" }, "the failed batch goes on device")
+            precondition((40..<120).allSatisfy { page.applied[String($0)] == "EN Text \($0)" }, "batches already sent still land")
+            precondition((120..<200).allSatisfy { page.applied[String($0)] == "ON Text \($0)" }, "the rest goes on device")
+            guard case .aiFailed(let reason, onDevice: true)? = page.notices.last, !reason.isEmpty, !reason.contains("\n") else {
+                preconditionFailure("the window says the AI engine failed and why")
+            }
+        }
+
+        // A server error fails only its batch: the model may answer the next one.
+        let model = FakeModel { ids in ids.first == "0" ? .serverError : .translate }
         let page = FakePage()
         let translator = AIPageTranslator(model: model.model, context: context, onNotice: page.note)
         await translator.translate(nodes(200), onDevice: page.onDevice, apply: page.apply)
         let sent = await model.requests()
-        precondition(sent.count == 3, "after the model's request fails, nothing more goes to it")
-        precondition((0..<40).allSatisfy { page.applied[String($0)] == "ON Text \($0)" }, "the failed batch goes on device")
-        precondition((40..<120).allSatisfy { page.applied[String($0)] == "EN Text \($0)" }, "batches already sent still land")
-        precondition((120..<200).allSatisfy { page.applied[String($0)] == "ON Text \($0)" }, "the rest goes on device")
-        guard case .aiFailed(let reason, onDevice: true)? = page.notices.last, !reason.isEmpty, !reason.contains("\n") else {
-            preconditionFailure("the window says the AI engine failed and why")
-        }
+        precondition(sent.count == 5, "every batch still goes to the model")
+        precondition((0..<40).allSatisfy { page.applied[String($0)] == "ON Text \($0)" })
+        precondition((40..<200).allSatisfy { page.applied[String($0)] == "EN Text \($0)" })
 
         // Without an on-device translator (a language pair Apple cannot translate) the text stays.
         let alone = FakePage()
-        let failing = AIPageTranslator(model: FakeModel { _ in .fail }.model, context: context, onNotice: alone.note)
+        let failing = AIPageTranslator(model: FakeModel { _ in .reject }.model, context: context, onNotice: alone.note)
         await failing.translate(nodes(10), onDevice: nil, apply: alone.apply)
         precondition(alone.applied.isEmpty)
         guard case .aiFailed(_, onDevice: false)? = alone.notices.last else { preconditionFailure("says the text stays") }
@@ -176,16 +190,51 @@ struct AIPageTranslationCheck {
 
     @MainActor
     static func timeout() async {
-        let model = FakeModel { _ in .hang }
+        let model = FakeModel { ids in ids.first == "0" ? .hang : .translate }
         let page = FakePage()
-        let translator = AIPageTranslator(model: model.model, context: context, timeout: .milliseconds(50), onNotice: page.note)
+        let translator = AIPageTranslator(model: model.model, context: context, timeout: { _ in .milliseconds(80) }, onNotice: page.note)
         let started = ContinuousClock.now
-        await translator.translate(nodes(10), onDevice: page.onDevice, apply: page.apply)
+        await translator.translate(nodes(160), onDevice: page.onDevice, apply: page.apply)
         precondition(ContinuousClock.now - started < .seconds(5), "a model that never answers is given up on")
         let cancelled = await model.cancelled()
         precondition(cancelled == 1, "and its request is cancelled")
-        precondition((0..<10).allSatisfy { page.applied[String($0)] == "ON Text \($0)" })
+        precondition((0..<40).allSatisfy { page.applied[String($0)] == "ON Text \($0)" }, "the slow batch goes on device")
+        let sent = await model.requests()
+        precondition(sent.count == 4 && (40..<160).allSatisfy { page.applied[String($0)] == "EN Text \($0)" },
+                     "and the rest of the page keeps going to the model")
         precondition(page.notices == [.aiFailed(reason: AITranslationFailure.timedOut.localizedDescription, onDevice: true)])
+
+        let full = AIPageTranslation.replyTimeout(forCharacters: AIPageTranslation.batchCharacterLimit)
+        precondition(full >= .seconds(90), "a full batch leaves time for a thinking model's whole reply")
+        precondition(AIPageTranslation.replyTimeout(forCharacters: 100) < full, "a short batch gets less")
+        precondition(AIPageTranslation.replyTimeout(forCharacters: 50_000) <= .seconds(300))
+    }
+
+    @MainActor
+    static func batching() async {
+        func grouped(_ nodes: [TranslationNode]) -> [[String]] { AIPageTranslation.batches(nodes).map { $0.map(\.id) } }
+        let long = (0..<6).map { TranslationNode(id: String($0), text: String(repeating: "a", count: 1_500)) }
+        precondition(grouped(long) == [["0", "1"], ["2", "3"], ["4", "5"]], "long texts fill a batch by characters")
+        precondition(AIPageTranslation.batches(nodes(100)).map(\.count) == [40, 40, 20], "short ones by count")
+        let huge = [
+            TranslationNode(id: "0", text: "Kurz"),
+            TranslationNode(id: "1", text: String(repeating: "b", count: 5_000)),
+            TranslationNode(id: "2", text: "Kurz")
+        ]
+        precondition(grouped(huge) == [["0"], ["1"], ["2"]], "a text longer than a batch goes alone")
+
+        let model = FakeModel()
+        let page = FakePage()
+        var timed: [Int] = []
+        let translator = AIPageTranslator(model: model.model, context: context, timeout: { characters in
+            timed.append(characters)
+            return .seconds(5)
+        }, onNotice: page.note)
+        await translator.translate(long, onDevice: page.onDevice, apply: page.apply)
+        let sent = await model.requests()
+        precondition(Set(sent) == [["0", "1"], ["2", "3"], ["4", "5"]])
+        precondition(timed == [3_000, 3_000, 3_000], "each batch's time follows its length")
+        precondition(page.applied.count == 6)
     }
 
     @MainActor
@@ -233,7 +282,7 @@ struct AIPageTranslationCheck {
 
 /// A stand-in model that answers each batch as `script` says.
 actor FakeModel {
-    enum Answer { case translate, dropFirst, invalidJSON, fail, hang }
+    enum Answer { case translate, dropFirst, invalidJSON, reject, offline, serverError, hang }
 
     private var script: @Sendable ([String]) -> Answer
     private var sent: [[String]] = []
@@ -262,7 +311,12 @@ actor FakeModel {
         let texts = (json["texts"] as! [[String: String]]).map { ($0["id"]!, $0["text"]!) }
         sent.append(texts.map(\.0))
         let answer = script(texts.map(\.0))
-        if answer == .fail { throw URLError(.badServerResponse) }
+        switch answer {
+        case .reject: throw AITranslationModelUnavailable(reason: "Invalid or missing API key")
+        case .offline: throw URLError(.notConnectedToInternet)
+        case .serverError: throw URLError(.badServerResponse)
+        default: break
+        }
         inFlight += 1
         mostInFlight = max(mostInFlight, inFlight)
         defer { inFlight -= 1 }

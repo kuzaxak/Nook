@@ -164,6 +164,12 @@ struct HostedAIProvidersCheck {
         if case .invalidAPIKey = OpenAICompatibleProvider.failure(status: 401, body: openAIBadKey) {} else { preconditionFailure("401 reads as a bad key") }
         if case .rateLimited = OpenAICompatibleProvider.failure(status: 429, body: Data()) {} else { preconditionFailure("429 reads as a rate limit") }
         precondition(OpenAICompatibleProvider.failure(status: 500, body: Data("upstream".utf8)).errorDescription == "HTTP 500: upstream")
+
+        // Page translation sends the rest of a page on device only after these.
+        let unreachable: [AIProviderError] = [.invalidAPIKey, .httpError(403, "forbidden"), .httpError(404, "model_not_found"), .insecureURL("http://lan")]
+        precondition(unreachable.allSatisfy(\.failsEveryRequest))
+        let passing: [AIProviderError] = [.rateLimited, .refused, .invalidResponse, .httpError(500, ""), .httpError(529, "Overloaded"), .httpError(400, "")]
+        precondition(!passing.contains(where: \.failsEveryRequest), "a busy server or one bad request can pass")
         let limited = Data(#"{"type":"error","error":{"type":"rate_limit_error","message":"Number of request tokens has exceeded your rate limit"}}"#.utf8)
         if case .rateLimited = AnthropicProvider.failure(status: 429, body: limited) {} else { preconditionFailure("429 reads as a rate limit") }
         let busy = Data(#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#.utf8)
