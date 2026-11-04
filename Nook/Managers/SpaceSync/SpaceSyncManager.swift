@@ -34,6 +34,10 @@ final class SpaceSyncManager: SpaceSyncControls {
     @ObservationIgnored private var queueTask: Task<Void, Never>?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var registeredForPushes = false
+    /// A zone fetch in the current fetch failed, so a fetch of everything is not complete yet.
+    @ObservationIgnored private var fetchFailed = false
+    /// Items already reported as too large for iCloud.
+    @ObservationIgnored private var reportedTooLarge: Set<UUID> = []
     @ObservationIgnored private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Nook", category: "SpaceSync")
 
     init(tabs: TabsController) {
@@ -50,12 +54,7 @@ final class SpaceSyncManager: SpaceSyncControls {
             return
         }
         state = Self.load(fileURL)
-        if tabs.loadOutcome != .loaded {
-            // A tree restored from a backup or started over is older than the records iCloud and
-            // this Mac last agreed on; compared with them, every newer record would read as deleted.
-            state.forgetRecords()
-            state.engine = nil
-        }
+        if tabs.loadOutcome != .loaded { state.startOver() }
         status = SpaceSyncStatus(availability: .checking, lastSync: state.lastSync, lastError: state.lastError)
         levels = state.levels
         container = CKContainer(identifier: SpaceSyncAvailability.containerID)
@@ -160,6 +159,7 @@ final class SpaceSyncManager: SpaceSyncControls {
         let engine = CKSyncEngine(CKSyncEngine.Configuration(
             database: container.privateCloudDatabase, stateSerialization: serialization, delegate: self))
         if serialization == nil {
+            state.beginRefetch()
             engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: Self.zoneID))])
         }
         self.engine = engine
@@ -212,6 +212,12 @@ final class SpaceSyncManager: SpaceSyncControls {
     /// limits additions to those records.
     private func queuePending(only ids: Set<UUID>? = nil) {
         state.prune(against: tabs.tree)
+        let tooLarge = state.tooLarge(in: tabs.tree)
+        if !tooLarge.isSubset(of: reportedTooLarge) {
+            state.lastError = "A tab's address or title is too long for iCloud, so it stays on this Mac."
+            scheduleSave()
+        }
+        reportedTooLarge = tooLarge
         publish()
         guard let engine else { return }
         let pending = state.pendingChanges(in: tabs.tree)
@@ -247,6 +253,9 @@ final class SpaceSyncManager: SpaceSyncControls {
     }
 
     private func didSend(_ sent: CKSyncEngine.Event.SentRecordZoneChanges) {
+        if sent.failedRecordSaves.contains(where: { $0.error.code == .zoneNotFound }) {
+            return zoneLost(reuploading: false)
+        }
         var saved: [SyncRecord] = []
         var fields: [UUID: Data] = [:]
         for record in sent.savedRecords {
@@ -256,18 +265,17 @@ final class SpaceSyncManager: SpaceSyncControls {
         }
         var deleted = sent.deletedRecordIDs.compactMap { UUID(uuidString: $0.recordName) }
         var resend: Set<UUID> = []
-        var zoneMissing = false
         for failure in sent.failedRecordSaves {
             guard let id = UUID(uuidString: failure.record.recordID.recordName) else { continue }
             switch failure.error.code {
             case .serverRecordChanged:
                 guard let server = failure.error.serverRecord, let record = SyncRecord(server) else { continue }
-                state.inbox.add(record, systemFields: server.archivedSystemFields)
+                state.fetched(record, systemFields: server.archivedSystemFields)
                 resend.insert(id)
             case .unknownItem:
-                state.inbox.delete(id)
-            case .zoneNotFound:
-                zoneMissing = true
+                if state.systemFields[id] != nil { state.fetchedDeletion(id) }
+            case .batchRequestFailed:
+                resend.insert(id)
             default:
                 note(failure.error)
             }
@@ -281,25 +289,16 @@ final class SpaceSyncManager: SpaceSyncControls {
         }
         state.didSend(saved: saved, systemFields: fields, deleted: deleted)
         applyInbox()
-        if zoneMissing {
-            state.forgetRecords()
-            engine?.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: Self.zoneID))])
-            queuePending()
-        } else {
-            queuePending(only: resend)
-        }
+        queuePending(only: resend)
         scheduleSave()
     }
 
-    /// The zone went from iCloud. Deleted by the person: every space stops syncing and stays
-    /// here. Reset with the person's encryption keys: everything goes up again.
-    private func zoneDeleted(_ deletion: CKDatabase.DatabaseChange.Deletion) {
-        state.forgetRecords()
-        if deletion.reason == .encryptedDataReset {
+    /// The zone is gone from iCloud: nothing here is deleted for it. After a reset of the
+    /// person's encryption keys everything goes up again; otherwise every space turns Off.
+    private func zoneLost(reuploading: Bool) {
+        state.zoneLost(reuploading: reuploading)
+        if reuploading {
             engine?.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: Self.zoneID))])
-        } else {
-            state.levels = [:]
-            state.levelTimes = [:]
         }
         queuePending()
         scheduleSave()
@@ -381,14 +380,16 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
                 checkAccount()
             }
         case .fetchedDatabaseChanges(let changes):
-            if let deletion = changes.deletions.first(where: { $0.zoneID == Self.zoneID }) { zoneDeleted(deletion) }
+            if let deletion = changes.deletions.first(where: { $0.zoneID == Self.zoneID }) {
+                zoneLost(reuploading: deletion.reason == .encryptedDataReset)
+            }
         case .fetchedRecordZoneChanges(let changes):
             for modification in changes.modifications {
                 guard let record = SyncRecord(modification.record) else { continue }
-                state.inbox.add(record, systemFields: modification.record.archivedSystemFields)
+                state.fetched(record, systemFields: modification.record.archivedSystemFields)
             }
             for deletion in changes.deletions {
-                if let id = UUID(uuidString: deletion.recordID.recordName) { state.inbox.delete(id) }
+                if let id = UUID(uuidString: deletion.recordID.recordName) { state.fetchedDeletion(id) }
             }
             scheduleSave()
         case .sentRecordZoneChanges(let sent):
@@ -397,17 +398,23 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
             for failure in sent.failedZoneSaves { note(failure.error) }
         case .didFetchRecordZoneChanges(let fetched):
             if let error = fetched.error {
+                fetchFailed = true
                 if error.code == .zoneNotFound {
-                    syncEngine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: Self.zoneID))])
+                    zoneLost(reuploading: false)
                 } else {
                     note(error)
                 }
             }
-        case .willFetchChanges, .willSendChanges:
+        case .willFetchChanges:
+            fetchFailed = false
+            status.isSyncing = true
+            state.lastError = nil
+        case .willSendChanges:
             status.isSyncing = true
             state.lastError = nil
         case .didFetchChanges:
             applyInbox()
+            if !fetchFailed { state.endRefetch() }
             queuePending()
             finished()
         case .didSendChanges:
@@ -428,7 +435,7 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
             return UUID(uuidString: recordID.recordName)
         })
         var records: [String: CKRecord] = [:]
-        for (id, record) in state.outgoing(ids, in: tabs.tree) {
+        for (id, record) in state.outgoing(ids, in: tabs.tree, now: Date()) {
             records[id.uuidString] = record.record(in: Self.zoneID, systemFields: state.systemFields[id])
         }
         let gone = changes.filter { change in
@@ -441,6 +448,10 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
             guard case .saveRecord(let recordID) = change else { return true }
             return batch[recordID.recordName] != nil
         }
-        return await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: sending) { batch[$0.recordName] }
+        var next = await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: sending) { batch[$0.recordName] }
+        if next?.recordsToSave.contains(where: { $0.recordType == SyncRecord.RecordType.space.rawValue }) == true {
+            next?.atomicByZone = true
+        }
+        return next
     }
 }
