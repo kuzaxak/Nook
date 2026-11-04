@@ -10,6 +10,7 @@
 
 import AppKit
 import SwiftUI
+import WebKit
 import NookDesign
 import NookSettings
 import NookTabsCore
@@ -83,13 +84,7 @@ final class SplitPaneView: NSView {
 
     /// Puts `view` in the pane, leaving it alone when it is already there.
     func show(_ view: NSView) {
-        if view.superview !== content {
-            content.subviews.forEach { $0.removeFromSuperview() }
-            content.addSubview(view)
-        }
-        view.frame = content.bounds
-        view.autoresizingMask = [.width, .height]
-        view.isHidden = false
+        content.showPage(view, inspector: (view as? WKWebView)?.dockedInspector, replacing: content.subviews)
     }
 
     override func setFrameSize(_ newSize: NSSize) {

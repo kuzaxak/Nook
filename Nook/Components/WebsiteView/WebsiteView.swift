@@ -552,8 +552,9 @@ struct TabCompositorWrapper: NSViewRepresentable {
                             return
                         }
                         // Split view: the selected pane's page
+                        // A docked Web Inspector, itself a WKWebView, sits below its page.
                         if let pane = subview as? SplitPaneView, pane.itemID == currentId,
-                           let webView = pane.content.subviews.first(where: { $0 is WKWebView }) {
+                           let webView = pane.content.subviews.last(where: { $0 is WKWebView }) {
                             window.makeFirstResponder(webView)
                             return
                         }
@@ -656,7 +657,8 @@ struct TabCompositorWrapper: NSViewRepresentable {
             containerView.subviews.compactMap { $0 as? SplitDividerView }.forEach { $0.isHidden = true }
             // Single tab (most common path during video playback)
             if let session = selected, !session.isUnloaded {
-                setSingleWebView(pageView(for: session, reusing: contentSubviews), in: containerView, replacing: contentSubviews)
+                let page = pageView(for: session, reusing: contentSubviews)
+                containerView.showPage(page, inspector: (page as? WKWebView)?.dockedInspector, replacing: contentSubviews)
             } else {
                 removeContentViews(contentSubviews)
             }
@@ -684,28 +686,6 @@ struct TabCompositorWrapper: NSViewRepresentable {
             newOverlay.layer?.zPosition = 10_000
             containerView.addSubview(newOverlay)
         }
-    }
-
-    /// Sets a single webview as the only content in the container without removing it
-    /// if it's already the sole content subview. This prevents GPU video surface
-    /// disconnection that causes black flashes during playback.
-    private func setSingleWebView(_ desired: NSView, in containerView: NSView, replacing contentSubviews: [NSView]) {
-        let isAlreadyCorrect = contentSubviews.count == 1 && contentSubviews.first === desired
-
-        if !isAlreadyCorrect {
-            // Remove stale content views
-            for subview in contentSubviews where subview !== desired {
-                subview.removeFromSuperview()
-            }
-            // Add the desired webview if not already a direct child
-            if desired.superview !== containerView {
-                containerView.addSubview(desired)
-            }
-        }
-
-        desired.frame = containerView.bounds
-        desired.autoresizingMask = [NSView.AutoresizingMask.width, NSView.AutoresizingMask.height]
-        desired.isHidden = false
     }
 
     /// Removes all non-overlay content subviews
