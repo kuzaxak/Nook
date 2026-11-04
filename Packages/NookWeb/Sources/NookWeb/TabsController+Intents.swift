@@ -765,8 +765,9 @@ extension TabsController {
     /// stay unloaded and no window's selection changes.
     public func importSpace(_ file: SpaceFile, intoProfile storeID: UUID) -> SpaceImportReport? {
         var report: SpaceImportReport?
+        let kept = device.keptProfiles ?? []
         perform(.main, "importSpace") { tree in
-            let result = try tree.importSpace(file.space, intoProfile: storeID)
+            let result = try tree.importSpace(file.space, intoProfile: storeID, kept: kept)
             report = result.report
             return result.change
         }

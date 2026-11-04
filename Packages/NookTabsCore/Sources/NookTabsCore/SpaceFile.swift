@@ -189,16 +189,19 @@ extension TabTree {
     /// ids. Links that are not web addresses are dropped, and favorites the profile already has
     /// are not added again. Something Nook cannot hold where the file puts it (a folder in
     /// favorites, tabs under a pinned tab, a tab whose link was dropped) gives its contents its
-    /// place.
+    /// place. A kept profile in `kept` has no space to carry its name and engine, so the new space
+    /// takes them.
     @discardableResult
-    public mutating func importSpace(_ snapshot: SpaceSnapshot, intoProfile storeID: UUID, now: Date = Date()) throws -> (change: Change, report: SpaceImportReport) {
-        guard profiles.contains(where: { $0.id == storeID }) else { throw TreeError.missingSpace }
+    public mutating func importSpace(_ snapshot: SpaceSnapshot, intoProfile storeID: UUID, kept: [KeptProfile] = [], now: Date = Date()) throws -> (change: Change, report: SpaceImportReport) {
+        guard let profile = profiles(keeping: kept).first(where: { $0.id == storeID }) else { throw TreeError.missingSpace }
+        let joinsKept = profile.spaceIDs.isEmpty
         let spaceID = UUID()
         let name = unusedSpaceName(snapshot.name)
         let icon = SpaceRecord.isAgentIcon(snapshot.icon) ? "" : snapshot.icon
         let accent = ThemeRGB(hex: snapshot.accentHex)?.hex ?? SpaceSnapshot.defaultAccentHex
-        var change = createSpace(id: spaceID, name: name, icon: icon, accentHex: accent,
-                                 after: orderedSpaces.last?.id, dataStoreID: storeID, now: now)
+        var change = createSpace(id: spaceID, name: name, icon: icon, accentHex: accent, after: orderedSpaces.last?.id,
+                                 dataStoreID: storeID, profileName: joinsKept ? profile.name : nil, now: now)
+        if joinsKept { change.merge(try setSearchEngine(profile: storeID, engineId: profile.searchEngineId, now: now)) }
         if let theme = snapshot.theme { change.merge(try setTheme(spaceID, theme: theme, now: now)) }
         var report = SpaceImportReport(spaceID: spaceID, name: name)
         var favoriteURLs = Set(favorites(of: spaceID).compactMap(\.url))

@@ -43,6 +43,25 @@ struct KeptProfileTests {
         #expect(f.tree.profiles(keeping: device.keptProfiles ?? []).map(\.id) == [f.spaceB, f.spaceA], "listed once, in space order")
     }
 
+    @Test func aSpaceFileImportedIntoAKeptProfileTakesItsNameAndEngine() throws {
+        var f = Fixture()
+        try f.tree.renameProfile(f.spaceB, to: "QDO", now: fixedNow)
+        try f.tree.setSearchEngine(profile: f.spaceB, engineId: "kagi", now: fixedNow)
+        var device = DeviceState()
+        let left = try #require(f.tree.profileLeftEmpty(byMoving: f.spaceB, to: f.spaceA))
+        try f.tree.setProfile(f.spaceB, to: f.spaceA, now: fixedNow)
+        device.keep(left)
+
+        let snapshot = SpaceSnapshot(id: UUID(), name: "Imported", icon: "", accentHex: "#112233", theme: nil,
+                                     favorites: [], pinned: [], tabs: [])
+        let report = try f.tree.importSpace(snapshot, intoProfile: f.spaceB, kept: device.keptProfiles ?? [], now: fixedNow).report
+        #expect(f.tree.dataStoreID(for: report.spaceID) == f.spaceB)
+        let profile = try #require(f.tree.profile(ofSpace: report.spaceID))
+        #expect(profile.name == "QDO" && profile.searchEngineId == "kagi" && profile.spaceIDs == [report.spaceID])
+        device.prune(against: f.tree)
+        #expect(device.keptProfiles?.isEmpty == true, "it has a space again")
+    }
+
     @Test func keepingAgainReplacesTheEntryAndDroppingForgetsIt() throws {
         let f = Fixture()
         var device = DeviceState()

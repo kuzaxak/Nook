@@ -7,7 +7,7 @@
 ### Fixed
 
 - Cmd+W closes the tab instead of the window on Russian and other non-Latin keyboard layouts, and in any window with a tab; it closes the command bar or a Peek when one is open, as in Arc, a held Cmd+W stops at the empty window, and the File menu lists Close Tab and Close Window
-- Moving a space off a profile no other space uses no longer forces deleting it: Move and Keep Profile leaves it in Settings → Profiles with its logins, cookies and history, ready for a space to use again
+- Moving a space off a profile no other space uses no longer forces deleting it: Move and Keep Profile leaves it in Settings → Profiles with its logins, cookies and history, ready for a space or an imported .nookspace file to use again
 - A link opened in the background (Command-click, middle click, Open Link in New Tab) loads at once and fills in its title and icon, as in Arc, instead of waiting until you select it
 - The + menu at the bottom of the sidebar names each item beside its icon and shows the New Tab shortcut
 - Right-click on Back or Forward lists the pages that way, nearest first, with their titles and icons, instead of the toolbar's Icon and Text menu
