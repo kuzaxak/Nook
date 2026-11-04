@@ -31,6 +31,9 @@ struct SecurityKeyShimCheck {
     CredentialsContainer.prototype.create = function () { return Promise.resolve('native create'); };
     var navigator = { credentials: new CredentialsContainer() };
     var frameAncestors = [];
+    var crypto = { getRandomValues: function (array) { for (var i = 0; i < array.length; i++) array[i] = Math.floor(Math.random() * 256); return array; } };
+    window.crypto = crypto;
+    function strip(message) { var copy = JSON.parse(JSON.stringify(message)); delete copy.requestId; return copy; }
     function DOMStringList(items) { this.items = items; }
     Object.defineProperty(DOMStringList.prototype, 'length', { get: function () { return this.items.length; }, configurable: true });
     DOMStringList.prototype.item = function (i) { return this.items[i]; };
@@ -111,7 +114,7 @@ struct SecurityKeyShimCheck {
                 authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'required', extra: 1 },
                 attestation: 'direct', extensions: { credProps: true }, timeout: 60000 } }));
             """)
-        precondition(text("posted[0]") == #"{"op":"create","requestId":1,"ancestorOrigins":[],"challenge":"AAEC","rp":{"id":"example.com","name":"Example"},"user":{"id":"dXNlcg","name":"alice","displayName":"Alice"},"pubKeyCredParams":[-7,-8],"excludeCredentials":["qrvM"],"authenticatorSelection":{"residentKey":"required","userVerification":"required","requireResidentKey":true},"credProps":true,"timeout":60000}"#, text("posted[0]"))
+        precondition(text("strip(posted[0])") == #"{"op":"create","ancestorOrigins":[],"challenge":"AAEC","rp":{"id":"example.com","name":"Example"},"user":{"id":"dXNlcg","name":"alice","displayName":"Alice"},"pubKeyCredParams":[-7,-8],"excludeCredentials":["qrvM"],"authenticatorSelection":{"residentKey":"required","userVerification":"required","requireResidentKey":true},"credProps":true,"timeout":60000}"#, text("strip(posted[0])"))
         let made = SecurityKeyCreated(credentialID: Data([0xfb, 0xff, 1]), authenticatorData: Data([5, 6]), attestationObject: Data([7]),
                                       publicKeyAlgorithm: -7, publicKey: Data([8, 9]), residentKey: true)
         js.evaluateScript("answer(\(json(SecurityKeyReply.created(made, clientDataJSON: Data("{}".utf8), credProps: true))))")
@@ -158,7 +161,7 @@ struct SecurityKeyShimCheck {
             keep('got', navigator.credentials.get({ publicKey: { challenge: new Uint8Array([0, 1, 2]), rpId: 'example.com',
                 allowCredentials: [{ type: 'public-key', id: new Uint8Array([1]) }], userVerification: 'discouraged', timeout: 30000 } }));
             """)
-        precondition(text("posted[posted.length - 1]") == #"{"op":"get","requestId":4,"ancestorOrigins":[],"challenge":"AAEC","rpId":"example.com","allowCredentials":["AQ"],"userVerification":"discouraged","mediation":"optional","timeout":30000}"#, text("posted[posted.length - 1]"))
+        precondition(text("strip(posted[posted.length - 1])") == #"{"op":"get","ancestorOrigins":[],"challenge":"AAEC","rpId":"example.com","allowCredentials":["AQ"],"userVerification":"discouraged","mediation":"optional","timeout":30000}"#, text("strip(posted[posted.length - 1])"))
         let signed = SecurityKeyAsserted(credentialID: Data([1]), authenticatorData: Data([2, 3]), signature: Data([4]), userHandle: Data([5]))
         js.evaluateScript("answer(\(json(SecurityKeyReply.asserted(signed, clientDataJSON: Data("{}".utf8)))))")
         let got = "results.got.value"
@@ -170,6 +173,10 @@ struct SecurityKeyShimCheck {
         let anonymous = SecurityKeyAsserted(credentialID: Data([1]), authenticatorData: Data([2]), signature: Data([3]), userHandle: nil)
         js.evaluateScript("answer(\(json(SecurityKeyReply.asserted(anonymous, clientDataJSON: Data("{}".utf8)))))")
         precondition(text("[results.anonymous.value.response.userHandle, results.anonymous.value.toJSON().response.userHandle]") == "[null,null]")
+
+        // Each request has its own 128-bit random id, so no two frames' shims can collide.
+        precondition(value("posted.every(function (m) { return /^[0-9a-f]{32}$/.test(m.requestId); })").toBool())
+        precondition(value("new Set(posted.map(function (m) { return m.requestId; })).size === posted.length").toBool())
 
         // Errors are DOMExceptions with Nook's name.
         for name in ["NotAllowedError", "InvalidStateError", "SecurityError", "NotSupportedError"] {

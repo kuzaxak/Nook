@@ -9,7 +9,7 @@
 // does the page see a platform authenticator and conditional mediation.
 (() => {
   const platform = __NOOK_PLATFORM__;
-  if (!window.PublicKeyCredential || !window.CredentialsContainer) return;
+  if (!window.PublicKeyCredential || !window.CredentialsContainer || !window.crypto || !crypto.getRandomValues) return;
   const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nookPasskey;
   if (!handler) return;
   const post = handler.postMessage.bind(handler);
@@ -17,6 +17,7 @@
   const nativeGet = container.get;
   const nativeCreate = container.create;
   const failed = 'The operation either timed out or was not allowed.';
+  const random = crypto.getRandomValues.bind(crypto);
   // Taken before page script runs, so a frame reports the ancestors WebKit gives it.
   const here = window.location;
   const ancestorsGetter = typeof Location === 'function'
@@ -50,10 +51,17 @@
     return out.buffer;
   }
 
-  let nextRequest = 0;
+  // 128 random bits: every frame runs its own copy of this script, and Nook keys requests by
+  // the frame's origin and this id.
+  function newRequestId() {
+    let id = '';
+    for (const byte of random(new Uint8Array(16))) id += (byte < 16 ? '0' : '') + byte.toString(16);
+    return id;
+  }
+
   function request(op, payload, signal) {
     if (signal && signal.aborted) return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
-    const requestId = ++nextRequest;
+    const requestId = newRequestId();
     return new Promise((resolve, reject) => {
       let settled = false;
       const onAbort = () => {
