@@ -57,7 +57,7 @@ struct SpaceView: View {
         let rows = tabs.rows(space: spaceID)
         let pinned = rows.filter { $0.section == .pinned }
         let regular = rows.filter { $0.section == .tabs }
-        let split = splitPair(in: rows)
+        let split = splitPanes(in: rows)
 
         ScrollViewReader { proxy in
         ScrollView(.vertical) {
@@ -120,8 +120,8 @@ struct SpaceView: View {
 
     // MARK: - Sections
 
-    private func sectionList(_ section: Parent, rows allRows: [Row], split: SplitPair?, showsTail: Bool) -> some View {
-        // The pair is one row at its anchor; the other half's own row is hidden.
+    private func sectionList(_ section: Parent, rows allRows: [Row], split: SplitPanes?, showsTail: Bool) -> some View {
+        // The split is one row at its anchor; its other panes' own rows are hidden.
         let rows = split.map { split in allRows.filter { !split.contains($0.id) || $0.id == split.anchorID } } ?? allRows
         let zone = DropZoneID.section(section)
         let position = dragSession.dropPosition?.zone == zone ? dragSession.dropPosition : nil
@@ -233,9 +233,9 @@ struct SpaceView: View {
     }
 
     @ViewBuilder
-    private func rowView(_ row: Row, zone: DropZoneID, split: SplitPair?, isDropTarget: Bool) -> some View {
+    private func rowView(_ row: Row, zone: DropZoneID, split: SplitPanes?, isDropTarget: Bool) -> some View {
         if let split, row.id == split.anchorID {
-            SplitTabRow(left: split.left, right: split.right, zoneID: zone)
+            SplitTabRow(items: split.items, zoneID: zone)
         } else {
             let session = tabs.session(for: row.item.id)
             NookDragSourceView(
@@ -256,23 +256,23 @@ struct SpaceView: View {
 
     // MARK: - Split
 
-    private struct SplitPair {
-        let left: Item
-        let right: Item
-        /// The row the pair is drawn at.
+    private struct SplitPanes {
+        let items: [Item]
+        /// The row the split is drawn at.
         let anchorID: UUID
 
-        func contains(_ id: UUID) -> Bool { id == left.id || id == right.id }
+        func contains(_ id: UUID) -> Bool { items.contains { $0.id == id } }
     }
 
-    /// The window's split pair, anchored at the left tab's row, or the right tab's when the left
-    /// has no visible row (a favorite, or inside a closed folder).
-    private func splitPair(in rows: [Row]) -> SplitPair? {
+    /// The window's split, anchored at the row of its first pane that has one: a favorite has
+    /// none, nor a tab inside a closed folder.
+    private func splitPanes(in rows: [Row]) -> SplitPanes? {
         guard let split = windowState.split,
-              let left = tabs.item(split.leftItemID), let right = tabs.item(split.rightItemID),
-              let anchor = [left.id, right.id].first(where: { id in rows.contains { $0.id == id } })
+              let anchor = split.itemIDs.first(where: { id in rows.contains { $0.id == id } })
         else { return nil }
-        return SplitPair(left: left, right: right, anchorID: anchor)
+        let items = split.itemIDs.compactMap(tabs.item)
+        guard items.count == split.itemIDs.count else { return nil }
+        return SplitPanes(items: items, anchorID: anchor)
     }
 
     // MARK: - Separator and New Tab

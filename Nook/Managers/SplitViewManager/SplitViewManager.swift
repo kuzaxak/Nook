@@ -4,29 +4,22 @@ import NookDesign
 import NookTabsCore
 import NookWeb
 
-/// Split view per window. The pair lives on `BrowserWindowState.split` (item ids, saved with the
-/// window); the active side is whichever pane the window selects. Only the drag preview state is
-/// kept here.
+/// Split view per window. The panes live on `BrowserWindowState.split` (item ids, saved with the
+/// window); the active pane is whichever one the window selects. Only the drop preview is kept here.
 @MainActor
 final class SplitViewManager: ObservableObject {
-    typealias Side = SplitDrop.Side
-
-    /// A read-only snapshot of one window's split and preview state.
-    struct WindowSplitState {
-        var isSplit: Bool = false
-        var leftTabId: UUID? = nil
-        var rightTabId: UUID? = nil
-        var dividerFraction: CGFloat = 0.5
-        var isPreviewActive: Bool = false
-        var previewSide: Side? = nil
-        var activeSide: Side? = nil
-        var dragLocation: CGPoint? = nil
+    /// What a tab dragged over the page would do, and where: `zone` is a fraction of the page,
+    /// from its top-left corner.
+    struct Preview: Equatable {
+        var outcome: SplitDrop.Outcome
+        var zone: CGRect
     }
 
-    private struct Preview {
-        var isActive = false
-        var side: Side?
-        var dragLocation: CGPoint?
+    /// The page's panes in order, nil standing for Add Split View's empty pane.
+    struct PageLayout: Equatable {
+        var slots: [UUID?]
+        var vertical: Bool
+        var dividers: [CGFloat]
     }
 
     weak var browserManager: BrowserManager?
@@ -37,112 +30,130 @@ final class SplitViewManager: ObservableObject {
         self.browserManager = browserManager
     }
 
-    private func window(_ windowId: UUID) -> BrowserWindowState? {
-        browserManager?.windowRegistry?.windows[windowId]
-    }
+    private var tabs: TabsController? { browserManager?.tabs }
 
     // MARK: - State
 
-    func getSplitState(for windowId: UUID) -> WindowSplitState {
-        let preview = previews[windowId] ?? Preview()
-        var state = WindowSplitState(
-            isPreviewActive: preview.isActive, previewSide: preview.side, dragLocation: preview.dragLocation)
-        guard let window = window(windowId), let split = window.split else { return state }
-        state.isSplit = true
-        state.leftTabId = split.leftItemID
-        state.rightTabId = split.rightItemID
-        state.dividerFraction = CGFloat(split.fraction)
-        state.activeSide = side(for: window.selectedItemID, in: split)
-        return state
+    /// The split `window` shows: its saved one while one of its panes is selected.
+    func shownSplit(in window: BrowserWindowState) -> SplitRecord? {
+        guard let split = window.split, let selected = window.selectedItemID, split.contains(selected) else { return nil }
+        return split
     }
 
-    func isSplit(for windowId: UUID) -> Bool { window(windowId)?.split != nil }
-    func leftTabId(for windowId: UUID) -> UUID? { window(windowId)?.split?.leftItemID }
-    func rightTabId(for windowId: UUID) -> UUID? { window(windowId)?.split?.rightItemID }
-    func dividerFraction(for windowId: UUID) -> CGFloat { CGFloat(window(windowId)?.split?.fraction ?? 0.5) }
-    func activeSide(for windowId: UUID) -> Side? { getSplitState(for: windowId).activeSide }
-
-    func side(for itemID: UUID, in windowId: UUID) -> Side? {
-        window(windowId)?.split.flatMap { side(for: itemID, in: $0) }
-    }
-
-    /// Each pane's frame in the page area `bounds`, with the gutter between them.
-    static func paneFrames(in bounds: CGRect, fraction: CGFloat) -> (left: CGRect, right: CGRect) {
-        let gap = NookDesign.Chrome.splitGap
-        let leftWidth = floor(bounds.width * fraction)
-        return (CGRect(x: bounds.minX, y: bounds.minY, width: max(1, leftWidth - gap / 2), height: bounds.height),
-                CGRect(x: bounds.minX + leftWidth + gap / 2, y: bounds.minY,
-                       width: max(1, bounds.width - leftWidth - gap / 2), height: bounds.height))
-    }
-
-    private func side(for itemID: UUID?, in split: SplitRecord) -> Side? {
-        switch itemID {
-        case split.leftItemID: return .left
-        case split.rightItemID: return .right
-        default: return nil
+    /// What the page lays out: Add Split View's panes while its bar is open, else the split shown.
+    func pageLayout(in window: BrowserWindowState) -> PageLayout? {
+        if let adding = window.commandPalette?.addSplit, adding.shows(selectedItemID: window.selectedItemID, split: window.splitLayout) {
+            return PageLayout(slots: adding.slots, vertical: adding.vertical, dividers: SplitDrop.equalDividers(adding.slots.count))
+        }
+        return shownSplit(in: window).map {
+            PageLayout(slots: $0.itemIDs, vertical: $0.orientation == .vertical, dividers: $0.dividers.map { CGFloat($0) })
         }
     }
 
-    // MARK: - Entering and Leaving
-
-    /// Puts `itemID` on `side`, as `SplitDrop.outcome` decides. Outside a split it pairs with the
-    /// window's selection, which stays selected; inside a split it replaces that pane and becomes
-    /// the selection.
-    func enterSplit(with itemID: UUID, placeOn side: Side = .right, in window: BrowserWindowState) {
-        guard let tabs = browserManager?.tabs, let dragged = dragged(itemID, in: window) else { return }
-        switch SplitDrop.outcome(of: dragged, on: side, selected: window.selectedItemID, split: window.splitPair) {
-        case .replace?:
-            guard var split = window.split else { return }
-            switch side {
-            case .left: split.leftItemID = itemID
-            case .right: split.rightItemID = itemID
-            }
-            window.split = split
-            loadPanes(of: window)
-            tabs.select(itemID, in: window)
-        case .split?:
-            guard let current = window.selectedItemID else { return }
-            let (left, right) = side == .left ? (itemID, current) : (current, itemID)
-            window.split = SplitRecord(leftItemID: left, rightItemID: right, fraction: 0.5)
-            loadPanes(of: window)
-            // Selecting again saves the window record with its new split.
-            tabs.select(current, in: window)
-        case nil:
-            return
-        }
-    }
-
-    // MARK: - Add Split View
-
-    /// Arc's Add Split View, for every entry to it: the selected tab stays on the left and the
-    /// command bar opens over an empty right pane. Does nothing with no tab selected or while
-    /// the window shows a split.
-    func addSplitView(in window: BrowserWindowState) {
-        guard let addSplit = AddSplit.start(selectedItemID: window.selectedItemID, split: window.splitPair) else { return }
-        window.commandPalette?.open(addSplit: addSplit)
-    }
-
-    func offersAddSplitView(in window: BrowserWindowState) -> Bool {
-        AddSplit.isOffered(selectedItemID: window.selectedItemID, split: window.splitPair)
-    }
-
-    /// `itemID`, chosen in the command bar, takes Add Split View's empty pane and becomes the selection.
-    func fill(_ addSplit: AddSplit, with itemID: UUID, in window: BrowserWindowState) {
-        guard let right = addSplit.rightItem(choosing: itemID, selectedItemID: window.selectedItemID, split: window.splitPair) else { return }
-        enterSplit(with: right, placeOn: .right, in: window)
-        browserManager?.tabs.select(right, in: window)
+    /// Each pane's frame in the page area `bounds`, top-down, with the gutter between them.
+    static func paneFrames(in bounds: CGRect, of layout: PageLayout) -> [CGRect] {
+        SplitDrop.paneFrames(in: bounds, count: layout.slots.count, vertical: layout.vertical,
+                             dividers: layout.dividers, gap: NookDesign.Chrome.splitGap)
     }
 
     /// `itemID` as a split sees it: whether it is a tab, and one of the tree `window` shows.
     func dragged(_ itemID: UUID, in window: BrowserWindowState) -> SplitDrop.Dragged? {
-        guard let tabs = browserManager?.tabs, let item = tabs.item(itemID) else { return nil }
+        guard let tabs, let item = tabs.item(itemID) else { return nil }
         return SplitDrop.Dragged(id: itemID, isTab: !item.isFolder, isInWindow: tabs.holds(itemID, in: window))
+    }
+
+    // MARK: - Dropping and Opening
+
+    /// What `SplitDrop` decided for a tab dropped on the page. A new split keeps the selected tab
+    /// selected; a tab that opens in a pane or takes one becomes the selection.
+    func drop(_ itemID: UUID, _ outcome: SplitDrop.Outcome, in window: BrowserWindowState) {
+        guard let tabs else { return }
+        switch outcome {
+        case .split(let edge):
+            guard let current = window.selectedItemID,
+                  let record = SplitRecord(edge == .leading ? [itemID, current] : [current, itemID]) else { return }
+            window.split = record
+            loadPanes(of: window)
+            // Selecting again saves the window record with its new split.
+            tabs.select(current, in: window)
+        case .insert(let pane, let edge):
+            guard let record = shownSplit(in: window)?.inserting(itemID, beside: pane, after: edge == .trailing) else { return }
+            window.split = record
+            loadPanes(of: window)
+            tabs.select(itemID, in: window)
+        case .replace(let pane):
+            guard let record = shownSplit(in: window)?.replacing(pane, with: itemID) else { return }
+            window.split = record
+            loadPanes(of: window)
+            tabs.select(itemID, in: window)
+        case .move(let pane, let edge):
+            guard let record = shownSplit(in: window)?.moving(itemID, beside: pane, after: edge == .trailing) else { return }
+            update(window, to: record)
+        }
+    }
+
+    /// Open in Split View, from a tab's menu, a link or a Peek: on `edge` of the selected tab, or of
+    /// the selected pane, which it takes once four show.
+    func enterSplit(with itemID: UUID, placeOn edge: SplitDrop.Edge = .trailing, in window: BrowserWindowState) {
+        guard let dragged = dragged(itemID, in: window) else { return }
+        let layout = window.splitLayout
+        let pane = window.selectedItemID.flatMap { SplitDrop.current(layout, selected: $0)?.panes.firstIndex(of: $0) } ?? 0
+        guard let outcome = SplitDrop.outcome(of: dragged, beside: pane, edge, selected: window.selectedItemID, split: layout) else { return }
+        drop(itemID, outcome, in: window)
+    }
+
+    // MARK: - Add Split View
+
+    /// Arc's Add Split View, for ⌃⇧=, the command bar and the sidebar's New Split: the command bar
+    /// opens over an empty pane after the window's tab, or after its split's last pane.
+    func addSplitView(in window: BrowserWindowState) {
+        guard let addSplit = AddSplit.start(selectedItemID: window.selectedItemID, split: window.splitLayout) else { return }
+        window.commandPalette?.open(addSplit: addSplit)
+    }
+
+    func offersAddSplitView(in window: BrowserWindowState) -> Bool {
+        AddSplit.isOffered(selectedItemID: window.selectedItemID, split: window.splitLayout)
+    }
+
+    /// `itemID`, chosen in the command bar, takes Add Split View's empty pane and becomes the selection.
+    func fill(_ addSplit: AddSplit, with itemID: UUID, in window: BrowserWindowState) {
+        guard let tabs, let filled = addSplit.filling(choosing: itemID, selectedItemID: window.selectedItemID, split: window.splitLayout),
+              let record = shownSplit(in: window).map({ $0.inserting(filled, at: addSplit.index) }) ?? SplitRecord(addSplit.panes + [filled])
+        else { return }
+        window.split = record
+        loadPanes(of: window)
+        tabs.select(filled, in: window)
+    }
+
+    /// Ends the split and keeps all its tabs open. The active pane stays selected.
+    func separateAll(in window: BrowserWindowState) {
+        guard window.split != nil else { return }
+        update(window, to: nil)
+    }
+
+    /// Divider `index` dragged to `position`, a fraction of the page's width or height.
+    func moveDivider(_ index: Int, to position: CGFloat, length: CGFloat, in window: BrowserWindowState) {
+        guard var record = window.split, length > 0 else { return }
+        record.moveDivider(index, to: Double(position), minimum: min(0.9 / Double(record.itemIDs.count), 160 / Double(length)))
+        window.split = record
+    }
+
+    /// A divider let go: the window record keeps where it was left.
+    func dividerMoveEnded(in window: BrowserWindowState) {
+        tabs?.mirror(window)
+    }
+
+    /// No selection change to save the record, so save it here.
+    private func update(_ window: BrowserWindowState, to record: SplitRecord?) {
+        window.split = record
+        tabs?.mirror(window)
+        window.refreshCompositor()
     }
 
     /// A pane shows its page, so the sidebar gives it back first.
     private func loadPanes(of window: BrowserWindowState) {
         guard let bm = browserManager, let split = window.split else { return }
-        for id in [split.leftItemID, split.rightItemID] {
+        for id in split.itemIDs {
             bm.exitSidebarPiP(showing: id)
             if let session = bm.tabs.ensureSession(for: id) {
                 PiPManager.shared.leaveAutomatic(session)
@@ -151,58 +162,25 @@ final class SplitViewManager: ObservableObject {
         }
     }
 
-    /// Leaves the split. When the window selects a pane, the kept side becomes the selection.
-    func exitSplit(keep side: Side, for windowId: UUID) {
-        guard let window = window(windowId), let split = window.split else { return }
-        let showsPane = self.side(for: window.selectedItemID, in: split) != nil
-        window.split = nil
-        let kept = side == .left ? split.leftItemID : split.rightItemID
-        if showsPane, let tabs = browserManager?.tabs, tabs.item(kept) != nil {
-            tabs.select(kept, in: window)
-        } else {
-            // No selection change to save the record, so save it here.
-            browserManager?.tabs.mirror(window)
-            window.refreshCompositor()
-        }
-    }
-
-    /// Ends the split and keeps both tabs open. The active pane stays selected.
-    func separate(in window: BrowserWindowState) {
-        exitSplit(keep: activeSide(for: window.id) ?? .left, for: window.id)
-    }
-
     func cleanupWindow(_ windowId: UUID) {
         previews.removeValue(forKey: windowId)
     }
 
     // MARK: - Preview During Drag-Over
 
-    func beginPreview(side: Side?, for windowId: UUID) {
-        previews[windowId, default: Preview()].isActive = true
-        previews[windowId]?.side = side
-        window(windowId)?.refreshCompositor()
-    }
+    func preview(for windowId: UUID) -> Preview? { previews[windowId] }
 
-    func updatePreviewSide(_ side: Side?, for windowId: UUID) {
-        guard previews[windowId]?.isActive == true else { return }
-        previews[windowId]?.side = side
-    }
-
-    func updateDragLocation(_ location: CGPoint?, for windowId: UUID) {
-        previews[windowId, default: Preview()].dragLocation = location
-    }
-
-    func dragLocation(for windowId: UUID) -> CGPoint? {
-        previews[windowId]?.dragLocation
-    }
-
-    func endPreview(cancel: Bool, for windowId: UUID) {
-        previews[windowId] = Preview()
-        window(windowId)?.refreshCompositor()
+    func setPreview(_ preview: Preview?, for windowId: UUID) {
+        guard previews[windowId] != preview else { return }
+        previews[windowId] = preview
     }
 }
 
 extension BrowserWindowState {
-    /// The split record's two tabs, as `SplitDrop` takes them.
-    var splitPair: (left: UUID, right: UUID)? { split.map { ($0.leftItemID, $0.rightItemID) } }
+    /// The saved split as `SplitDrop` and `AddSplit` take it.
+    var splitLayout: SplitDrop.Layout? {
+        split.map {
+            SplitDrop.Layout(panes: $0.itemIDs, vertical: $0.orientation == .vertical, dividers: $0.dividers.map { CGFloat($0) }, isFull: $0.isFull)
+        }
+    }
 }

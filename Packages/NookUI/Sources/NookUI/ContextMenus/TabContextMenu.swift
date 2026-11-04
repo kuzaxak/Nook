@@ -42,8 +42,7 @@ public struct TabContextMenu: View {
         if let item = tabs.item(itemID) {
             let section = tabs.section(of: itemID)
             Group {
-                if let windowState, let split = windowState.split,
-                   split.leftItemID == itemID || split.rightItemID == itemID {
+                if let windowState, windowState.split?.contains(itemID) == true {
                     Button {
                         actions?.separateSplit(in: windowState)
                     } label: {

@@ -429,9 +429,7 @@ public final class TabsController {
 
     public func isVisibleInAnyWindow(_ itemID: UUID) -> Bool {
         allWindows.contains { window in
-            window.selectedItemID == itemID
-                || window.split?.leftItemID == itemID
-                || window.split?.rightItemID == itemID
+            window.selectedItemID == itemID || window.split?.contains(itemID) == true
         }
     }
 
@@ -584,7 +582,7 @@ public final class TabsController {
     // MARK: - Page Ownership
 
     private func shows(_ itemID: UUID, in window: BrowserWindowState) -> Bool {
-        window.selectedItemID == itemID || window.split?.leftItemID == itemID || window.split?.rightItemID == itemID
+        window.selectedItemID == itemID || window.split?.contains(itemID) == true
     }
 
     /// The window that shows the item's live page: the last window to select or claim it while
@@ -615,7 +613,7 @@ public final class TabsController {
 
     public func refreshWindows(showing itemID: UUID) {
         for window in allWindows
-        where window.selectedItemID == itemID || window.split?.leftItemID == itemID || window.split?.rightItemID == itemID {
+        where shows(itemID, in: window) {
             window.refreshCompositor()
         }
     }

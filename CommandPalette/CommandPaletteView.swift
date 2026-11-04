@@ -204,8 +204,10 @@ struct CommandPaletteView: View {
 
     /// Add Split View's empty pane in global coordinates; nil while the bar is not filling one.
     private var emptyPane: CGRect? {
-        guard commandPalette.addSplit != nil else { return nil }
-        return SplitViewManager.paneFrames(in: commandPalette.pageFrame, fraction: 0.5).right
+        guard let addSplit = commandPalette.addSplit else { return nil }
+        let layout = SplitViewManager.PageLayout(slots: addSplit.slots, vertical: addSplit.vertical,
+                                                 dividers: SplitDrop.equalDividers(addSplit.slots.count))
+        return SplitViewManager.paneFrames(in: commandPalette.pageFrame, of: layout)[addSplit.index]
     }
 
     var body: some View {
@@ -224,7 +226,12 @@ struct CommandPaletteView: View {
                 })
 
             VStack {
-                Spacer()
+                // A pane below the others takes the bar near its top; one beside them, at the middle.
+                if let pane, commandPalette.addSplit?.vertical == true {
+                    Spacer().frame(height: max(0, pane.minY - paletteFrame.minY + NookDesign.Size.navRow + NookDesign.Spacing.sm * 2))
+                } else {
+                    Spacer()
+                }
                 HStack(spacing: 0) {
                     if let pane {
                         Spacer().frame(width: max(0, pane.midX - barWidth / 2 - paletteFrame.minX))
@@ -440,7 +447,7 @@ struct CommandPaletteView: View {
                 searchManager.clearSuggestions()
             }
         }
-        .onChange(of: commandPalette.addSplit?.shows(selectedItemID: windowState.selectedItemID, split: windowState.splitPair)) { _, shows in
+        .onChange(of: commandPalette.addSplit?.shows(selectedItemID: windowState.selectedItemID, split: windowState.splitLayout)) { _, shows in
             if shows == false { commandPalette.close() }
         }
         // An open tab whose title is exactly what was typed is what Return should switch to, as in Arc.
@@ -571,7 +578,7 @@ struct CommandPaletteView: View {
     }
 
     private var returnPlacement: String {
-        if commandPalette.addSplit != nil { return "the right pane" }
+        if commandPalette.addSplit != nil { return "the new pane" }
         if commandPalette.shouldNavigateCurrentTab, let page = browserManager.frontPage(in: windowState) {
             return page.isDetached ? "this Peek" : "this tab"
         }
@@ -668,7 +675,7 @@ struct CommandPaletteView: View {
         if fillsPane, let id { fillEmptyPane(with: id) }
     }
 
-    /// Add Split View: `itemID` takes the right pane and becomes the selection.
+    /// Add Split View: `itemID` takes the empty pane and becomes the selection.
     private func fillEmptyPane(with itemID: UUID) {
         guard let addSplit = commandPalette.addSplit else { return }
         browserManager.splitManager.fill(addSplit, with: itemID, in: windowState)

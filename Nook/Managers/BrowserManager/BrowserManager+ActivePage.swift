@@ -188,7 +188,7 @@ extension BrowserManager {
         guard let state = windowRegistry?.windows.values.first(where: { $0.window === nsWindow }) else { return }
         let peek = peekManager.page(in: state)
         let shown = [peek, tabs.selectedSession(in: state)]
-            + [splitManager.leftTabId(for: state.id), splitManager.rightTabId(for: state.id)].map { $0.flatMap(tabs.session(for:)) }
+            + (state.split?.itemIDs ?? []).map(tabs.session(for:))
         if let view = shown.compactMap({ $0?.webView }).first(where: { $0.fullscreenState != .notInFullscreen }) {
             view.evaluateJavaScript("document.exitFullscreen()")
         } else if peek != nil {

@@ -17,11 +17,11 @@ import NookWeb
 
 extension BrowserManager: TabActions {
     func enterSplit(with itemID: UUID, placeOnRight: Bool, in window: BrowserWindowState) {
-        splitManager.enterSplit(with: itemID, placeOn: placeOnRight ? .right : .left, in: window)
+        splitManager.enterSplit(with: itemID, placeOn: placeOnRight ? .trailing : .leading, in: window)
     }
 
     func separateSplit(in window: BrowserWindowState) {
-        splitManager.separate(in: window)
+        splitManager.separateAll(in: window)
     }
 
     func editPinnedURL(url: URL, title: String, onSave: @escaping (URL) -> Void) {

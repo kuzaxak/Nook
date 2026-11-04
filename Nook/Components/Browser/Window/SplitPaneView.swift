@@ -4,8 +4,8 @@
 //  Nook
 //
 //  One pane of the split view: a toolbar strip (back, forward, reload, address, separate, close)
-//  above the page, as Arc draws it. The compositor keeps panes across refreshes so a web view
-//  never leaves its superview while the pair holds.
+//  above the page, as Arc draws it. The compositor keeps panes across refreshes so a web
+//  view never leaves its superview while the split holds.
 //
 
 import AppKit
@@ -17,6 +17,13 @@ import NookTabsCore
 import NookUI
 import NookWeb
 
+/// Where a pane sits in its split, which decides the corners it rounds.
+struct SplitPanePosition: Equatable {
+    var index: Int
+    var count: Int
+    var vertical: Bool
+}
+
 final class SplitPaneView: NSView {
     // A CGColor is frozen at creation; re-resolve it when light/dark changes.
     override func viewDidChangeEffectiveAppearance() {
@@ -26,7 +33,9 @@ final class SplitPaneView: NSView {
         }
     }
 
-    let side: SplitViewManager.Side
+    var position: SplitPanePosition {
+        didSet { if position != oldValue { updateMask() } }
+    }
     let itemID: UUID
     /// The page view's parent: the pane below the toolbar strip.
     let content = NSView()
@@ -34,8 +43,8 @@ final class SplitPaneView: NSView {
     private let maskLayer = CAShapeLayer()
     private weak var settings: NookSettingsService?
 
-    init(frame: NSRect, side: SplitViewManager.Side, itemID: UUID, browserManager: BrowserManager, windowState: BrowserWindowState, hoverManager: HoverSidebarManager) {
-        self.side = side
+    init(frame: NSRect, position: SplitPanePosition, itemID: UUID, browserManager: BrowserManager, windowState: BrowserWindowState, hoverManager: HoverSidebarManager) {
+        self.position = position
         self.itemID = itemID
         self.settings = browserManager.nookSettings
         super.init(frame: frame)
@@ -94,23 +103,29 @@ final class SplitPaneView: NSView {
 
     private func updateMask() {
         // Toggling the border resizes the pane, so this reruns through setFrameSize.
-        maskLayer.path = Self.maskPath(side: side, bounds: bounds, settings: settings)
+        maskLayer.path = Self.maskPath(position: position, bounds: bounds, settings: settings)
     }
 
-    static func maskPath(side: SplitViewManager.Side, bounds: CGRect, settings: NookSettingsService?) -> CGPath {
+    /// A corner between two of the page's own edges keeps the page's shape: square at the top,
+    /// where the container rounds it, and the page radius at the bottom. Corners on the gutter
+    /// round off.
+    static func maskPath(position: SplitPanePosition, bounds: CGRect, settings: NookSettingsService?) -> CGPath {
         let radius = NookDesign.Radius.page
         let outer = settings?.hideWebContentBorder == true ? 0 : radius
+        let first = position.index == 0, last = position.index == position.count - 1
+        let leading = position.vertical || first, trailing = position.vertical || last
+        let top = !position.vertical || first, bottom = !position.vertical || last
         return TabCompositorWrapper.createUnevenRoundedRectPath(
             rect: bounds,
-            topLeadingRadius: side == .left ? 0 : radius,
-            bottomLeadingRadius: side == .left ? outer : radius,
-            bottomTrailingRadius: side == .right ? outer : radius,
-            topTrailingRadius: side == .right ? 0 : radius
+            topLeadingRadius: top && leading ? 0 : radius,
+            bottomLeadingRadius: bottom && leading ? outer : radius,
+            bottomTrailingRadius: bottom && trailing ? outer : radius,
+            topTrailingRadius: top && trailing ? 0 : radius
         )
     }
 }
 
-/// Add Split View's right pane until the command bar fills it. Not a tab, so there is no page:
+/// Add Split View's new pane until the command bar fills it. Not a tab, so there is no page:
 /// only the strip with the bar's placeholder. The bar draws the pane's close button.
 final class EmptySplitPaneView: NSView {
     override func viewDidChangeEffectiveAppearance() {
@@ -122,9 +137,13 @@ final class EmptySplitPaneView: NSView {
 
     private let maskLayer = CAShapeLayer()
     private weak var settings: NookSettingsService?
+    var position: SplitPanePosition {
+        didSet { if position != oldValue { updateMask() } }
+    }
 
-    init(frame: NSRect, settings: NookSettingsService?) {
+    init(frame: NSRect, position: SplitPanePosition, settings: NookSettingsService?) {
         self.settings = settings
+        self.position = position
         super.init(frame: frame)
         wantsLayer = true
         layer?.mask = maskLayer
@@ -139,14 +158,18 @@ final class EmptySplitPaneView: NSView {
             strip.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
             strip.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
         ])
-        maskLayer.path = SplitPaneView.maskPath(side: .right, bounds: bounds, settings: settings)
+        updateMask()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        maskLayer.path = SplitPaneView.maskPath(side: .right, bounds: bounds, settings: settings)
+        updateMask()
+    }
+
+    private func updateMask() {
+        maskLayer.path = SplitPaneView.maskPath(position: position, bounds: bounds, settings: settings)
     }
 }
 

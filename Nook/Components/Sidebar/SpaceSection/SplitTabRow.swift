@@ -5,30 +5,32 @@ import NookTabsCore
 import NookUI
 import NookWeb
 
-/// The window's split pair shown as one sidebar row (from `BrowserWindowState.split`).
-/// The halves' visuals are `SplitHalfLabel` in NookUI; this file is the drag source around them.
+/// The window's split shown as one sidebar row (from `BrowserWindowState.split`), a part per pane.
+/// The parts' visuals are `SplitHalfLabel` in NookUI; this file is the drag source around them.
 struct SplitTabRow: View {
-    let left: Item
-    let right: Item
-    /// The drop zone the halves drag from.
+    let items: [Item]
+    /// The drop zone the parts drag from.
     let zoneID: DropZoneID
 
     @Environment(BrowserWindowState.self) private var windowState
     @State private var isHovering = false
 
-    /// The whole row is the selection while the window shows the pair.
+    /// The whole row is the selection while the window shows the split.
     private var isActive: Bool {
-        windowState.selectedItemID == left.id || windowState.selectedItemID == right.id
+        items.contains { $0.id == windowState.selectedItemID }
     }
 
     var body: some View {
         HStack(spacing: 0) {
-            SplitHalfTab(item: left, zoneID: zoneID)
-            Rectangle()
-                .fill(NookDesign.Surface.hairline)
-                .frame(width: NookDesign.Size.hairlineWidth)
-                .padding(.vertical, NookDesign.Spacing.sm)
-            SplitHalfTab(item: right, zoneID: zoneID)
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                if index > 0 {
+                    Rectangle()
+                        .fill(NookDesign.Surface.hairline)
+                        .frame(width: NookDesign.Size.hairlineWidth)
+                        .padding(.vertical, NookDesign.Spacing.sm)
+                }
+                SplitHalfTab(item: item, zoneID: zoneID)
+            }
         }
         .frame(height: NookDesign.Tab.height)
         .nookTabSurface(selected: isActive, hovered: isHovering)

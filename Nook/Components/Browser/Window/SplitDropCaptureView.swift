@@ -1,6 +1,7 @@
 // Licensed under GPL-3.0. See LICENSE.
 import AppKit
 import WebKit
+import NookDesign
 
 final class SplitDropCaptureView: NSView, TabDropTarget {
     weak var browserManager: BrowserManager?
@@ -58,34 +59,25 @@ final class SplitDropCaptureView: NSView, TabDropTarget {
     func tabDragUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         isDragActive = true
         guard let windowId, let sm = splitManager else { return [] }
-        sm.updateDragLocation(convert(sender.draggingLocation, from: nil), for: windowId)
         guard let drop = drop(for: sender) else {
-            if sm.getSplitState(for: windowId).isPreviewActive { sm.endPreview(cancel: true, for: windowId) }
+            sm.setPreview(nil, for: windowId)
             return []
         }
-        if sm.getSplitState(for: windowId).isPreviewActive {
-            sm.updatePreviewSide(drop.side, for: windowId)
-        } else {
-            sm.beginPreview(side: drop.side, for: windowId)
-        }
+        sm.setPreview(SplitViewManager.Preview(outcome: drop.outcome, zone: drop.zone), for: windowId)
         return SplitDrop.operation(allowed: sender.draggingSourceOperationMask)
     }
 
     func tabDragExited() {
         isDragActive = false
-        if let windowId {
-            splitManager?.updateDragLocation(nil, for: windowId)
-            splitManager?.endPreview(cancel: true, for: windowId)
-        }
+        if let windowId { splitManager?.setPreview(nil, for: windowId) }
     }
 
     func tabDragPerform(_ sender: NSDraggingInfo) -> Bool {
         isDragActive = false
         guard let windowId, let sm = splitManager else { return false }
-        sm.updateDragLocation(nil, for: windowId)
-        sm.endPreview(cancel: false, for: windowId)
+        sm.setPreview(nil, for: windowId)
         guard let drop = drop(for: sender), let window = browserManager?.windowRegistry?.windows[windowId] else { return false }
-        sm.enterSplit(with: drop.itemID, placeOn: drop.side, in: window)
+        sm.drop(drop.itemID, drop.outcome, in: window)
         // The sidebar's own drop never ran, so its lifted row and preview are still up.
         DispatchQueue.main.async {
             NookDragSessionManager.shared.cancelDrag()
@@ -95,13 +87,21 @@ final class SplitDropCaptureView: NSView, TabDropTarget {
 
     // MARK: - Helpers
 
-    /// The dragged tab and the half of the page it would take, when dropping it there changes the split.
-    private func drop(for sender: NSDraggingInfo) -> (itemID: UUID, side: SplitDrop.Side)? {
+    /// The dragged tab, what dropping it here does, and the part of the page that shows it, as a
+    /// fraction of the page from its top-left corner. nil when the drop changes nothing.
+    private func drop(for sender: NSDraggingInfo) -> (itemID: UUID, outcome: SplitDrop.Outcome, zone: CGRect)? {
         guard let sm = splitManager, let windowId, let window = browserManager?.windowRegistry?.windows[windowId],
+              bounds.width > 0, bounds.height > 0,
               let item = NookDragItem.fromPasteboard(sender.draggingPasteboard), let dragged = sm.dragged(item.tabId, in: window)
         else { return nil }
-        let side = SplitDrop.side(of: convert(sender.draggingLocation, from: nil), in: bounds)
-        guard SplitDrop.outcome(of: dragged, on: side, selected: window.selectedItemID, split: window.splitPair) != nil else { return nil }
-        return (item.tabId, side)
+        let page = CGRect(origin: .zero, size: bounds.size)
+        let local = convert(sender.draggingLocation, from: nil)
+        let point = CGPoint(x: local.x, y: bounds.height - local.y)
+        let gap = NookDesign.Chrome.splitGap
+        guard let outcome = SplitDrop.outcome(of: dragged, at: point, in: page, gap: gap, selected: window.selectedItemID,
+                                              split: window.splitLayout) else { return nil }
+        let zone = SplitDrop.zone(of: outcome, in: page, gap: gap, split: SplitDrop.current(window.splitLayout, selected: window.selectedItemID))
+        return (item.tabId, outcome, CGRect(x: zone.minX / page.width, y: zone.minY / page.height,
+                                            width: zone.width / page.width, height: zone.height / page.height))
     }
 }

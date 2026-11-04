@@ -18,7 +18,7 @@ extension TabsController {
         var keep = Set(device.windows.flatMap { $0.selectedItemBySpace.values })
         for window in regularWindows {
             keep.formUnion(window.selectedItemBySpace.values)
-            if let split = window.split { keep.formUnion([split.leftItemID, split.rightItemID]) }
+            if let split = window.split { keep.formUnion(split.itemIDs) }
         }
         keep.formUnion(sessions.filter { $0.hasAudioContent || isOnScreen($0.itemID) }.map(\.itemID))
         let interval = TimeInterval(settings.archiveTabsAfterHours) * 3600

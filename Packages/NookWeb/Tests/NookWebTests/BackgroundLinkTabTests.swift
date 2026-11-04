@@ -63,7 +63,7 @@ struct BackgroundLinkTabTests {
 /// A TabsController with one window, on a throwaway directory, whose web views record loads
 /// instead of navigating.
 @MainActor
-private final class Host {
+final class Host {
     let tabs: TabsController
     let window = BrowserWindowState()
     let registry = WindowRegistry()
@@ -98,7 +98,7 @@ private final class Host {
 }
 
 @MainActor
-private final class RecordingWebViews: WebViewProvider {
+final class RecordingWebViews: WebViewProvider {
     func makeWebView(configuration: WKWebViewConfiguration) -> WKWebView {
         RecordingWebView(frame: .zero, configuration: configuration)
     }
@@ -108,7 +108,7 @@ private final class RecordingWebViews: WebViewProvider {
     func removeFromContainers(_ webView: WKWebView) {}
 }
 
-private final class RecordingWebView: WKWebView, SessionWebView {
+final class RecordingWebView: WKWebView, SessionWebView {
     weak var owningSession: PageSession?
     var contextMenuBridge: WebContextMenuBridge?
     private(set) var requested: [URL] = []

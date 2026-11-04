@@ -171,8 +171,7 @@ class WebViewCoordinator {
             if let session = tabs.session(for: itemID) {
                 if session.webView === webView {
                     let stillShown = tabs.regularWindows.contains { window in
-                        window.id != windowId && (window.selectedItemID == itemID
-                            || window.split?.leftItemID == itemID || window.split?.rightItemID == itemID)
+                        window.id != windowId && (window.selectedItemID == itemID || window.split?.contains(itemID) == true)
                     } || tabs.privateWindows.contains { $0.id != windowId && $0.selectedItemID == itemID }
                     if stillShown {
                         tabs.refreshWindows(showing: itemID)

@@ -475,8 +475,21 @@ extension TabsController {
             for space in window.recentItemsBySpace.keys {
                 window.recentItemsBySpace[space]?.removeAll { ids.contains($0) }
             }
-            if let split = window.split, ids.contains(split.leftItemID) || ids.contains(split.rightItemID) {
-                window.split = nil
+            if let split = window.split, split.itemIDs.contains(where: ids.contains) {
+                window.split = split.itemIDs.filter(ids.contains).reduce(split) { $0?.removing($1) }
+                // A pane's tab going while the split shows: a neighbouring pane takes the selection.
+                if let selected = window.selectedItemID, ids.contains(selected), let index = split.itemIDs.firstIndex(of: selected),
+                   let next = (split.itemIDs[(index + 1)...] + split.itemIDs[..<index].reversed()).first(where: { !ids.contains($0) }) {
+                    select(next, in: window)
+                    for (space, item) in window.selectedItemBySpace where ids.contains(item) {
+                        window.selectedItemBySpace[space] = nil
+                    }
+                    continue
+                }
+                if let selected = window.selectedItemID, !ids.contains(selected) {
+                    mirror(window)
+                    window.refreshCompositor()
+                }
             }
             guard let selected = window.selectedItemID, ids.contains(selected), let spaceID = window.spaceID else {
                 for (space, item) in window.selectedItemBySpace where ids.contains(item) {

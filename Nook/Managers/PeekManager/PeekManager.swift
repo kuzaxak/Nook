@@ -91,7 +91,7 @@ final class PeekManager {
         // The adopted page is selected; pair it with the tab the Peek was over.
         if tab != itemID {
             browserManager.tabs.select(tab, in: window)
-            browserManager.splitManager.enterSplit(with: itemID, placeOn: .right, in: window)
+            browserManager.splitManager.enterSplit(with: itemID, in: window)
         }
     }
 
@@ -101,7 +101,7 @@ final class PeekManager {
 
     func canEnterSplitView(in window: BrowserWindowState) -> Bool {
         guard let browserManager else { return false }
-        return !browserManager.splitManager.isSplit(for: window.id)
+        return browserManager.splitManager.offersAddSplitView(in: window)
     }
 
     func tabClosed(_ itemID: UUID) {

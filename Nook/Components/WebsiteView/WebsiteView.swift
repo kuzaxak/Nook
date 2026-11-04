@@ -213,11 +213,7 @@ struct WebsiteView: View {
                             hoverManager: hoverManager,
                             hoveredLink: $hoveredLink,
                             isCommandPressed: $isCommandPressed,
-                            splitFraction: splitManager.dividerFraction(for: windowState.id),
-                            isSplit: splitManager.isSplit(for: windowState.id),
-                            leftId: splitManager.leftTabId(for: windowState.id),
-                            rightId: splitManager.rightTabId(for: windowState.id),
-                            addSplitLeftId: showsAddSplit ? commandPalette.addSplit?.leftItemID : nil,
+                            layout: pageLayout,
                             windowState: windowState,
                             compositorVersion: windowState.compositorVersion,
                             selectedItemID: windowState.selectedItemID,
@@ -290,11 +286,11 @@ struct WebsiteView: View {
                     .id(session.itemID)
             }
 
-            // The unselected split pane can be translated from its context menu too.
-            if shouldShowSplit, let other = [splitManager.leftTabId(for: windowState.id), splitManager.rightTabId(for: windowState.id)]
-                .compactMap({ $0 }).first(where: { $0 != windowState.selectedItemID }),
-               let session = browserManager.tabs.session(for: other) {
-                TranslationTaskHost(session: session)
+            // The unselected split panes can be translated from their context menus too.
+            ForEach((pageLayout?.slots ?? []).compactMap { $0 }.filter { $0 != windowState.selectedItemID }, id: \.self) { other in
+                if let session = browserManager.tabs.session(for: other) {
+                    TranslationTaskHost(session: session)
+                }
             }
 
             if let session = browserManager.tabs.controllableSession(in: windowState) {
@@ -330,17 +326,11 @@ struct WebsiteView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.99)))
             }
 
-            // Split preview overlay - shows cards during drag operations
-            if splitManager.getSplitState(for: windowState.id).isPreviewActive {
-                SplitPreviewOverlay()
-                    .environmentObject(splitManager)
+            // What a tab dragged over the page would do there.
+            if let preview = splitManager.preview(for: windowState.id) {
+                SplitPreviewOverlay(preview: preview)
                     .environmentObject(browserManager)
                     .environment(windowState)
-                    .coordinateSpace(name: dragCoordinateSpace)
-                    .animation(
-                        NookDesign.Motion.spring,
-                        value: splitManager.getSplitState(for: windowState.id).isPreviewActive
-                    )
             }
 
             // A glance or a screenshot of the window shows that an agent drives this page.
@@ -374,43 +364,63 @@ private struct AgentFrame: View {
 }
 
 // MARK: - Split Preview Overlay
-/// While a tab is dragged over the page, each half of it is a drop target, as in Arc: the half
-/// under the pointer lights up and dropping there puts the tab on that side.
+/// While a tab is dragged over the page, the part of it the drop would change lights up, as in
+/// Arc, and says what happens: a half of the page, a half of a pane, or a whole pane.
 private struct SplitPreviewOverlay: View {
-    @EnvironmentObject var splitManager: SplitViewManager
+    let preview: SplitViewManager.Preview
+
     @EnvironmentObject var browserManager: BrowserManager
     @Environment(BrowserWindowState.self) private var windowState
 
     var body: some View {
-        let splitState = splitManager.getSplitState(for: windowState.id)
-        HStack(spacing: NookDesign.Spacing.md) {
-            zone(.left, isSplit: splitState.activeSide != nil, hovered: splitState.previewSide == .left)
-            zone(.right, isSplit: splitState.activeSide != nil, hovered: splitState.previewSide == .right)
+        GeometryReader { proxy in
+            let zone = CGRect(x: preview.zone.minX * proxy.size.width, y: preview.zone.minY * proxy.size.height,
+                              width: preview.zone.width * proxy.size.width, height: preview.zone.height * proxy.size.height)
+                .insetBy(dx: NookDesign.Spacing.md, dy: NookDesign.Spacing.md)
+            card
+                .frame(width: max(0, zone.width), height: max(0, zone.height))
+                .offset(x: zone.minX, y: zone.minY)
+                .animation(NookDesign.Motion.quick, value: preview)
         }
-        .padding(NookDesign.Spacing.md)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
-        .animation(NookDesign.Motion.quick, value: splitState.previewSide)
     }
 
-    private func zone(_ side: SplitViewManager.Side, isSplit: Bool, hovered: Bool) -> some View {
+    private var card: some View {
         let accent = browserManager.gradientColorManager.accentColor
         let shape = NookDesign.Radius.shape(NookDesign.Radius.page)
+        let vertical = windowState.split?.orientation == .vertical
+        let tabs = browserManager.tabs
         return shape
-            .fill(accent.opacity(hovered ? 0.22 : 0.05))
-            .overlay(shape.strokeBorder(accent.opacity(hovered ? 0.9 : 0.25), lineWidth: hovered ? 2 : 1))
+            .fill(accent.opacity(0.22))
+            .overlay(shape.strokeBorder(accent.opacity(0.9), lineWidth: 2))
             .overlay {
                 VStack(spacing: NookDesign.Spacing.sm) {
-                    Image(systemName: side == .left ? "rectangle.lefthalf.filled" : "rectangle.righthalf.filled")
+                    Image(systemName: symbol(vertical: vertical))
                         .font(.system(size: 28, weight: .medium))
-                    Text(isSplit ? (side == .left ? "Replace left side" : "Replace right side")
-                                 : (side == .left ? "Open on the left" : "Open on the right"))
+                    Text(SplitDrop.label(of: preview.outcome, vertical: vertical) { id in tabs.item(id).map(tabs.title(for:)) ?? "" })
                         .font(NookDesign.Font.label)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
                 }
-                .foregroundStyle(hovered ? AnyShapeStyle(accent) : AnyShapeStyle(.secondary))
-                .opacity(hovered ? 1 : 0.6)
+                .padding(NookDesign.Spacing.md)
+                .foregroundStyle(accent)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func symbol(vertical: Bool) -> String {
+        switch preview.outcome {
+        case .split(let edge):
+            return edge == .leading ? "rectangle.lefthalf.filled" : "rectangle.righthalf.filled"
+        case .insert(_, let edge), .move(_, let edge):
+            switch (vertical, edge) {
+            case (false, .leading): return "rectangle.lefthalf.filled"
+            case (false, .trailing): return "rectangle.righthalf.filled"
+            case (true, .leading): return "rectangle.tophalf.filled"
+            case (true, .trailing): return "rectangle.bottomhalf.filled"
+            }
+        case .replace:
+            return "rectangle.fill"
+        }
     }
 }
 
@@ -420,11 +430,7 @@ struct TabCompositorWrapper: NSViewRepresentable {
     let hoverManager: HoverSidebarManager
     @Binding var hoveredLink: String?
     @Binding var isCommandPressed: Bool
-    var splitFraction: CGFloat
-    var isSplit: Bool
-    var leftId: UUID?
-    var rightId: UUID?
-    var addSplitLeftId: UUID?
+    var layout: SplitViewManager.PageLayout?
     let windowState: BrowserWindowState
     var compositorVersion: Int
     var selectedItemID: UUID?
@@ -451,12 +457,8 @@ struct TabCompositorWrapper: NSViewRepresentable {
     class Coordinator {
         weak var browserManager: BrowserManager?
         let windowState: BrowserWindowState
-        var lastIsSplit: Bool = false
-        var lastLeftId: UUID? = nil
-        var lastRightId: UUID? = nil
-        var lastAddSplitLeftId: UUID? = nil
+        var lastLayout: SplitViewManager.PageLayout? = nil
         var lastCurrentId: UUID? = nil
-        var lastFraction: CGFloat = -1
         var lastSize: CGSize = .zero
         var lastVersion: Int = -1
         var frameObserver: NSObjectProtocol? = nil
@@ -527,24 +529,16 @@ struct TabCompositorWrapper: NSViewRepresentable {
         let currentId = windowState.selectedItemID
         let compositorVersion = windowState.compositorVersion
         let needsRebuild =
-            context.coordinator.lastIsSplit != isSplit ||
-            context.coordinator.lastLeftId != leftId ||
-            context.coordinator.lastRightId != rightId ||
-            context.coordinator.lastAddSplitLeftId != addSplitLeftId ||
+            context.coordinator.lastLayout != layout ||
             context.coordinator.lastCurrentId != currentId ||
-            abs(CGFloat(context.coordinator.lastFraction) - CGFloat(splitFraction)) > 0.0001 ||
             context.coordinator.lastSize != size ||
             context.coordinator.lastVersion != compositorVersion
 
         if needsRebuild {
             let previousCurrentId = context.coordinator.lastCurrentId
             updateCompositor(nsView)
-            context.coordinator.lastIsSplit = isSplit
-            context.coordinator.lastLeftId = leftId
-            context.coordinator.lastRightId = rightId
-            context.coordinator.lastAddSplitLeftId = addSplitLeftId
+            context.coordinator.lastLayout = layout
             context.coordinator.lastCurrentId = currentId
-            context.coordinator.lastFraction = splitFraction
             context.coordinator.lastSize = size
             context.coordinator.lastVersion = compositorVersion
 
@@ -592,85 +586,80 @@ struct TabCompositorWrapper: NSViewRepresentable {
 
         // While fullscreen, WebKit's window holds the page and leaves a placeholder here. Moving
         // either strands the page off screen when fullscreen ends, still playing.
-        let pages = [selected] + [split.leftTabId(for: windowState.id), split.rightTabId(for: windowState.id)]
-            .map { $0.flatMap(tabs.session(for:)) }
+        let layout = split.pageLayout(in: windowState)
+        let pages = [selected] + (layout?.slots ?? []).map { $0.flatMap(tabs.session(for:)) }
         if pages.contains(where: { ($0?.webView?.fullscreenState ?? .notInFullscreen) != .notInFullscreen }) { return }
 
         // Identify overlay (always preserved)
         let overlay = containerView.subviews.compactMap { $0 as? SplitDropCaptureView }.first
-        // Keep the drop overlay and resize divider separate from page content.
+        // Keep the drop overlay and resize dividers separate from page content.
         let contentSubviews = containerView.subviews.filter {
             !($0 is SplitDropCaptureView) && !($0 is SplitDividerView)
         }
+        let dividerViews = containerView.subviews.compactMap { $0 as? SplitDividerView }
 
-        // A drag preview leaves the panes alone; the drop cards draw over them.
-        let currentId = selected?.itemID
-        let leftId = split.leftTabId(for: windowState.id)
-        let rightId = split.rightTabId(for: windowState.id)
-        let isCurrentPane = (currentId != nil) && (currentId == leftId || currentId == rightId)
-        let adding = windowState.commandPalette?.addSplit.flatMap {
-            $0.shows(selectedItemID: currentId, split: windowState.splitPair) ? $0 : nil
-        }
-
-        if isCurrentPane, let leftId, let rightId,
-           let leftSession = tabs.ensureSession(for: leftId),
-           let rightSession = tabs.ensureSession(for: rightId) {
+        // A drag preview leaves the panes alone; the drop zone draws over them.
+        let slots = layout?.slots ?? []
+        let sessions = slots.map { $0.flatMap(tabs.ensureSession(for:)) }
+        if let layout, slots.count > 1, zip(slots, sessions).allSatisfy({ $0 == nil || $1 != nil }) {
             (containerView as? ContainerView)?.showsSplit = true
             let total = containerView.bounds
-            let (leftRect, rightRect) = SplitViewManager.paneFrames(in: total, fraction: split.dividerFraction(for: windowState.id))
+            // Laid out top-down; the container is not flipped.
+            let frames = SplitViewManager.paneFrames(in: total, of: layout).map {
+                CGRect(x: $0.minX, y: total.maxY - $0.maxY + total.minY, width: $0.width, height: $0.height)
+            }
+            let adding = layout.slots.contains(nil)
 
-            let divider: SplitDividerView
-            if let existing = containerView.subviews.compactMap({ $0 as? SplitDividerView }).first {
-                divider = existing
-            } else {
-                divider = SplitDividerView()
-                containerView.addSubview(divider)
-            }
-            divider.isHidden = false
-            divider.frame = NSRect(x: leftRect.maxX, y: total.minY,
-                                   width: rightRect.minX - leftRect.maxX, height: total.height)
-            divider.fraction = split.dividerFraction(for: windowState.id)
-            divider.onResize = { [weak windowState] fraction in
-                guard let windowState, var record = windowState.split else { return }
-                record.fraction = Double(fraction)
-                windowState.split = record
-            }
-            divider.onResizeEnded = { [weak browserManager, weak windowState] in
-                guard let windowState else { return }
-                browserManager?.tabs.mirror(windowState)
-            }
-
-            // A pane stays while its side keeps its tab: taking a WKWebView out of its superview
-            // drops its video surface, so a selection change, or filling Add Split View's empty
+            // A pane stays while it keeps its tab: taking a WKWebView out of its superview drops its
+            // video surface, so a selection change, a move, or filling Add Split View's empty
             // pane, leaves the page in place.
-            let existing = contentSubviews.compactMap { $0 as? SplitPaneView }
-            let panes = [(SplitViewManager.Side.left, leftId, leftRect), (.right, rightId, rightRect)].map { side, id, rect in
-                existing.first { $0.side == side && $0.itemID == id }
-                    ?? SplitPaneView(frame: rect, side: side, itemID: id, browserManager: browserManager, windowState: windowState, hoverManager: hoverManager)
+            let existingPanes = contentSubviews.compactMap { $0 as? SplitPaneView }
+            let existingEmpty = contentSubviews.compactMap { $0 as? EmptySplitPaneView }.first
+            let panes: [NSView] = layout.slots.enumerated().map { index, id in
+                let position = SplitPanePosition(index: index, count: layout.slots.count, vertical: layout.vertical)
+                guard let id else {
+                    let empty = existingEmpty ?? EmptySplitPaneView(frame: frames[index], position: position, settings: browserManager.nookSettings)
+                    empty.position = position
+                    return empty
+                }
+                let pane = existingPanes.first { $0.itemID == id }
+                    ?? SplitPaneView(frame: frames[index], position: position, itemID: id, browserManager: browserManager, windowState: windowState, hoverManager: hoverManager)
+                pane.position = position
+                return pane
             }
             removeContentViews(contentSubviews.filter { view in !panes.contains { $0 === view } })
             for pane in panes where pane.superview !== containerView { containerView.addSubview(pane) }
-
-            for (pane, session, rect) in [(panes[0], leftSession, leftRect), (panes[1], rightSession, rightRect)] {
-                pane.frame = rect
-                pane.show(pageView(for: session, reusing: pane.content.subviews))
+            for (index, pane) in panes.enumerated() {
+                pane.frame = frames[index]
+                if let pane = pane as? SplitPaneView, let session = sessions[index] {
+                    pane.show(pageView(for: session, reusing: pane.content.subviews))
+                }
             }
-        } else if let adding, let session = tabs.ensureSession(for: adding.leftItemID) {
-            (containerView as? ContainerView)?.showsSplit = true
-            containerView.subviews.compactMap { $0 as? SplitDividerView }.forEach { $0.isHidden = true }
-            let (leftRect, rightRect) = SplitViewManager.paneFrames(in: containerView.bounds, fraction: 0.5)
-            let left = contentSubviews.compactMap { $0 as? SplitPaneView }.first { $0.side == .left && $0.itemID == adding.leftItemID }
-                ?? SplitPaneView(frame: leftRect, side: .left, itemID: adding.leftItemID, browserManager: browserManager, windowState: windowState, hoverManager: hoverManager)
-            let empty = contentSubviews.compactMap { $0 as? EmptySplitPaneView }.first
-                ?? EmptySplitPaneView(frame: rightRect, settings: browserManager.nookSettings)
-            removeContentViews(contentSubviews.filter { $0 !== left && $0 !== empty })
-            for pane in [left, empty] where pane.superview !== containerView { containerView.addSubview(pane) }
-            left.frame = leftRect
-            empty.frame = rightRect
-            left.show(pageView(for: session, reusing: left.content.subviews))
+
+            // One divider between each two panes, none while Add Split View's empty pane shows.
+            let dividerCount = adding ? 0 : layout.slots.count - 1
+            for divider in dividerViews.dropFirst(dividerCount) { divider.removeFromSuperview() }
+            for index in 0..<dividerCount {
+                let divider = index < dividerViews.count ? dividerViews[index] : SplitDividerView()
+                if divider.superview !== containerView { containerView.addSubview(divider) }
+                let (before, after) = (frames[index], frames[index + 1])
+                divider.frame = layout.vertical
+                    ? NSRect(x: total.minX, y: after.maxY, width: total.width, height: before.minY - after.maxY)
+                    : NSRect(x: before.maxX, y: total.minY, width: after.minX - before.maxX, height: total.height)
+                divider.vertical = layout.vertical
+                divider.position = layout.dividers[index]
+                divider.onResize = { [weak windowState, weak split] position, length in
+                    guard let windowState else { return }
+                    split?.moveDivider(index, to: position, length: length, in: windowState)
+                }
+                divider.onResizeEnded = { [weak windowState, weak split] in
+                    guard let windowState else { return }
+                    split?.dividerMoveEnded(in: windowState)
+                }
+            }
         } else {
             (containerView as? ContainerView)?.showsSplit = false
-            containerView.subviews.compactMap { $0 as? SplitDividerView }.forEach { $0.isHidden = true }
+            dividerViews.forEach { $0.removeFromSuperview() }
             // Single tab (most common path during video playback)
             if let session = selected, !session.isUnloaded {
                 let page = pageView(for: session, reusing: contentSubviews)
@@ -805,52 +794,53 @@ struct TabCompositorWrapper: NSViewRepresentable {
 // MARK: - WebsiteView Extensions
 
 private extension WebsiteView {
-    var showsAddSplit: Bool {
-        commandPalette.addSplit?.shows(selectedItemID: windowState.selectedItemID, split: windowState.splitPair) == true
-    }
+    var pageLayout: SplitViewManager.PageLayout? { splitManager.pageLayout(in: windowState) }
 
-    var shouldShowSplit: Bool {
-        if showsAddSplit { return true }
-        guard splitManager.isSplit(for: windowState.id) else { return false }
-        guard let current = windowState.selectedItemID else { return false }
-        return current == splitManager.leftTabId(for: windowState.id) || current == splitManager.rightTabId(for: windowState.id)
-    }
+    var shouldShowSplit: Bool { pageLayout != nil }
 }
 
 // MARK: - Container View that forwards right-clicks to webviews
 
 /// Native events keep the drag captured when the pointer moves over either web page.
 private final class SplitDividerView: NSView {
-    var fraction: CGFloat = 0.5
-    var onResize: ((CGFloat) -> Void)?
+    var vertical = false
+    /// Where the divider sits, as a fraction of the page from its leading or top edge.
+    var position: CGFloat = 0.5
+    /// The new position and the page's length along the split.
+    var onResize: ((CGFloat, CGFloat) -> Void)?
     var onResizeEnded: (() -> Void)?
-    private var dragStartX: CGFloat?
-    private var dragStartFraction: CGFloat = 0.5
+    private var dragStart: CGFloat?
+    private var dragStartPosition: CGFloat = 0.5
 
     override var mouseDownCanMoveWindow: Bool { false }
 
     override func resetCursorRects() {
-        if !isHidden { addCursorRect(bounds, cursor: .resizeLeftRight) }
+        addCursorRect(bounds, cursor: vertical ? .resizeUpDown : .resizeLeftRight)
+    }
+
+    /// The pointer's distance from the page's leading or top edge; the page is not flipped.
+    private func along(_ event: NSEvent) -> CGFloat? {
+        guard let parent = superview else { return nil }
+        let point = parent.convert(event.locationInWindow, from: nil)
+        return vertical ? parent.bounds.maxY - point.y : point.x - parent.bounds.minX
     }
 
     override func mouseDown(with event: NSEvent) {
-        guard let parent = superview else { return }
-        dragStartX = parent.convert(event.locationInWindow, from: nil).x
-        dragStartFraction = fraction
+        dragStart = along(event)
+        dragStartPosition = position
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let parent = superview, let dragStartX, parent.bounds.width > 0 else { return }
-        let x = parent.convert(event.locationInWindow, from: nil).x
-        let minimum = min(0.45, 160 / parent.bounds.width)
-        let proposed = dragStartFraction + (x - dragStartX) / parent.bounds.width
-        onResize?(min(1 - minimum, max(minimum, proposed)))
+        guard let parent = superview, let dragStart, let now = along(event) else { return }
+        let length = vertical ? parent.bounds.height : parent.bounds.width
+        guard length > 0 else { return }
+        onResize?(dragStartPosition + (now - dragStart) / length, length)
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard dragStartX != nil else { return }
+        guard dragStart != nil else { return }
         mouseDragged(with: event)
-        dragStartX = nil
+        dragStart = nil
         onResizeEnded?()
     }
 }

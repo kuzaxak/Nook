@@ -19,7 +19,7 @@ public struct SplitContextMenu: View {
 
     public var body: some View {
         if let windowState, let split = windowState.split {
-            let ids = [split.leftItemID, split.rightItemID]
+            let ids = split.itemIDs
             Button {
                 actions?.separateSplit(in: windowState)
             } label: {

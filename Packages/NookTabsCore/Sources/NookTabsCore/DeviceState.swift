@@ -87,8 +87,8 @@ public struct DeviceState: Codable, Equatable, Sendable {
         for i in windows.indices {
             if let spaceID = windows[i].spaceID, tree.space(spaceID) == nil { windows[i].spaceID = nil }
             windows[i].selectedItemBySpace = windows[i].selectedItemBySpace.filter { tree.space($0.key) != nil && tree.item($0.value) != nil }
-            if let split = windows[i].split, tree.item(split.leftItemID) == nil || tree.item(split.rightItemID) == nil {
-                windows[i].split = nil
+            if let split = windows[i].split {
+                windows[i].split = split.itemIDs.filter { tree.item($0) == nil }.reduce(split) { $0?.removing($1) }
             }
         }
     }
@@ -119,16 +119,13 @@ public struct WindowRecord: Codable, Hashable, Sendable, Identifiable {
         self.split = split
         self.frame = frame
     }
-}
 
-public struct SplitRecord: Codable, Hashable, Sendable {
-    public var leftItemID: UUID
-    public var rightItemID: UUID
-    public var fraction: Double
-
-    public init(leftItemID: UUID, rightItemID: UUID, fraction: Double) {
-        self.leftItemID = leftItemID
-        self.rightItemID = rightItemID
-        self.fraction = fraction
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        spaceID = try container.decodeIfPresent(UUID.self, forKey: .spaceID)
+        selectedItemBySpace = try container.decode([UUID: UUID].self, forKey: .selectedItemBySpace)
+        split = try? container.decodeIfPresent(SplitRecord.self, forKey: .split)
+        frame = try container.decodeIfPresent(String.self, forKey: .frame)
     }
 }

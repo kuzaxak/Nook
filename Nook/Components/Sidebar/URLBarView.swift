@@ -56,7 +56,7 @@ struct URLBarView: View {
         }
         .onChange(of: windowState.selectedItemID) { _, _ in cancelEditing() }
         .onChange(of: windowState.split) { _, split in
-            if let splitItemID, split?.leftItemID != splitItemID && split?.rightItemID != splitItemID {
+            if let splitItemID, split?.contains(splitItemID) != true {
                 cancelEditing()
             }
         }
@@ -492,8 +492,7 @@ struct URLBarView: View {
         guard let url else { return }
         cancelEditing()
         if let splitItemID {
-            guard let split = windowState.split,
-                  split.leftItemID == splitItemID || split.rightItemID == splitItemID,
+            guard windowState.split?.contains(splitItemID) == true,
                   !browserManager.tabs.isPageShownElsewhere(splitItemID, from: windowState),
                   let session = browserManager.tabs.ensureSession(for: splitItemID) else { return }
             session.load(url)
