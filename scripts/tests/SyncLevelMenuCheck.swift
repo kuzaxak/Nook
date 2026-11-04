@@ -40,6 +40,7 @@ private final class Sync: SpaceSyncControls {
     func joinSharedSync(link: String) {}
     func leaveSharedSync() {}
     func removeOldCopies() {}
+    func joinOffer(_ owner: String) {}
 }
 
 /// SettingsWindow's switch style.

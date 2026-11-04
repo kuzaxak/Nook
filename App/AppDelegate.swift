@@ -47,6 +47,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     private var wakeObserver: Any?
     private let userDefaults = UserDefaults.standard
     private var pendingURLs: [URL] = []
+    /// Shares accepted in the system's prompt before `browserManager` was set, at a cold launch.
+    private var pendingShares: [CKShare.Metadata] = []
     
 
 
@@ -274,7 +276,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
     /// A link to another iCloud account's shared spaces, opened and accepted in the system's prompt.
     func application(_ application: NSApplication, userDidAcceptCloudKitShareWith metadata: CKShare.Metadata) {
-        browserManager?.spaceSyncManager.accept(metadata)
+        guard let manager = browserManager else { return pendingShares.append(metadata) }
+        manager.spaceSyncManager.accept(metadata)
     }
 
     // MARK: - External URL Handling
@@ -313,6 +316,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
                 manager.importSpaceFile(at: url)
                 return
             }
+            if manager.spaceSyncManager.openShareLink(url, otherwise: { manager.presentExternalURL(url) }) {
+                return
+            }
             // Air Traffic Control — route to designated space if a rule matches
             if manager.siteRoutingManager.applyRoute(url: url, from: nil) {
                 return
@@ -323,6 +329,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
     /// Opens any URLs that arrived before browserManager was available
     func drainPendingURLs() {
+        let shares = pendingShares
+        pendingShares.removeAll()
+        if let manager = browserManager, !shares.isEmpty {
+            Task { @MainActor in shares.forEach { manager.spaceSyncManager.accept($0) } }
+        }
         guard !pendingURLs.isEmpty else { return }
         let urls = pendingURLs
         pendingURLs.removeAll()

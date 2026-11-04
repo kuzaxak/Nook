@@ -51,9 +51,12 @@ public struct SpaceSyncSharing: Codable, Equatable, Sendable {
     public var ownerName: String?
     /// Everyone this account's zone is shared with, its owner included; nil while not shared.
     public var participants: [SpaceSyncParticipant]?
-    /// Spaces another Mac on this account moved into a shared zone, by the CloudKit user record
-    /// name of that zone's owner, as their marked records in this account's zone say.
-    public var moved: [UUID: String] = [:]
+    /// Spaces another Mac on this account moved into a shared zone, as their marked records in
+    /// this account's zone say.
+    public var moved: [UUID: SpaceSyncMove] = [:]
+    /// Owners of zones this account already joined on another Mac, which this Mac can join
+    /// without a link, by name; empty when CloudKit gives none.
+    public var offers: [String: String] = [:]
     /// On a Mac that joined and moved its spaces: each moved space's records left in this
     /// account's own zone, and the Macs that synced them there.
     public var oldCopies: [UUID: SpaceSyncOldCopy] = [:]
@@ -62,6 +65,26 @@ public struct SpaceSyncSharing: Codable, Equatable, Sendable {
         self.joinedOwner = joinedOwner
         self.ownerName = ownerName
         self.participants = participants
+    }
+}
+
+public struct SpaceSyncMove: Codable, Equatable, Sendable {
+    /// The CloudKit user record name of the shared zone's owner.
+    public var owner: String
+    /// The space's level here when the move turned it Off, and when that level was set, which
+    /// it takes again when this Mac joins the same zone.
+    public var level: SpaceSyncLevel
+    public var levelTime: Int64?
+}
+
+/// A shared zone this account already joined on another Mac.
+public struct SpaceSyncOffer: Hashable, Sendable {
+    public let owner: String
+    public let name: String?
+
+    public init(owner: String, name: String?) {
+        self.owner = owner
+        self.name = name
     }
 }
 
@@ -87,8 +110,10 @@ public enum SpaceSyncShareAcceptance: Equatable, Sendable {
     case join(owner: String)
     /// This account owns it.
     case ownShare
-    /// Another app's share, or another zone.
+    /// Another app's share, another zone, or a share of single records rather than the zone.
     case notASpacesShare
+    /// The share lets this account only read the spaces.
+    case readOnly
     /// This Mac already syncs a zone it joined; it leaves that one first.
     case alreadyJoined
     /// This account shares its own zone; it stops sharing first.
@@ -123,9 +148,13 @@ extension SpaceSyncState {
         return .sharing(people: participants.filter { !$0.isOwner && $0.status != .removed }.count)
     }
 
-    public func acceptance(containerID: String, zoneName: String, zoneOwner: String, isOwner: Bool) -> SpaceSyncShareAcceptance {
-        guard containerID == SpaceSyncAvailability.containerID, zoneName == SpaceSyncAvailability.zoneName else { return .notASpacesShare }
+    public func acceptance(containerID: String, zoneName: String, zoneOwner: String, isOwner: Bool, zoneWide: Bool,
+                           readWrite: Bool) -> SpaceSyncShareAcceptance {
+        guard containerID == SpaceSyncAvailability.containerID, zoneName == SpaceSyncAvailability.zoneName, zoneWide else {
+            return .notASpacesShare
+        }
         if isOwner { return .ownShare }
+        if !readWrite { return .readOnly }
         if sharing?.joinedOwner != nil { return .alreadyJoined }
         if sharing?.participants != nil { return .sharingOwnZone }
         return .join(owner: zoneOwner)
@@ -162,6 +191,10 @@ extension SpaceSyncState {
             } else {
                 setLevel(.off, for: space, now: now)
             }
+        }
+        for (space, move) in sharing?.moved ?? [:] where move.owner == owner && levels[space] == .off && move.level != .off {
+            levels[space] = move.level
+            levelTimes[space] = move.levelTime
         }
         forgetRecords()
         deletedInCloud = [:]
@@ -205,6 +238,25 @@ extension SpaceSyncState {
         if let catalog { known.formUnion(catalog.spaces.keys) }
         reset(account: account)
         for id in known { levels[id] = .off }
+    }
+
+    /// Owners of zones this account's spaces moved into whose share this Mac has not looked up.
+    public var ownersToOffer: Set<String> {
+        guard database == .private, let sharing else { return [] }
+        return Set(sharing.moved.values.map(\.owner)).subtracting(sharing.offers.keys)
+    }
+
+    /// The share of `owner`'s zone is in this account's shared database, so this Mac can join it.
+    public mutating func offered(owner: String, name: String?) {
+        sharing?.offers[owner] = name ?? ""
+    }
+
+    /// Zones this Mac can join without a link, while it syncs this account's own zone unshared.
+    public var joinOffers: [SpaceSyncOffer] {
+        guard mode == .own, let sharing else { return [] }
+        let owners = Set(sharing.moved.values.map(\.owner))
+        return sharing.offers.filter { owners.contains($0.key) }.sorted { $0.key < $1.key }
+            .map { SpaceSyncOffer(owner: $0.key, name: $0.value.isEmpty ? nil : $0.value) }
     }
 
     /// This account's zone is shared with these people.

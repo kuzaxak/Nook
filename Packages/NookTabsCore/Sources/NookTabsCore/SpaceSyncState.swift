@@ -240,7 +240,7 @@ public struct SpaceSyncState: Codable, Equatable, Sendable {
             let here = level(of: remote.id)
             if database == .private, let owner = remote.movedTo, sharing?.moved[remote.id] == nil {
                 if sharing == nil { sharing = SpaceSyncSharing() }
-                sharing?.moved[remote.id] = owner
+                sharing?.moved[remote.id] = SpaceSyncMove(owner: owner, level: here, levelTime: levelTimes[remote.id])
                 setLevel(.off, for: remote.id, now: now)
                 decide(remote, .skipped, .movedAway, levelHere: here)
                 continue

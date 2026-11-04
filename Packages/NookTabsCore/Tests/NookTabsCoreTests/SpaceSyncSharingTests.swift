@@ -87,7 +87,7 @@ struct SpaceSyncSharingTests {
     /// everything in the owner's zone.
     private func join(_ guest: inout Mac, _ zones: inout Zones, moving: Bool = true, now: Date) {
         let decision = guest.state.acceptance(containerID: SpaceSyncAvailability.containerID, zoneName: SpaceSyncAvailability.zoneName,
-                                              zoneOwner: Self.ownerAccount, isOwner: false)
+                                              zoneOwner: Self.ownerAccount, isOwner: false, zoneWide: true, readWrite: true)
         #expect(decision == .join(owner: Self.ownerAccount))
         if moving { zones.mark(guest.state.markedOnMove(in: guest.tree), movedTo: Self.ownerAccount) }
         let inbound = guest.state.join(owner: Self.ownerAccount, ownerName: "Vladimir", moving: moving, tree: guest.tree, now: now)
@@ -172,7 +172,7 @@ struct SpaceSyncSharingTests {
         #expect(mini.tree.space(side)?.name == "Side")
         #expect(mini.tree.item(sideTab)?.displayTitle == "Side tab")
         #expect(mini.state.level(of: side) == .off)
-        #expect(mini.state.sharing?.moved[side] == Self.ownerAccount)
+        #expect(mini.state.sharing?.moved[side]?.owner == Self.ownerAccount)
         #expect(mini.state.report?.decisions[side]?.reason == .movedAway)
         #expect(mini.state.cloudSpaces(in: mini.tree).first { $0.id == side }?.state == .moved)
         #expect(mini.pending == ([], []))
@@ -208,6 +208,29 @@ struct SpaceSyncSharingTests {
         #expect(mini.tree.space(side) != nil)
         #expect(mini.tree.item(sideTab)?.customTitle == "Renamed on the mini")
         #expect(mini.state.report?.decisions[side]?.reason == .movedAway)
+    }
+
+    @Test func aMacWhoseAccountMovedASpaceIsOfferedTheOwnersSyncWithoutALink() throws {
+        var (_, guest, _, side, _, zones) = try setUp()
+        var mini = secondGuestMac(&zones)
+        join(&guest, &zones, now: later(10))
+        mini.sync(&zones.guest, now: later(20))
+
+        #expect(mini.state.ownersToOffer == [Self.ownerAccount])
+        #expect(mini.state.joinOffers.isEmpty)
+        mini.state.offered(owner: Self.ownerAccount, name: "Vladimir")
+        #expect(mini.state.ownersToOffer.isEmpty)
+        #expect(mini.state.joinOffers == [SpaceSyncOffer(owner: Self.ownerAccount, name: "Vladimir")])
+        #expect(mini.state.spacesToMove(in: mini.tree).isEmpty)
+
+        let inbound = mini.state.join(owner: Self.ownerAccount, ownerName: "Vladimir", moving: true, tree: mini.tree, now: later(30))
+        mini.tree.apply(inbound.change)
+        #expect(mini.state.joinOffers.isEmpty)
+        #expect(mini.state.database == .shared)
+        mini.cursor = 0
+        zones.sync(&mini, now: later(30))
+        #expect(mini.state.level(of: side) == .pinned)
+        #expect(mini.tree.space(side) != nil)
     }
 
     @Test func joiningWritesChangesFetchedButNotYetAppliedFirst() throws {
@@ -361,12 +384,16 @@ struct SpaceSyncSharingTests {
         var (owner, guest, _, _, _, zones) = try setUp()
         let container = SpaceSyncAvailability.containerID, zone = SpaceSyncAvailability.zoneName
 
-        #expect(owner.state.acceptance(containerID: container, zoneName: zone, zoneOwner: Self.ownerAccount, isOwner: true) == .ownShare)
-        #expect(guest.state.acceptance(containerID: "iCloud.other", zoneName: zone, zoneOwner: Self.ownerAccount, isOwner: false) == .notASpacesShare)
-        #expect(guest.state.acceptance(containerID: container, zoneName: "Other", zoneOwner: Self.ownerAccount, isOwner: false) == .notASpacesShare)
-        #expect(owner.state.acceptance(containerID: container, zoneName: zone, zoneOwner: Self.guestAccount, isOwner: false) == .sharingOwnZone)
+        #expect(owner.state.acceptance(containerID: container, zoneName: zone, zoneOwner: Self.ownerAccount, isOwner: true, zoneWide: true, readWrite: true) == .ownShare)
+        #expect(guest.state.acceptance(containerID: "iCloud.other", zoneName: zone, zoneOwner: Self.ownerAccount, isOwner: false, zoneWide: true, readWrite: true) == .notASpacesShare)
+        #expect(guest.state.acceptance(containerID: container, zoneName: "Other", zoneOwner: Self.ownerAccount, isOwner: false, zoneWide: true, readWrite: true) == .notASpacesShare)
+        #expect(owner.state.acceptance(containerID: container, zoneName: zone, zoneOwner: Self.guestAccount, isOwner: false, zoneWide: true, readWrite: true) == .sharingOwnZone)
+        #expect(guest.state.acceptance(containerID: container, zoneName: zone, zoneOwner: Self.ownerAccount, isOwner: false,
+                                       zoneWide: false, readWrite: true) == .notASpacesShare)
+        #expect(guest.state.acceptance(containerID: container, zoneName: zone, zoneOwner: Self.ownerAccount, isOwner: false,
+                                       zoneWide: true, readWrite: false) == .readOnly)
         join(&guest, &zones, now: later(10))
-        #expect(guest.state.acceptance(containerID: container, zoneName: zone, zoneOwner: Self.ownerAccount, isOwner: false) == .alreadyJoined)
-        #expect(guest.state.acceptance(containerID: container, zoneName: zone, zoneOwner: "_third", isOwner: false) == .alreadyJoined)
+        #expect(guest.state.acceptance(containerID: container, zoneName: zone, zoneOwner: Self.ownerAccount, isOwner: false, zoneWide: true, readWrite: true) == .alreadyJoined)
+        #expect(guest.state.acceptance(containerID: container, zoneName: zone, zoneOwner: "_third", isOwner: false, zoneWide: true, readWrite: true) == .alreadyJoined)
     }
 }

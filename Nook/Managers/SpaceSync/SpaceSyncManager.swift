@@ -37,6 +37,8 @@ final class SpaceSyncManager: SpaceSyncControls {
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var registeredForPushes = false
     @ObservationIgnored private var sharingPicker: NSSharingServicePicker?
+    /// Owners whose share this Mac looked up this session, found or not.
+    @ObservationIgnored private var lookedUpOwners: Set<String> = []
     /// A zone fetch in the current fetch failed, so a fetch of everything is not complete yet.
     @ObservationIgnored private var fetchFailed = false
     /// Items already reported as too large for iCloud.
@@ -154,20 +156,24 @@ final class SpaceSyncManager: SpaceSyncControls {
         }
     }
 
-    /// A share the person opened from a link, or pasted in Settings.
+    /// A share the person opened from a link, accepted in the system's prompt, or pasted in
+    /// Settings. Nothing is accepted or sent before the person agrees.
     func accept(_ metadata: CKShare.Metadata) {
         guard let container else { return }
         let zone = metadata.share.recordID.zoneID
         switch state.acceptance(containerID: metadata.containerIdentifier, zoneName: zone.zoneName, zoneOwner: zone.ownerName,
-                                isOwner: metadata.participantRole == .owner) {
+                                isOwner: metadata.participantRole == .owner,
+                                zoneWide: metadata.share.recordID.recordName == CKRecordNameZoneWideShare,
+                                readWrite: metadata.participantPermission == .readWrite) {
         case .join(let owner):
+            let ownerName = metadata.ownerIdentity.nameComponents.flatMap(Self.name)
+            guard let moving = askToJoin(ownerName: ownerName) else { return }
             Task {
                 do {
                     if metadata.participantStatus != .accepted {
                         _ = try await container.accept([metadata])[metadata]?.get()
                     }
-                    try await markMoved(state.markedOnMove(in: tabs.tree), to: owner, in: container)
-                    join(owner: owner, ownerName: metadata.ownerIdentity.nameComponents.flatMap(Self.name), moving: true)
+                    try await join(owner: owner, ownerName: ownerName, moving: moving, in: container)
                 } catch {
                     note(error)
                 }
@@ -175,6 +181,8 @@ final class SpaceSyncManager: SpaceSyncControls {
             return
         case .ownShare:
             state.lastError = "That link shares this iCloud account's own spaces."
+        case .readOnly:
+            state.lastError = "That link lets this iCloud account only view the spaces. Ask the person who shared them to allow changes."
         case .notASpacesShare:
             state.lastError = "That link does not share Nook spaces."
         case .alreadyJoined:
@@ -232,10 +240,87 @@ final class SpaceSyncManager: SpaceSyncControls {
         }
     }
 
-    private func join(owner: String, ownerName: String?, moving: Bool) {
+    /// A zone this account already joined on another Mac, which this Mac joins without a link.
+    func joinOffer(_ owner: String) {
+        guard let container, let offer = state.joinOffers.first(where: { $0.owner == owner }),
+              let moving = askToJoin(ownerName: offer.name) else { return }
+        Task {
+            do {
+                try await join(owner: owner, ownerName: offer.name, moving: moving, in: container)
+            } catch {
+                note(error)
+            }
+        }
+    }
+
+    /// An iCloud sharing link opened from another app, Nook being the default browser. A share of
+    /// these spaces goes to the prompt to join; any other link is left to `open` as a page. False
+    /// when it is no sharing link at all.
+    func openShareLink(_ url: URL, otherwise open: @escaping () -> Void) -> Bool {
+        guard SpaceSyncShareLink.parse(url.absoluteString) != nil else { return false }
+        guard let container else {
+            open()
+            return true
+        }
+        Task {
+            if let metadata = try? await container.shareMetadatas(for: [url])[url]?.get(),
+               metadata.containerIdentifier == SpaceSyncAvailability.containerID {
+                accept(metadata)
+            } else {
+                open()
+            }
+        }
+        return true
+    }
+
+    /// Names the owner and how many spaces would move: true moves them, false joins without,
+    /// nil cancels.
+    private func askToJoin(ownerName: String?) -> Bool? {
+        let count = state.spacesToMove(in: tabs.tree).count
+        let owner = ownerName.map { "\($0)\u{2019}s" } ?? "another iCloud account\u{2019}s"
+        let alert = NSAlert()
+        alert.messageText = "Join \(owner) sync?"
+        guard count > 0 else {
+            alert.informativeText = "This Mac syncs the spaces in \(owner) sync, and changes made here reach everyone in it."
+            alert.addButton(withTitle: "Join")
+            alert.addButton(withTitle: "Cancel")
+            return alert.runModal() == .alertFirstButtonReturn ? false : nil
+        }
+        let spaces = count == 1 ? "the space" : "the \(count) spaces"
+        alert.informativeText = "This Mac syncs the spaces in \(owner) sync. Move \(spaces) this Mac syncs now into it, for everyone in it to use, or keep them in this iCloud account, turned Off on this Mac."
+        alert.addButton(withTitle: count == 1 ? "Join and Move 1 Space" : "Join and Move \(count) Spaces")
+        alert.addButton(withTitle: "Join Without Moving")
+        alert.addButton(withTitle: "Cancel")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return true
+        case .alertSecondButtonReturn: return false
+        default: return nil
+        }
+    }
+
+    /// Joins after the person agreed: moving marks the spaces in this account's zone first.
+    private func join(owner: String, ownerName: String?, moving: Bool, in container: CKContainer) async throws {
+        if moving { try await markMoved(state.markedOnMove(in: tabs.tree), to: owner, in: container) }
         apply(state.join(owner: owner, ownerName: ownerName, moving: moving, tree: tabs.tree, kept: tabs.device.keptProfiles ?? []))
         restartEngine()
         scheduleSave()
+    }
+
+    /// Looks up the share of each zone this account's spaces moved into, so Settings can offer
+    /// to join it.
+    private func lookUpOffers() {
+        guard let container else { return }
+        for owner in state.ownersToOffer.subtracting(lookedUpOwners) {
+            lookedUpOwners.insert(owner)
+            let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare,
+                                      zoneID: CKRecordZone.ID(zoneName: SpaceSyncAvailability.zoneName, ownerName: owner))
+            Task {
+                guard let share = try? await container.sharedCloudDatabase.record(for: shareID) as? CKShare else { return }
+                state.offered(owner: owner, name: share.owner.userIdentity.nameComponents.flatMap(Self.name))
+                publish()
+                scheduleSave()
+            }
+        }
     }
 
     /// Marks each moved space's record in this account's zone with the owner of the zone it moves
@@ -579,6 +664,7 @@ final class SpaceSyncManager: SpaceSyncControls {
         let participants = state.sharing?.participants?.filter { !$0.isOwner } ?? []
         if status.participants != participants { status.participants = participants }
         if status.oldCopies != state.oldCopies { status.oldCopies = state.oldCopies }
+        if status.joinOffers != state.joinOffers { status.joinOffers = state.joinOffers }
     }
 
     private func note(_ error: Error) {
@@ -682,6 +768,7 @@ extension SpaceSyncManager: CKSyncEngineDelegate {
             applyInbox()
             if !fetchFailed { state.endRefetch() }
             queuePending()
+            lookUpOffers()
             finished()
         case .didSendChanges:
             finished()

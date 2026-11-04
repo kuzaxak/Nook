@@ -234,6 +234,8 @@ public struct SpaceSyncStatus: Equatable, Sendable {
     public var participants: [SpaceSyncParticipant] = []
     /// The old copies of spaces this Mac moved into the zone it joined.
     public var oldCopies: SpaceSyncLeftBehind?
+    /// Zones this account joined on another Mac, which this Mac can join too.
+    public var joinOffers: [SpaceSyncOffer] = []
 
     public init(availability: SpaceSyncAvailability, lastSync: Date? = nil, lastError: String? = nil, isSyncing: Bool = false, accountID: String? = nil) {
         self.availability = availability

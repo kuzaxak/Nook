@@ -88,7 +88,7 @@ public struct SpacesSettingsView: View {
                 .disabled(SpaceSyncShareLink.parse(joinLink) == nil)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Paste the link someone on another iCloud account shared with you. This Mac then syncs their spaces, and the spaces it syncs now move in with them.")
+            Text("Paste the link someone on another iCloud account shared with you. Before anything syncs, Nook asks whether the spaces this Mac syncs now move in with theirs.")
         }
         .alert("Stop sharing these spaces?", isPresented: $confirmingStopSharing) {
             Button("Stop Sharing", role: .destructive) { sync?.stopSharing() }
@@ -292,6 +292,14 @@ public struct SpacesSettingsView: View {
         ForEach(status.participants, id: \.self) { person in
             LabeledContent(person.name) {
                 Text(Self.describe(person.status)).foregroundStyle(.secondary)
+            }
+        }
+        ForEach(status.joinOffers, id: \.owner) { offer in
+            HStack {
+                Text(offer.name.map { "Spaces from this iCloud account moved to \($0)\u{2019}s sync." }
+                     ?? "Spaces from this iCloud account moved to a shared sync.")
+                Spacer()
+                Button(offer.name.map { "Join \($0)\u{2019}s Sync\u{2026}" } ?? "Join Shared Sync\u{2026}") { sync.joinOffer(offer.owner) }
             }
         }
         HStack {
