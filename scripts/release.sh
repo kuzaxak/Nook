@@ -11,10 +11,14 @@
 # Signing: the "Developer ID Application" identity of team 538SB59LX4 when the login Keychain has
 # one (override with SIGN_IDENTITY, or SIGN_IDENTITY=- for ad-hoc). A Developer ID build is
 # notarized with the notarytool profile NOTARY_PROFILE (default nook-notary) and the script stops
-# if that fails; NOTARY_PROFILE= skips notarization. The DMG is signed for Sparkle with the EdDSA
-# key stored in the login Keychain under account ee.qdo.nook (generate_keys), or with the key file
-# SPARKLE_KEY_FILE names (CI). Both Keychain items may ask for access the first time: run it at
-# the Mac and choose Always Allow. .github/workflows/release.yml runs this script for version tags.
+# if that fails; NOTARY_PROFILE= skips notarization. SIGN_KEYCHAIN and NOTARY_KEYCHAIN name the
+# keychain the identity and the profile are read from instead of the search list. The DMG is signed
+# for Sparkle with the EdDSA key stored in the login Keychain under account ee.qdo.nook
+# (generate_keys), or with the key in SPARKLE_KEY (CI), which reaches generate_appcast on stdin.
+# Both login Keychain items may ask for access the first time: run it at the Mac and choose Always
+# Allow.
+# .github/workflows/release.yml runs this script for version tags on the self-hosted nook-release
+# runner, with a temporary keychain from scripts/ci-keychain.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -27,6 +31,7 @@ ENTITLEMENTS="$PWD/Nook/Nook-CI.entitlements"
 SPARKLE_BIN="build/SourcePackages/artifacts/sparkle/Sparkle/bin"
 OUT="build/release"
 APP="$OUT/Nook.app"
+export -n SPARKLE_KEY
 
 # A tag that already names another commit would get this build's binaries; stop before building.
 if [[ "$PUBLISH" == "--publish" ]]; then
@@ -48,6 +53,7 @@ if [[ "$SIGN_IDENTITY" == "-" ]]; then
   SIGNING=(CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= CODE_SIGNING_REQUIRED=NO)
 else
   SIGNING=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$TEAM" PROVISIONING_PROFILE_SPECIFIER="")
+  [[ -z "${SIGN_KEYCHAIN:-}" ]] || SIGNING+=(OTHER_CODE_SIGN_FLAGS="--keychain \"$SIGN_KEYCHAIN\"")
 fi
 
 # CI entitlements leave out push and the autofill credential provider, which need a profile.
@@ -64,7 +70,7 @@ if [[ "$SIGN_IDENTITY" != "-" ]]; then
   # Sparkle ships signed by its own team; notarization wants every binary under ours, with a
   # timestamp and the hardened runtime, signed from the inside out.
   SPARKLE="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
-  sign() { codesign --force --sign "$SIGN_IDENTITY" --timestamp "$@"; }
+  sign() { codesign --force --sign "$SIGN_IDENTITY" ${SIGN_KEYCHAIN:+--keychain "$SIGN_KEYCHAIN"} --timestamp "$@"; }
   sign --options runtime "$SPARKLE/XPCServices/Downloader.xpc/Contents/MacOS/Downloader"
   sign --options runtime "$SPARKLE/XPCServices/Installer.xpc/Contents/MacOS/Installer"
   sign --options runtime "$SPARKLE/Updater.app/Contents/MacOS/Updater"
@@ -79,7 +85,7 @@ if [[ "$SIGN_IDENTITY" != "-" ]]; then
 
   if [[ -n "$NOTARY_PROFILE" ]]; then
     ditto -c -k --keepParent "$APP" "$OUT/Nook-notarize.zip"
-    xcrun notarytool submit "$OUT/Nook-notarize.zip" --keychain-profile "$NOTARY_PROFILE" --wait | tee "$OUT/notarize.log"
+    xcrun notarytool submit "$OUT/Nook-notarize.zip" --keychain-profile "$NOTARY_PROFILE" ${NOTARY_KEYCHAIN:+--keychain "$NOTARY_KEYCHAIN"} --wait | tee "$OUT/notarize.log"
     grep -q "status: Accepted" "$OUT/notarize.log" || { echo "Notarization was not accepted; see $OUT/notarize.log"; exit 1; }
     xcrun stapler staple "$APP"
     rm "$OUT/Nook-notarize.zip"
@@ -96,9 +102,9 @@ mkdir -p "$OUT/feed"
 DMG="$OUT/feed/Nook-$VERSION-universal.dmg"
 hdiutil create -volname "Nook $VERSION" -srcfolder "$STAGING" -ov -format UDZO "$DMG"
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
-  codesign --force --sign "$SIGN_IDENTITY" --timestamp "$DMG"
+  sign "$DMG"
   if [[ -n "$NOTARY_PROFILE" ]]; then
-    xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait | tee "$OUT/notarize-dmg.log"
+    xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" ${NOTARY_KEYCHAIN:+--keychain "$NOTARY_KEYCHAIN"} --wait | tee "$OUT/notarize-dmg.log"
     grep -q "status: Accepted" "$OUT/notarize-dmg.log" || { echo "DMG notarization was not accepted; see $OUT/notarize-dmg.log"; exit 1; }
     xcrun stapler staple "$DMG"
   fi
@@ -118,14 +124,16 @@ awk '
   END { if (list) print "</ul>" }
 ' "$NOTES" > "${DMG%.dmg}.html"
 
-if [[ -n "${SPARKLE_KEY_FILE:-}" ]]; then
-  SPARKLE_KEY=(--ed-key-file "$SPARKLE_KEY_FILE")
+if [[ -n "${SPARKLE_KEY:-}" ]]; then
+  SPARKLE_KEY_SOURCE=(--ed-key-file -)
 else
-  SPARKLE_KEY=(--account ee.qdo.nook)
+  SPARKLE_KEY_SOURCE=(--account ee.qdo.nook)
 fi
-"$SPARKLE_BIN/generate_appcast" "${SPARKLE_KEY[@]}" \
+printf '%s' "${SPARKLE_KEY:-}" | "$SPARKLE_BIN/generate_appcast" "${SPARKLE_KEY_SOURCE[@]}" \
   --download-url-prefix "https://github.com/kuzaxak/Nook/releases/download/$TAG/" \
   --link "https://github.com/kuzaxak/Nook" "$OUT/feed"
+# generate_appcast exits 0 and leaves the entry unsigned when the key doesn't match the app's.
+grep -q 'sparkle:edSignature=' "$OUT/feed/appcast.xml" || { echo "appcast.xml is unsigned; check the Sparkle key"; exit 1; }
 
 echo "Built $DMG and $OUT/feed/appcast.xml (version $VERSION, build $BUILD_NUMBER)"
 if [[ "$PUBLISH" == "--publish" ]]; then
