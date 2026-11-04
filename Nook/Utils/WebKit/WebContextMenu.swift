@@ -167,6 +167,7 @@ enum WebContextMenuItem {
         case .pageBack: return context.canGoBack || context.owningSession?.canGoBackOrReturn == true
         case .pageForward: return context.canGoForward
         case .pageTranslate: return context.owningSession?.canTranslate == true
+        case .linkOpenInSplitView: return context.canOpenLinkInSplitView
         default: return true
         }
     }
@@ -291,13 +292,19 @@ extension FocusableWKWebView {
         }
     }
 
-    /// Opens `url` as a trail child and pairs it with the window's selection.
+    /// Opens `url` as a trail child beside the page's pane, or beside the window's selection.
     func openLinkInSplitView(_ url: URL) {
-        guard let browserManager, let session = owningSession,
+        guard canOpenLinkInSplitView, let browserManager, let session = owningSession,
               let window = browserManager.tabs.window(for: session),
               let itemID = browserManager.tabs.open(url: url, in: window, placement: .background, from: session.itemID)
         else { return }
-        browserManager.splitManager.enterSplit(with: itemID, in: window)
+        browserManager.splitManager.enterSplit(with: itemID, beside: session.itemID, in: window)
+    }
+
+    /// Not once the page's window shows four panes.
+    var canOpenLinkInSplitView: Bool {
+        guard let browserManager, let window = owningSession.flatMap(browserManager.tabs.window(for:)) else { return false }
+        return browserManager.splitManager.offersAddSplitView(in: window)
     }
 
     /// Downloads `url` with the page's cookies, asking where to save it.

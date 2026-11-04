@@ -92,13 +92,14 @@ final class SplitViewManager: ObservableObject {
         }
     }
 
-    /// Open in Split View, from a tab's menu, a link or a Peek: on `edge` of the selected tab, or of
-    /// the selected pane, which it takes once four show.
-    func enterSplit(with itemID: UUID, placeOn edge: SplitDrop.Edge = .trailing, in window: BrowserWindowState) {
-        guard let dragged = dragged(itemID, in: window) else { return }
+    /// Open in Split View, from a tab's menu, a link, a Peek or Shift+Return in the command bar:
+    /// on `edge` of `pane`, or of the selected tab or pane. Nothing once four panes show.
+    func enterSplit(with itemID: UUID, placeOn edge: SplitDrop.Edge = .trailing, beside pane: UUID? = nil, in window: BrowserWindowState) {
+        guard offersAddSplitView(in: window), let dragged = dragged(itemID, in: window) else { return }
         let layout = window.splitLayout
-        let pane = window.selectedItemID.flatMap { SplitDrop.current(layout, selected: $0)?.panes.firstIndex(of: $0) } ?? 0
-        guard let outcome = SplitDrop.outcome(of: dragged, beside: pane, edge, selected: window.selectedItemID, split: layout) else { return }
+        let shown = SplitDrop.current(layout, selected: window.selectedItemID)
+        let index = [pane, window.selectedItemID].compactMap { $0 }.lazy.compactMap { shown?.panes.firstIndex(of: $0) }.first ?? 0
+        guard let outcome = SplitDrop.outcome(of: dragged, beside: index, edge, selected: window.selectedItemID, split: layout) else { return }
         drop(itemID, outcome, in: window)
     }
 

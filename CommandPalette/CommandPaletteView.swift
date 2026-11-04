@@ -1005,9 +1005,10 @@ struct CommandPaletteView: View {
         browserManager.tabs.open(url: url, in: windowState, placement: .background)
     }
 
-    /// Shift+Return: the row opens in split view beside the current tab.
+    /// Shift+Return: the row opens in split view beside the current tab, unless four panes show.
     private func openTargetInSplit() {
-        guard let row = targetSuggestion else { return }
+        guard commandPalette.addSplit != nil || browserManager.splitManager.offersAddSplitView(in: windowState),
+              let row = targetSuggestion else { return }
         let itemID: UUID?
         if case .tab(let match) = row.type {
             itemID = match.itemID

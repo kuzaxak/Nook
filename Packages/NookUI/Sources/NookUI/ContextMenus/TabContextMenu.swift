@@ -220,6 +220,7 @@ public struct TabContextMenu: View {
             } label: {
                 Label("Open in Split View", systemImage: "rectangle.split.2x1")
             }
+            .disabled(actions?.offersSplit(in: windowState) == false)
         }
 
         if tabs.isSynced(itemID) {

@@ -20,6 +20,10 @@ extension BrowserManager: TabActions {
         splitManager.enterSplit(with: itemID, placeOn: placeOnRight ? .trailing : .leading, in: window)
     }
 
+    func offersSplit(in window: BrowserWindowState) -> Bool {
+        splitManager.offersAddSplitView(in: window)
+    }
+
     func separateSplit(in window: BrowserWindowState) {
         splitManager.separateAll(in: window)
     }
