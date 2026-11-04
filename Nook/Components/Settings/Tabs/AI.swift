@@ -16,8 +16,7 @@ struct SettingsAITab: View {
     @Environment(MCPManager.self) var mcpManager
 
     @State private var openRouterSearch: String = ""
-    @State private var testingConnection: Bool = false
-    @State private var connectionTestResult: String?
+    @State private var connectionTests = ProviderConnectionTests()
     @State private var newMCPServerName: String = ""
     @State private var newMCPServerCommand: String = ""
     @State private var newMCPServerArgs: String = ""
@@ -510,6 +509,7 @@ struct SettingsAITab: View {
                         var updated = provider
                         updated.isEnabled = newValue
                         configService.updateProvider(updated)
+                        connectionTests.invalidate(provider.id)
                     }
                 ))
 
@@ -530,20 +530,22 @@ struct SettingsAITab: View {
                         set: { newValue in
                             // Update provider config and API key separately
                             configService.updateProvider(provider, apiKey: newValue)
+                            connectionTests.invalidate(provider.id)
                         }
                     ))
                     .textFieldStyle(.roundedBorder)
                     .font(NookDesign.Font.secondary)
 
-                    if !provider.apiKey.isEmpty {
-                        Button("Test") {
-                            testConnection(provider)
-                        }
-                        .font(NookDesign.Font.caption)
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(testingConnection)
+                    if connectionTests.isTesting(provider.id) {
+                        ProgressView().controlSize(.small)
                     }
+                    Button("Test") {
+                        testConnection(provider)
+                    }
+                    .font(NookDesign.Font.caption)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(provider.apiKey.isEmpty || connectionTests.isTesting(provider.id))
                 }
             }
 
@@ -554,16 +556,17 @@ struct SettingsAITab: View {
                         var updated = provider
                         updated.baseURL = newValue
                         configService.updateProvider(updated)
+                        connectionTests.invalidate(provider.id)
                     }
                 ))
                 .textFieldStyle(.roundedBorder)
                 .font(NookDesign.Font.secondary)
             }
 
-            if let result = connectionTestResult {
-                Text(result)
+            if let outcome = connectionTests.outcome(for: provider.id) {
+                Text(outcome.message)
                     .font(NookDesign.Font.caption)
-                    .foregroundStyle(result.contains("Success") ? .green : .red)
+                    .foregroundStyle(outcome.passed ? .green : .red)
             }
         }
     }
@@ -816,65 +819,48 @@ struct SettingsAITab: View {
     // MARK: - Helpers
 
     private func testConnection(_ provider: AIProviderConfig) {
-        testingConnection = true
-        connectionTestResult = nil
-
+        let run = connectionTests.start(provider.id)
         Task {
+            let outcome: ProviderConnectionTests.Outcome?
             do {
-                switch provider.providerType {
-                case .appleIntelligence:
-                    break
-                case .gemini:
-                    // The key goes in a header; in the URL it would reach logs and proxies
-                    var request = URLRequest(url: URL(string: "\(provider.baseURL)/models")!)
-                    request.setValue(provider.apiKey, forHTTPHeaderField: "x-goog-api-key")
-                    let (_, response) = try await URLSession.shared.data(for: request)
-                    if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                        connectionTestResult = "Success: Connection verified"
-                    } else {
-                        connectionTestResult = "Failed: Invalid response"
-                    }
-                case .openRouter, .openAI:
-                    var request = URLRequest(url: URL(string: "\(provider.baseURL)/models")!)
-                    request.setValue("Bearer \(provider.apiKey)", forHTTPHeaderField: "Authorization")
-                    let (_, response) = try await URLSession.shared.data(for: request)
-                    if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                        connectionTestResult = "Success: Connection verified"
-                    } else {
-                        connectionTestResult = "Failed: Invalid response"
-                    }
-                case .anthropic:
-                    let request = AnthropicProvider.request("models", baseURL: provider.baseURL, apiKey: provider.apiKey)
-                    let (_, response) = try await URLSession.shared.data(for: request)
-                    if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                        connectionTestResult = "Success: Connection verified"
-                    } else {
-                        connectionTestResult = "Failed: Invalid response"
-                    }
-                case .ollama:
-                    let (_, response) = try await URLSession.shared.data(from: URL(string: "\(provider.baseURL)/api/tags")!)
-                    if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                        connectionTestResult = "Success: Ollama is running"
-                    } else {
-                        connectionTestResult = "Failed: Ollama not responding"
-                    }
-                case .openAICompatible:
-                    var request = URLRequest(url: URL(string: "\(provider.baseURL)/models")!)
-                    if !provider.apiKey.isEmpty {
-                        request.setValue("Bearer \(provider.apiKey)", forHTTPHeaderField: "Authorization")
-                    }
-                    let (_, response) = try await URLSession.shared.data(for: request)
-                    if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                        connectionTestResult = "Success: Connection verified"
-                    } else {
-                        connectionTestResult = "Failed: Invalid response"
-                    }
-                }
+                outcome = try await Self.probe(provider)
             } catch {
-                connectionTestResult = "Failed: \(error.localizedDescription)"
+                outcome = ProviderConnectionTests.Outcome(passed: false, message: "Failed: \(error.localizedDescription)")
             }
-            testingConnection = false
+            connectionTests.finish(run, outcome)
         }
+    }
+
+    private static func probe(_ provider: AIProviderConfig) async throws -> ProviderConnectionTests.Outcome? {
+        let request: URLRequest
+        switch provider.providerType {
+        case .appleIntelligence:
+            return nil
+        case .gemini:
+            // The key goes in a header; in the URL it would reach logs and proxies
+            var gemini = URLRequest(url: URL(string: "\(provider.baseURL)/models")!)
+            gemini.setValue(provider.apiKey, forHTTPHeaderField: "x-goog-api-key")
+            request = gemini
+        case .openRouter, .openAI:
+            var bearer = URLRequest(url: URL(string: "\(provider.baseURL)/models")!)
+            bearer.setValue("Bearer \(provider.apiKey)", forHTTPHeaderField: "Authorization")
+            request = bearer
+        case .anthropic:
+            request = AnthropicProvider.request("models", baseURL: provider.baseURL, apiKey: provider.apiKey)
+        case .ollama:
+            let (_, response) = try await URLSession.shared.data(from: URL(string: "\(provider.baseURL)/api/tags")!)
+            let running = (response as? HTTPURLResponse)?.statusCode == 200
+            return ProviderConnectionTests.Outcome(passed: running, message: running ? "Success: Ollama is running" : "Failed: Ollama not responding")
+        case .openAICompatible:
+            var custom = URLRequest(url: URL(string: "\(provider.baseURL)/models")!)
+            if !provider.apiKey.isEmpty {
+                custom.setValue("Bearer \(provider.apiKey)", forHTTPHeaderField: "Authorization")
+            }
+            request = custom
+        }
+        let (_, response) = try await URLSession.shared.data(for: request)
+        let verified = (response as? HTTPURLResponse)?.statusCode == 200
+        return ProviderConnectionTests.Outcome(passed: verified, message: verified ? "Success: Connection verified" : "Failed: Invalid response")
     }
 
     private func stateColor(_ state: MCPConnectionState) -> Color {

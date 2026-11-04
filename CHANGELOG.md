@@ -24,6 +24,7 @@
 - A Web Inspector docked to a page stays beside it when the window resizes, the Developer Mode bar or right panel opens, or you switch tabs or split and come back, and the page fills its pane again when the inspector closes or undocks, instead of leaving a grey band below it
 - Dragging a tab from the sidebar onto the page splits the window again, as in Arc: the half under the pointer shows where it goes and takes the tab, or replaces that pane in a split; text dragged inside a page no longer brings up the split zones
 - The AI assistant says when a reply stops at Max Output Tokens instead of showing a blank or cut-off answer
+- Settings → AI → Providers shows a Test result only under the provider that was tested, instead of under every provider, and clears it when that provider's key, address or switch changes
 
 ## 1.5.2
 
