@@ -17,6 +17,7 @@ struct SpaceSwitchCheck {
     static func main() {
         checkMath()
         checkView()
+        checkEditing()
         checkEvents()
     }
 
@@ -255,6 +256,72 @@ struct SpaceSwitchCheck {
         precondition(later.subviews[0].subviews.count == 3, "In a window the pages either side are built, got \(later.subviews[0].subviews.count)")
         laterWindow.orderOut(nil)
         print("PASS: a pager given a window builds its neighbours")
+    }
+
+    /// A rename in progress on a page the strip leaves: the page hides at rest, so its field must
+    /// give up the keyboard and keep the name typed, as it did when the page was removed.
+    @MainActor
+    static func checkEditing() {
+        final class Names { var committed: [Int: String] = [:] }
+        struct RenamePage: View {
+            let space: Int
+            let names: Names
+            @State private var draft = ""
+            @FocusState private var focused: Bool
+
+            var body: some View {
+                VStack {
+                    TextField("Name", text: $draft)
+                        .focused($focused)
+                        .onChange(of: focused) { _, now in if !now { names.committed[space] = draft } }
+                    Spacer()
+                }
+            }
+        }
+        typealias EditPager = PlatformPageView<Int, AnyView>
+        let names = Names()
+        var selection = 1
+        let parent = EditPager(
+            selection: Binding(get: { selection }, set: { selection = $0 }),
+            configuration: PlatformPageViewConfiguration(transition: .scroll, orientation: .horizontal, spacing: 0),
+            next: { $0 < 3 ? $0 + 1 : nil }, previous: { $0 > 0 ? $0 - 1 : nil },
+            content: { AnyView(RenamePage(space: $0, names: names)) })
+        let coordinator = parent.makeCoordinator()
+        let pager = EditPager.SwipePagerView(frame: NSRect(x: 0, y: 0, width: 300, height: 400))
+        /// The browser window is key while someone renames a tab; a borderless window never is.
+        final class KeyWindow: NSWindow {
+            override var canBecomeKey: Bool { true }
+            override var isKeyWindow: Bool { true }
+        }
+        let window = KeyWindow(contentRect: pager.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = pager
+        window.setFrameOrigin(NSPoint(x: -3400, y: -3400))
+        window.orderFront(nil)
+        coordinator.pager = pager
+        pager.coordinator = coordinator
+        coordinator.show(1)
+        pager.layout()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+
+        func find<V: NSView>(_ type: V.Type, in view: NSView) -> V? {
+            if view.isHidden { return nil }
+            if let match = view as? V { return match }
+            return view.subviews.lazy.compactMap { find(type, in: $0) }.first
+        }
+        let field = find(NSTextField.self, in: pager)!
+        precondition(window.makeFirstResponder(field), "The rename field takes the keyboard")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        (field.currentEditor() as? NSTextView)?.insertText("Renamed", replacementRange: NSRange(location: NSNotFound, length: 0))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+
+        selection = 2
+        coordinator.refresh(to: 2, animated: true)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        precondition(window.firstResponder === window, "The page swiped away gives the keyboard back to the window, got \(String(describing: window.firstResponder))")
+        precondition(names.committed[1] == "Renamed", "The name typed is kept, got \(String(describing: names.committed[1]))")
+        precondition(field.isHiddenOrHasHiddenAncestor, "The renamed page waits hidden beside the new one")
+        window.orderOut(nil)
+        print("PASS: a rename on a page swiped away ends and keeps its name")
     }
 
     /// Real scroll events dispatched over a page holding a vertical list, as the sidebar's tabs are.
