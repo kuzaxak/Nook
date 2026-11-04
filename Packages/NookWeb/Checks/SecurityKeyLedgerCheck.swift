@@ -5,7 +5,9 @@
 //
 //  The passkey requests one page has open: keyed by the frame's origin and the shim's random
 //  id, so frames cannot collide or end each other's requests; at most one security key request
-//  at a time; a vault disconnect ends only vault requests. Run from the repository root:
+//  at a time, only from the page the user is looking at, and none after the user cancels one
+//  until the next document; a vault disconnect ends only vault requests. Run from the
+//  repository root:
 //
 //    swiftc -parse-as-library Packages/NookWeb/Sources/NookWeb/Vault/PasskeyLedger.swift \
 //           Packages/NookWeb/Checks/SecurityKeyLedgerCheck.swift -o /tmp/sk-ledger && /tmp/sk-ledger
@@ -70,6 +72,31 @@ struct SecurityKeyLedgerCheck {
         precondition(ledger.admit(key(a, "7"), kind: .securityKey, reply: "key 7 again") == nil)
         ledger.prune { $0 != "key 7 again" }
         precondition(ledger.securityKeyRequest == nil && ledger.admit(key(a, "a"), kind: .securityKey, reply: "key a") == nil)
+
+        // A page the user is not looking at gets no sheet; Pawl Vault requests are not affected.
+        var focus = PasskeyLedger<String>()
+        precondition(focus.admit(key(a, "1"), kind: .securityKey, reply: "hidden", focused: false) == .notFocused)
+        precondition(focus.securityKeyRequest == nil && focus.reply(for: key(a, "1")) == nil)
+        precondition(focus.admit(key(a, "2"), kind: .vault, reply: "vault", focused: false) == nil)
+
+        // Once the user cancels, this document gets no more sheets, from any frame; a new one does.
+        precondition(focus.admit(key(a, "3"), kind: .securityKey, reply: "key 3") == nil)
+        focus.securityKeyEnded(key(a, "3"), userCancelled: true)
+        precondition(focus.refusesSecurityKeys)
+        precondition(focus.admit(key(a, "4"), kind: .securityKey, reply: "key 4") == .cancelled)
+        precondition(focus.admit(key("https://b.com", "4"), kind: .securityKey, reply: "key 4") == .cancelled)
+        precondition(focus.admit(key(a, "5"), kind: .vault, reply: "vault 5") == nil)
+        _ = focus.removeAll()
+        focus.newDocument()
+        precondition(!focus.refusesSecurityKeys && focus.admit(key(a, "6"), kind: .securityKey, reply: "key 6") == nil)
+
+        // Ending without a cancel refuses nothing, and a request from the last document cannot.
+        focus.securityKeyEnded(key(a, "6"))
+        precondition(focus.admit(key(a, "7"), kind: .securityKey, reply: "key 7") == nil)
+        _ = focus.removeAll()
+        focus.newDocument()
+        focus.securityKeyEnded(key(a, "7"), userCancelled: true)
+        precondition(!focus.refusesSecurityKeys && focus.admit(key(a, "8"), kind: .securityKey, reply: "key 8") == nil)
 
         print("SecurityKeyLedgerCheck passed")
     }

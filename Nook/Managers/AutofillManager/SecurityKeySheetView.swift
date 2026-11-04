@@ -3,9 +3,10 @@
 //  SecurityKeySheetView.swift
 //  Nook
 //
-//  The sheet for a passkey request that can use a USB security key: which to use when Pawl
-//  Vault is connected too, insert, touch, the key's PIN, the account to sign in as, and why it
-//  failed. Return never makes a choice the page could have lined up; Escape cancels.
+//  The prompt over a page for a passkey request that can use a USB security key: which to use
+//  when Pawl Vault is connected too, insert, touch, the key's PIN, the account to sign in as,
+//  and why it failed. It sits in the tab, so it registers no window-wide keyboard shortcuts;
+//  Return in the PIN field continues and Escape cancels.
 //
 
 import SwiftUI
@@ -18,6 +19,16 @@ struct SecurityKeySheetView: View {
     @FocusState private var pinFocused: Bool
 
     var body: some View {
+        ZStack {
+            NookDesign.Surface.scrim
+            card
+                .background(.regularMaterial, in: NookDesign.Radius.shape(NookDesign.Radius.xl))
+                .shadow(radius: NookDesign.Radius.xl)
+                .padding(NookDesign.Spacing.xl)
+        }
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: NookDesign.Spacing.xl) {
             HStack(alignment: .top, spacing: NookDesign.Spacing.lg) {
                 Image(systemName: "key.horizontal.fill")
@@ -86,7 +97,6 @@ struct SecurityKeySheetView: View {
             HStack {
                 Spacer()
                 Button("OK") { sheet.answer(.dismissed) }
-                    .keyboardShortcut(.defaultAction)
             }
         }
     }
@@ -115,7 +125,6 @@ struct SecurityKeySheetView: View {
             }
             buttons {
                 Button("Continue", action: submit)
-                    .keyboardShortcut(.defaultAction)
                     .disabled(!valid || sheet.isWorking)
             }
         }
@@ -147,7 +156,6 @@ struct SecurityKeySheetView: View {
                 pin = ""
                 sheet.cancel()
             }
-            .keyboardShortcut(.cancelAction)
             extra()
         }
     }

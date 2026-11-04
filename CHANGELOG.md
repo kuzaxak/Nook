@@ -10,7 +10,7 @@
 - Spaces can be exported to a `.nookspace` file and imported as a new space in any profile: Export Space… in a space's right-click menu or Settings → Spaces, Import Space… in the File menu or Settings → Spaces, or open the file from Finder; the file holds the space's look, favorites, pinned tabs and open tabs, never logins, cookies or history, only web links come in, and imported tabs load when you open them
 - Press and hold Back or Forward to list the pages that way, as in Safari and Arc
 - Add Split View (⌃⇧=, "split" in the command bar, or New Split in the sidebar's + menu) puts an empty pane beside the current tab with the command bar over it, as in Arc: pick a tab, or type an address or a search, to fill it; Escape leaves the window as it was
-- USB security keys such as a YubiKey work for passkeys: Nook talks to the key itself over FIDO2, as Chrome and Firefox do, asks for the key's PIN when the site or the key needs it, and lists the accounts when the key holds several; with Pawl Vault connected the sheet asks which to use. Settings → Privacy → Security keys (USB) turns it off
+- USB security keys such as a YubiKey work for passkeys: Nook talks to the key itself over FIDO2, as Chrome and Firefox do, asks for the key's PIN when the site or the key needs it, and lists the accounts when the key holds several; with Pawl Vault connected the prompt asks which to use. The prompt sits over its tab only, appears only for the page you are looking at, and after you cancel it the page cannot bring it back until it navigates. Settings → Privacy → Security keys (USB) turns it off
 
 ### Fixed
 

@@ -6,7 +6,9 @@
 //  The passkey requests one page has open. Every frame runs its own shim, so a request is
 //  known by its frame's origin (from WebKit) and the 128-bit random id its shim gave it: no
 //  frame can collide with another or end another's request. Pawl Vault requests run side by
-//  side; a security key request, or the sheet choosing between the two, is one at a time.
+//  side; a security key request, or the sheet choosing between the two, is one at a time, only
+//  for the page the user is looking at, and none once the user has cancelled one in this
+//  document, so a page cannot bring the sheet back in a loop.
 //
 
 import Foundation
@@ -35,16 +37,23 @@ public struct PasskeyLedger<Reply> {
         case duplicate
         /// Another security key request is open on this page.
         case busy
+        /// The page is not the focused pane of the key window.
+        case notFocused
+        /// The user cancelled a security key request in this document.
+        case cancelled
     }
 
     private var entries: [PasskeyRequestKey: (kind: Kind, reply: Reply)] = [:]
     public private(set) var securityKeyRequest: PasskeyRequestKey?
+    public private(set) var refusesSecurityKeys = false
 
     public init() {}
 
-    public mutating func admit(_ key: PasskeyRequestKey, kind: Kind, reply: Reply) -> Refusal? {
+    public mutating func admit(_ key: PasskeyRequestKey, kind: Kind, reply: Reply, focused: Bool = true) -> Refusal? {
         guard entries[key] == nil else { return .duplicate }
         if kind == .securityKey {
+            guard !refusesSecurityKeys else { return .cancelled }
+            guard focused else { return .notFocused }
             guard securityKeyRequest == nil else { return .busy }
             securityKeyRequest = key
         }
@@ -61,10 +70,17 @@ public struct PasskeyLedger<Reply> {
         return entries.removeValue(forKey: key)?.reply
     }
 
-    /// The security key request is over; its slot opens.
-    public mutating func securityKeyEnded(_ key: PasskeyRequestKey) {
+    /// The security key request is over; its slot opens. A cancel by the user refuses the
+    /// document's later security key requests.
+    public mutating func securityKeyEnded(_ key: PasskeyRequestKey, userCancelled: Bool = false) {
         guard securityKeyRequest == key else { return }
         securityKeyRequest = nil
+        if userCancelled { refusesSecurityKeys = true }
+    }
+
+    /// The page has a new document.
+    public mutating func newDocument() {
+        refusesSecurityKeys = false
     }
 
     /// The user chose Pawl Vault on the sheet.

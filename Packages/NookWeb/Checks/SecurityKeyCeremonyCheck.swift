@@ -642,6 +642,21 @@ struct SecurityKeyCeremonyCheck {
         let (lied, liedSteps) = await run(.create(createRequest()), [liar], answers: [.dismissed])
         precondition(failed(lied) == .notAllowed && liedSteps.last == .failed(.failed))
 
+        // The sheet: Cancel is the user's answer; leaving the tab only ends the step.
+        let sheet = SecurityKeySheet(host: "example.com", creating: false)
+        let cancels = Journal()
+        sheet.onCancel = { cancels.lines.append("cancel") }
+        let abandoned = Task { @MainActor in await sheet.ask(.accounts([])) }
+        await settle()
+        sheet.abandon()
+        let abandonedAnswer = await abandoned.value
+        precondition(abandonedAnswer == nil && !sheet.wasCancelled && cancels.lines == ["cancel"])
+        let cancelledAsk = Task { @MainActor in await sheet.ask(.choose) }
+        await settle()
+        sheet.cancel()
+        let cancelledAnswer = await cancelledAsk.value
+        precondition(cancelledAnswer == nil && sheet.wasCancelled && cancels.lines == ["cancel", "cancel"])
+
         print("SecurityKeyCeremonyCheck passed")
     }
 }

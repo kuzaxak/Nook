@@ -3,7 +3,7 @@
 //  SecurityKeySheet.swift
 //  Nook
 //
-//  The sheet over a tab's window for one passkey request that may use a security key: the
+//  The prompt over a tab's page for one passkey request that may use a security key: the
 //  Pawl Vault or security key choice, "Insert" and "Touch your security key", the PIN, the
 //  account picker and failures. The ceremony drives it; the app draws it and answers.
 //
@@ -15,7 +15,7 @@ import WebKit
 
 @MainActor
 public protocol SecurityKeyPresenter: AnyObject {
-    /// Attaches `sheet` to the window showing `webView`; false when there is no such window.
+    /// Shows `sheet` over `webView`, in its tab only; false when the view is in no window.
     func present(_ sheet: SecurityKeySheet, in webView: WKWebView) -> Bool
     func dismiss(_ sheet: SecurityKeySheet)
 }
@@ -30,6 +30,8 @@ public final class SecurityKeySheet: SecurityKeyUser {
     public private(set) var step: SecurityKeyStep?
     /// The user answered and Nook is waiting on the key.
     public private(set) var isWorking = false
+    /// The user pressed Cancel, as opposed to leaving the tab.
+    public private(set) var wasCancelled = false
     @ObservationIgnored private var shownAt = Date()
     @ObservationIgnored private var pending: CheckedContinuation<SecurityKeyAnswer?, Never>?
     @ObservationIgnored var onCancel: (() -> Void)?
@@ -69,6 +71,13 @@ public final class SecurityKeySheet: SecurityKeyUser {
     }
 
     public func cancel() {
+        wasCancelled = true
+        resume(nil)
+        onCancel?()
+    }
+
+    /// The tab closed, or the user moved to another one.
+    public func abandon() {
         resume(nil)
         onCancel?()
     }

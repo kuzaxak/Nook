@@ -143,6 +143,7 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
     /// The page's document went away: its requests end and its pickers close.
     func documentChanged() {
         endPasskeyRequests(.abort)
+        requests.newDocument()
         closePicker()
     }
 
@@ -362,7 +363,8 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
             case .failure(let error): return reply.fail(error)
             }
             guard let requestID = PasskeyRequestKey(origin: context.origin, token: token), let route = route(op, body),
-                  requests.admit(requestID, kind: route == .vault ? .vault : .securityKey, reply: reply) == nil
+                  requests.admit(requestID, kind: route == .vault ? .vault : .securityKey, reply: reply,
+                                 focused: route == .vault || isFocusedPage) == nil
             else { return reply.fail(.notAllowed) }
             let origin = message.frameInfo.securityOrigin
             Task {
@@ -379,6 +381,17 @@ final class VaultBridge: NSObject, WKScriptMessageHandler, WKScriptMessageHandle
 
     private enum Route {
         case vault, securityKey, choice
+    }
+
+    /// The web view is on screen in the key window as that window's selected page, which in a
+    /// split is the focused pane.
+    private var isFocusedPage: Bool {
+        guard let webView, let window = webView.window, window.isKeyWindow, window.isVisible,
+              window.occlusionState.contains(.visible), !webView.isHiddenOrHasHiddenAncestor, !webView.visibleRect.isEmpty,
+              let session, let tabs = session.controller, let active = tabs.windowRegistry.activeWindow,
+              active.selectedItemID == session.itemID, tabs.webViews?.webView(for: session.itemID, in: active.id) === webView
+        else { return false }
+        return true
     }
 
     /// Conditional requests are the vault's; with security keys on, the rest go to a key, or
@@ -554,7 +567,7 @@ extension VaultBridge {
         if keyRequest?.id == id { keyRequest = nil }
         presenter.dismiss(sheet)
         guard case .vault? = answer, current else {
-            requests.securityKeyEnded(id)
+            requests.securityKeyEnded(id, userCancelled: sheet.wasCancelled)
             return reply.fail(.notAllowed)
         }
         requests.becameVault(id)
@@ -606,7 +619,7 @@ extension VaultBridge {
         let result = await ceremony.run()
         presenter.dismiss(sheet)
         if keyRequest?.id == id { keyRequest = nil }
-        requests.securityKeyEnded(id)
+        requests.securityKeyEnded(id, userCancelled: sheet.wasCancelled)
         switch result {
         case .success(.created(let credential)):
             reply.succeed(SecurityKeyReply.created(credential, clientDataJSON: clientDataJSON, credProps: credProps))
