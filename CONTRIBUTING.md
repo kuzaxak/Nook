@@ -43,7 +43,7 @@ You need an Apple Silicon Mac and Xcode 26 or later.
      CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
    ```
 
-There is no app test target. Logic with its own checks lives in `Checks/` folders beside each package's sources and in `scripts/tests/`; each file says how to run it. `Packages/NookTabsCore` also has a `swift test` suite.
+There is no app test target. Logic with its own checks lives in `Checks/` folders beside each package's sources and in `scripts/tests/`; each file says how to run it. `Packages/NookTabsCore` and `Packages/NookWeb` also have `swift test` suites.
 
 ## Code Style & Standards
 

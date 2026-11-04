@@ -16,7 +16,8 @@ extension TabsController {
     /// Creates a tab for `url`: at the top of `parent` when one is given; where a link from
     /// `opener`'s page goes (`childTabPosition`); else right below the window's selected tab
     /// (`newTabPosition`). `.newTab` selects it, `.background` leaves
-    /// selection alone and loads nothing, `.replaceCurrent` loads `url` in the selected page.
+    /// selection alone and loads the page only when it comes from `opener`, as Arc does with a
+    /// Command-clicked link, `.replaceCurrent` loads `url` in the selected page.
     /// `title` stands in for the page title until the page loads.
     @discardableResult
     public func open(url: URL, in window: BrowserWindowState, placement: Placement, parent: Parent? = nil, from opener: UUID? = nil, title: String? = nil) -> UUID? {
@@ -35,7 +36,12 @@ extension TabsController {
         }
         guard created != nil else { return nil }
         if let opener { linked(id, from: opener, at: position.0, owner: owner(of: window)) }
-        if placement != .background { select(id, in: window) }
+        if placement != .background {
+            select(id, in: window)
+        } else if opener != nil, let session = ensureSession(for: id) {
+            session.loadWebViewIfNeeded()
+            onPageLoadedInBackground?(session)
+        }
         return id
     }
 

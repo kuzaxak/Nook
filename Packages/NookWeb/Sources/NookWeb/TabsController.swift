@@ -91,6 +91,8 @@ public final class TabsController {
     /// The engine Settings chose for page translation. Set by the app, which owns the AI
     /// providers; pages translate on device without it.
     @ObservationIgnored public var pageTranslation: (() -> PageTranslationSetting)?
+    /// A page started loading with no window showing it: a link opened in the background.
+    @ObservationIgnored public var onPageLoadedInBackground: ((PageSession) -> Void)?
 
     /// Launch argument that redirects tab state, e.g. `-NookStateDir /tmp/bench`.
     /// Read from the argument domain only, never from persisted defaults, so a stray written

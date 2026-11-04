@@ -31,5 +31,16 @@ let package = Package(
             resources: [.copy("Resources")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        .testTarget(
+            name: "NookWebTests",
+            dependencies: [
+                "NookWeb",
+                .product(name: "NookTabsCore", package: "NookTabsCore"),
+                .product(name: "NookSettings", package: "NookSettings"),
+                .product(name: "NookBlocker", package: "NookBlocker"),
+                .product(name: "NookTweaks", package: "NookTweaks"),
+            ],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
     ]
 )

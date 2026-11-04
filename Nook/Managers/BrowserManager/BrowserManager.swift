@@ -494,6 +494,7 @@ class BrowserManager: ObservableObject {
         self.tabs.sessionDelegate = self
         self.tabs.tabEvents = self
         self.tabs.alerts = self
+        self.tabs.onPageLoadedInBackground = { [weak self] in self?.compositorManager.load($0) }
         NotificationCenter.default.addObserver(
             forName: NookSettingsService.paletteWordStopsDidChange, object: nil, queue: .main
         ) { [weak self, settings] _ in
