@@ -149,7 +149,7 @@ public struct SpacesSettingsView: View {
             .layoutPriority(1)
             Spacer()
             if let sync {
-                syncMenu(space, sync)
+                SpaceSyncMenu(space: space, sync: sync)
             }
             profilePicker(space)
             if spaces.count > 1 || actions?.supportsSpaceFiles == true {
@@ -172,22 +172,6 @@ public struct SpacesSettingsView: View {
     }
 
     // MARK: - iCloud Sync
-
-    private func syncMenu(_ space: SpaceRecord, _ sync: any SpaceSyncControls) -> some View {
-        let level = sync.level(of: space.id)
-        return Menu {
-            Picker("iCloud Sync", selection: Binding(get: { level }, set: { sync.setLevel($0, for: space.id) })) {
-                ForEach(SpaceSyncLevel.allCases, id: \.self) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.inline)
-        } label: {
-            Image(systemName: level.symbol)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help("iCloud Sync: \(level.title)")
-        .accessibilityLabel("iCloud Sync for \(space.name): \(level.title)")
-    }
 
     private func syncSection(_ status: SpaceSyncStatus) -> some View {
         Section {
