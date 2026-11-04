@@ -290,6 +290,15 @@ public final class TabsController {
         owner(ofItem: id).flatMap { tree($0).item(id) }
     }
 
+    /// Whether `window` shows the tree holding `id`: a private window its own, every regular window the shared one.
+    public func holds(_ id: UUID, in window: BrowserWindowState) -> Bool {
+        switch (owner(ofItem: id), owner(of: window)) {
+        case (.main, .main): return true
+        case (.privateWindow(let holder), .privateWindow(let shown)): return holder === shown
+        default: return false
+        }
+    }
+
     public func children(of parent: Parent) -> [Item] {
         treeHolding(parent).children(of: parent)
     }

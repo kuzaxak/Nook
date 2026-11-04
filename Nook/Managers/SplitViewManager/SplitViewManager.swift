@@ -85,27 +85,37 @@ final class SplitViewManager: ObservableObject {
 
     // MARK: - Entering and Leaving
 
-    /// Puts `itemID` on `side`. Outside a split it pairs with the window's selection, which stays
-    /// selected; inside a split it replaces that pane and becomes the selection.
+    /// Puts `itemID` on `side`, as `SplitDrop.outcome` decides. Outside a split it pairs with the
+    /// window's selection, which stays selected; inside a split it replaces that pane and becomes
+    /// the selection.
     func enterSplit(with itemID: UUID, placeOn side: Side = .right, in window: BrowserWindowState) {
-        guard let tabs = browserManager?.tabs, tabs.item(itemID) != nil else { return }
-        if var split = window.split {
+        guard let tabs = browserManager?.tabs, let dragged = dragged(itemID, in: window) else { return }
+        switch SplitDrop.outcome(of: dragged, on: side, selected: window.selectedItemID, split: window.splitPair) {
+        case .replace?:
+            guard var split = window.split else { return }
             switch side {
             case .left: split.leftItemID = itemID
             case .right: split.rightItemID = itemID
             }
-            guard split.leftItemID != split.rightItemID else { return }
             window.split = split
             loadPanes(of: window)
             tabs.select(itemID, in: window)
+        case .split?:
+            guard let current = window.selectedItemID else { return }
+            let (left, right) = side == .left ? (itemID, current) : (current, itemID)
+            window.split = SplitRecord(leftItemID: left, rightItemID: right, fraction: 0.5)
+            loadPanes(of: window)
+            // Selecting again saves the window record with its new split.
+            tabs.select(current, in: window)
+        case nil:
             return
         }
-        guard let current = window.selectedItemID, current != itemID else { return }
-        let (left, right) = side == .left ? (itemID, current) : (current, itemID)
-        window.split = SplitRecord(leftItemID: left, rightItemID: right, fraction: 0.5)
-        loadPanes(of: window)
-        // Selecting again saves the window record with its new split.
-        tabs.select(current, in: window)
+    }
+
+    /// `itemID` as a split sees it: whether it is a tab, and one of the tree `window` shows.
+    func dragged(_ itemID: UUID, in window: BrowserWindowState) -> SplitDrop.Dragged? {
+        guard let tabs = browserManager?.tabs, let item = tabs.item(itemID) else { return nil }
+        return SplitDrop.Dragged(id: itemID, isTab: !item.isFolder, isInWindow: tabs.holds(itemID, in: window))
     }
 
     /// A pane shows its page, so the sidebar gives it back first.
@@ -169,4 +179,9 @@ final class SplitViewManager: ObservableObject {
         previews[windowId] = Preview()
         window(windowId)?.refreshCompositor()
     }
+}
+
+extension BrowserWindowState {
+    /// The split record's two tabs, as `SplitDrop` takes them.
+    var splitPair: (left: UUID, right: UUID)? { split.map { ($0.leftItemID, $0.rightItemID) } }
 }
