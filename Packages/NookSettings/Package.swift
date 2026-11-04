@@ -10,5 +10,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "NookSettings", swiftSettings: [.swiftLanguageMode(.v5)]),
+        .testTarget(name: "NookSettingsTests", dependencies: ["NookSettings"], swiftSettings: [.swiftLanguageMode(.v5)]),
     ]
 )

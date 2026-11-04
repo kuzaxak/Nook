@@ -523,14 +523,25 @@ public final class NookSettingsService {
     public static let historyHalfLifeDaysRange = 3...60
     public static let historyHalfLifeDaysChoices = [3, 7, 10, 14, 30, 60]
 
-    /// Kagi's Session Link token, read from the Keychain at launch and kept nowhere else.
-    public private(set) var kagiSessionToken: String?
+    @ObservationIgnored private let kagiTokenStore: KagiTokenStore
+    @ObservationIgnored private var loadedKagiToken: String??
+
+    /// Kagi's Session Link token, read from the Keychain on first use.
+    public var kagiSessionToken: String? {
+        access(keyPath: \.kagiSessionToken)
+        if let loadedKagiToken { return loadedKagiToken }
+        let token = kagiTokenStore.load()
+        loadedKagiToken = .some(token)
+        return token
+    }
 
     /// Saves the token from a pasted Session Link (or a bare token) to the Keychain; nil removes it.
     public func setKagiSession(_ pasted: String?) {
         let token = pasted.flatMap(KagiSession.token(fromPasted:))
-        KagiSession.saveToken(token)
-        kagiSessionToken = token
+        withMutation(keyPath: \.kagiSessionToken) {
+            kagiTokenStore.save(token)
+            loadedKagiToken = .some(token)
+        }
     }
 
     /// Command bar keywords that expand to an address, such as `gh owner/repo`.
@@ -716,7 +727,8 @@ public final class NookSettingsService {
         }
     }
 
-    public init() {
+    public init(kagiTokenStore: KagiTokenStore = KeychainKagiTokenStore()) {
+        self.kagiTokenStore = kagiTokenStore
         // Register default values
         userDefaults.register(defaults: [
             searchEngineKey: SearchProvider.google.rawValue,
@@ -893,7 +905,6 @@ public final class NookSettingsService {
         self.peekLinksToOtherSites = userDefaults.bool(forKey: peekLinksToOtherSitesKey)
         self.historyHalfLifeDays = min(max(userDefaults.integer(forKey: historyHalfLifeDaysKey), Self.historyHalfLifeDaysRange.lowerBound), Self.historyHalfLifeDaysRange.upperBound)
         self.paletteWordStops = userDefaults.string(forKey: paletteWordStopsKey) ?? Self.defaultPaletteWordStops
-        self.kagiSessionToken = KagiSession.loadToken()
         self.urlShortcuts = userDefaults.data(forKey: urlShortcutsKey)
             .flatMap { try? JSONDecoder().decode([URLShortcut].self, from: $0) } ?? URLShortcut.defaults
         self.defaultBrowserPromptDismissedAt = (userDefaults.object(forKey: defaultBrowserPromptDismissedAtKey) as? Double)

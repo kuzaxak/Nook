@@ -10,6 +10,17 @@
 import Foundation
 import Security
 
+public protocol KagiTokenStore: Sendable {
+    func load() -> String?
+    func save(_ token: String?)
+}
+
+public struct KeychainKagiTokenStore: KagiTokenStore {
+    public init() {}
+    public func load() -> String? { KagiSession.loadToken() }
+    public func save(_ token: String?) { KagiSession.saveToken(token) }
+}
+
 public enum KagiSession {
     private static let service = "Nook Kagi Session Link"
     private static let account = "token"
