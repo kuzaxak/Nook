@@ -26,6 +26,15 @@ struct CloseShortcutCheck {
                      "⌘T on the empty space, then ⌘W: the command bar closes, not the window")
         precondition(CloseShortcut.target(in: nil, isRepeat: false) == .window,
                      "Settings, a mini window, a Web Inspector or an extension popup closes itself")
+        precondition(CloseShortcut.closesOtherWindow(lookupKey: key("ц", "w", 13, [.command])),
+                     "⌘W closes Settings or a mini window on any layout, whatever Close Tab is bound to")
+        precondition(!CloseShortcut.closesOtherWindow(lookupKey: key("ц", "w", 13, [.command, .shift])), "other keys are the window's own")
+        precondition(CloseShortcut.isHeldKey(keyDown(isARepeat: true)), "a held ⌘W reaching the menu's Close Tab")
+        precondition(!CloseShortcut.isHeldKey(keyDown(isARepeat: false)))
+        precondition(!CloseShortcut.isHeldKey(NSEvent.mouseEvent(with: .leftMouseUp, location: .zero, modifierFlags: [], timestamp: 0,
+                                                                 windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 0)),
+                     "Close Tab chosen with the pointer")
+        precondition(!CloseShortcut.isHeldKey(nil))
 
         // ⌘W on a Russian layout reports its own letter ignoring modifiers and the Latin one with ⌘.
         precondition(key("ц", "w", 13, [.command]) == "cmd+w", "⌘W on a Russian layout")
@@ -44,5 +53,10 @@ struct CloseShortcutCheck {
                                      context: nil, characters: characters, charactersIgnoringModifiers: ignoringModifiers,
                                      isARepeat: false, keyCode: keyCode)
         return event.flatMap(KeyCombination.init(from:))?.lookupKey
+    }
+
+    private static func keyDown(isARepeat: Bool) -> NSEvent? {
+        NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0, windowNumber: 0,
+                         context: nil, characters: "w", charactersIgnoringModifiers: "w", isARepeat: isARepeat, keyCode: 13)
     }
 }

@@ -213,11 +213,12 @@ class KeyboardShortcutManager {
             return false
         }
 
-        // If the key window is not a Nook browser window (e.g. Settings), let the event
-        // pass through so standard macOS shortcuts (Cmd+W to close, etc.) work normally
+        // A window that is not a browser window (Settings, a mini window) keeps its own keys.
         if let keyWindow = NSApp.keyWindow,
            !(windowRegistry?.windows.values.contains(where: { $0.window === keyWindow }) ?? false) {
-            return false
+            guard CloseShortcut.closesOtherWindow(lookupKey: KeyCombination(from: event)?.lookupKey) else { return false }
+            closeTab(isRepeat: event.isARepeat)
+            return true
         }
 
         let keyCode = event.keyCode
@@ -478,7 +479,7 @@ class KeyboardShortcutManager {
 
     /// Close Tab from its shortcut, the File menu or the command bar, in the key window (see
     /// `CloseShortcut`).
-    func closeTab(isRepeat: Bool = false) {
+    func closeTab(isRepeat: Bool) {
         let keyWindow = NSApp.keyWindow ?? NSApp.mainWindow
         let state = keyWindow.flatMap { key in windowRegistry?.windows.values.first { $0.window === key } }
         let peeks = browserManager?.peekManager

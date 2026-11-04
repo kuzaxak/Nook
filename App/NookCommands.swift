@@ -50,7 +50,7 @@ struct NookCommands: Commands {
             // SwiftUI's own Close (⌘W, which closes the key window) and Close All live in this group.
             CommandGroup(replacing: .saveItem) {
                 Button("Close Tab") {
-                    shortcutManager.closeTab()
+                    shortcutManager.closeTab(isRepeat: CloseShortcut.isHeldKey(NSApp.currentEvent))
                 }
                 .modifier(dynamicShortcut(.closeTab))
 
