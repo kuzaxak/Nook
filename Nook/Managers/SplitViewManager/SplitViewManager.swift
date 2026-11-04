@@ -40,9 +40,14 @@ final class SplitViewManager: ObservableObject {
         return split
     }
 
+    /// Add Split View while its bar is open over the window's empty pane.
+    func addSplit(in window: BrowserWindowState) -> AddSplit? {
+        window.commandPalette?.addSplit.flatMap { $0.shows(selectedItemID: window.selectedItemID, split: window.splitLayout) ? $0 : nil }
+    }
+
     /// What the page lays out: Add Split View's panes while its bar is open, else the split shown.
     func pageLayout(in window: BrowserWindowState) -> PageLayout? {
-        if let adding = window.commandPalette?.addSplit, adding.shows(selectedItemID: window.selectedItemID, split: window.splitLayout) {
+        if let adding = addSplit(in: window) {
             return PageLayout(slots: adding.slots, vertical: adding.vertical, dividers: SplitDrop.equalDividers(adding.slots.count))
         }
         return shownSplit(in: window).map {
@@ -89,6 +94,9 @@ final class SplitViewManager: ObservableObject {
         case .move(let pane, let edge):
             guard let record = shownSplit(in: window)?.moving(itemID, beside: pane, after: edge == .trailing) else { return }
             update(window, to: record)
+        case .fill:
+            guard let adding = addSplit(in: window) else { return }
+            fill(adding, with: itemID, in: window)
         }
     }
 

@@ -44,6 +44,8 @@ enum SplitDrop {
         case replace(UUID)
         /// The tab, a pane already, moves to this side of the pane.
         case move(beside: UUID, Edge)
+        /// Add Split View's empty pane takes the tab; `AddSplit.dropZone` finds that pane.
+        case fill
     }
 
     /// The split the window shows: its saved one while one of its panes is selected. Selecting
@@ -126,6 +128,7 @@ enum SplitDrop {
         case .split(let edge): return half(page, edge, vertical: false)
         case .insert(let pane, let edge), .move(let pane, let edge): return half(frame(of: pane), edge, vertical: split.vertical)
         case .replace(let pane): return frame(of: pane)
+        case .fill: return page
         }
     }
 
@@ -145,6 +148,7 @@ enum SplitDrop {
         case .insert(let pane, let edge): return "Add \(side(edge, of: pane))"
         case .move(let pane, let edge): return "Move \(side(edge, of: pane))"
         case .replace(let pane): return "Replace \u{201C}\(title(pane))\u{201D}"
+        case .fill: return "Open in the new pane"
         }
     }
 

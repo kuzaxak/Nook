@@ -418,7 +418,7 @@ private struct SplitPreviewOverlay: View {
             case (true, .leading): return "rectangle.tophalf.filled"
             case (true, .trailing): return "rectangle.bottomhalf.filled"
             }
-        case .replace:
+        case .replace, .fill:
             return "rectangle.fill"
         }
     }

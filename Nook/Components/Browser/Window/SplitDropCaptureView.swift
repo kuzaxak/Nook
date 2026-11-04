@@ -102,9 +102,17 @@ final class SplitDropCaptureView: NSView, TabDropTarget {
         let local = convert(sender.draggingLocation, from: nil)
         let point = CGPoint(x: local.x, y: bounds.height - local.y)
         let gap = NookDesign.Chrome.splitGap
-        guard let outcome = SplitDrop.outcome(of: dragged, at: point, in: page, gap: gap, selected: window.selectedItemID,
-                                              split: window.splitLayout) else { return nil }
-        let zone = SplitDrop.zone(of: outcome, in: page, gap: gap, split: SplitDrop.current(window.splitLayout, selected: window.selectedItemID))
+        let outcome: SplitDrop.Outcome
+        let zone: CGRect
+        if let adding = sm.addSplit(in: window) {
+            guard let empty = adding.dropZone(for: dragged, at: point, in: page, gap: gap) else { return nil }
+            (outcome, zone) = (.fill, empty)
+        } else {
+            guard let found = SplitDrop.outcome(of: dragged, at: point, in: page, gap: gap, selected: window.selectedItemID,
+                                                split: window.splitLayout) else { return nil }
+            outcome = found
+            zone = SplitDrop.zone(of: found, in: page, gap: gap, split: SplitDrop.current(window.splitLayout, selected: window.selectedItemID))
+        }
         return (item.tabId, outcome, CGRect(x: zone.minX / page.width, y: zone.minY / page.height,
                                             width: zone.width / page.width, height: zone.height / page.height))
     }

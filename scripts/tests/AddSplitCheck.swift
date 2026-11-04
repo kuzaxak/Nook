@@ -62,6 +62,20 @@ struct AddSplitCheck {
         precondition(!more.shows(selectedItemID: current, split: layout([current, other, third])), "a pane added")
         precondition(adding.filling(choosing: opened, selectedItemID: other, split: nil) == nil)
 
+        // While the empty pane shows, a tab dropped on it fills it, and the rest of the page,
+        // laid out with the empty pane, takes no drop.
+        let page = CGRect(x: 0, y: 0, width: 800, height: 600)
+        func dragged(_ id: UUID, isTab: Bool = true) -> SplitDrop.Dragged { SplitDrop.Dragged(id: id, isTab: isTab, isInWindow: true) }
+        precondition(adding.dropZone(for: dragged(opened), at: CGPoint(x: 700, y: 300), in: page, gap: 8)
+                     == CGRect(x: 404, y: 0, width: 396, height: 600), "the empty pane")
+        precondition(adding.dropZone(for: dragged(opened), at: CGPoint(x: 100, y: 300), in: page, gap: 8) == nil, "the tab's pane")
+        precondition(adding.dropZone(for: dragged(current), at: CGPoint(x: 700, y: 300), in: page, gap: 8) == nil, "a tab the window shows")
+        precondition(adding.dropZone(for: dragged(opened, isTab: false), at: CGPoint(x: 700, y: 300), in: page, gap: 8) == nil, "a folder")
+        let between = AddSplit.start(beside: other, after: false, selectedItemID: current, split: showing)!
+        precondition(between.dropZone(for: dragged(opened), at: CGPoint(x: 400, y: 300), in: page, gap: 8)?.minX == 270,
+                     "an empty pane between two panes")
+        precondition(between.dropZone(for: dragged(opened), at: CGPoint(x: 700, y: 300), in: page, gap: 8) == nil)
+
         // The bar lists the window's own space's tabs and pages to open: another space's tab
         // would switch spaces, and folders and actions fill no pane.
         let space = UUID(), elsewhere = UUID()

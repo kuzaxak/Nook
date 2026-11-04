@@ -63,6 +63,15 @@ struct AddSplit: Equatable {
         return itemID
     }
 
+    /// The empty pane's frame on `page` when a tab dropped at `point` fills it: a tab of the
+    /// window's tree that it does not show yet, over that pane. The rest of the page takes no drop.
+    func dropZone(for dragged: SplitDrop.Dragged, at point: CGPoint, in page: CGRect, gap: CGFloat) -> CGRect? {
+        guard dragged.isTab, dragged.isInWindow, !panes.contains(dragged.id) else { return nil }
+        let frames = SplitDrop.paneFrames(in: page, count: slots.count, vertical: vertical,
+                                          dividers: SplitDrop.equalDividers(slots.count), gap: gap)
+        return SplitDrop.pane(at: point, in: frames, vertical: vertical).index == index ? frames[index] : nil
+    }
+
     /// A command bar row as Add Split View sees it.
     enum Row {
         /// An open tab in that space.

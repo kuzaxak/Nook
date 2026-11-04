@@ -82,6 +82,7 @@ struct SplitDropCheck {
         precondition(label(.insert(beside: b, .leading), vertical: true) == "Add above \u{201C}Mail\u{201D}")
         precondition(label(.move(beside: a, .leading)) == "Move to the left of \u{201C}Docs\u{201D}")
         precondition(label(.replace(b)) == "Replace \u{201C}Mail\u{201D}")
+        precondition(label(.fill) == "Open in the new pane", "Add Split View's empty pane")
 
         // The answer is one the drag allows: a tab dragged inside Nook allows only a move, and
         // AppKit drops nothing that answers with another operation.
