@@ -75,11 +75,15 @@ struct SpaceSwitchCheck {
         app.setActivationPolicy(.prohibited)
 
         var selection = 0
+        var builds = 0
         let parent = PlatformPageView(
             selection: Binding(get: { selection }, set: { selection = $0 }),
             configuration: PlatformPageViewConfiguration(transition: .historyStack, orientation: .horizontal, spacing: 0),
             next: { $0 < 3 ? $0 + 1 : nil }, previous: { $0 > 0 ? $0 - 1 : nil },
-            content: { Text("Space \($0)") })
+            content: { space in
+                let _ = builds += 1
+                Text("Space \(space)")
+            })
         let coordinator = parent.makeCoordinator()
         let pager = Pager(frame: NSRect(x: 0, y: 0, width: 300, height: 400))
         let window = NSWindow(contentRect: pager.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -126,15 +130,48 @@ struct SpaceSwitchCheck {
                      "At rest the pages either side are built and hidden, only the selected one shows")
         print("PASS: half-speed drag, commit at lift, spring settle, neighbours waiting hidden")
 
-        // A switch without animation shows its page at once, though it waited hidden.
+        // The parent redraws on every tab title or hover change; only the selected page takes the
+        // new content, and the pages either side keep theirs until the selection moves.
+        builds = 0
+        for _ in 0..<3 { coordinator.refresh(to: 1, animated: false) }
+        wait(0.05)
+        precondition(builds == 3, "Three parent updates at rest build the selected page three times and nothing else, got \(builds)")
+        print("PASS: parent updates at rest leave the pages either side alone")
+
+        // The pages either side of a new selection are built once the strip is at rest, not while it slides.
+        func page(at x: CGFloat) -> NSView? { strip.subviews.first { $0.frame.minX == x } }
         selection = 2
-        coordinator.refresh(to: 2, animated: false)
-        precondition(strip.frame.minX == -600 && strip.subviews.filter { !$0.isHidden }.map(\.frame.minX) == [600],
+        coordinator.refresh(to: 2, animated: true)
+        wait(0.05)
+        precondition(pager.isTracking && page(at: 900) == nil, "No page is built while the strip slides")
+        wait(0.7)
+        precondition(page(at: 900)?.isHidden == true && page(at: 300)?.isHidden == true && page(at: 0) == nil,
+                     "At rest the new selection's neighbours wait hidden")
+        print("PASS: neighbours of a new selection are built at rest")
+
+        // A switch without animation shows its page at once, though it waited hidden, and keeps
+        // the pages either side it already has.
+        let besideTwo = page(at: 900)
+        let two = page(at: 600)
+        selection = 1
+        coordinator.refresh(to: 1, animated: false)
+        precondition(strip.frame.minX == -300 && strip.subviews.filter { !$0.isHidden }.map(\.frame.minX) == [300],
                      "The page switched to shows straight away")
+        precondition(page(at: 600) === two && besideTwo?.superview == nil, "The page beside the new selection stays attached, the far one goes")
+        wait(0.05)
+        print("PASS: a switch without animation shows a page that waited hidden and keeps its neighbour")
+
+        // A flick that overshoots its page shows the one past it, never a blank strip.
+        precondition(pager.beginDrag())
+        for step in 1...6 { pager.drag(.changed, delta: -90, time: 5 + Double(step) * 0.01) }
+        pager.drag(.ended, delta: 0, time: 5.07)
+        precondition(selection == 2, "The flick moves one page, got \(selection)")
+        precondition(page(at: 900).map { !$0.isHidden } == true, "The page past the target is on the strip and showing for the overshoot")
+        wait(0.7)
         selection = 1
         coordinator.refresh(to: 1, animated: false)
         wait(0.05)
-        print("PASS: a switch without animation shows a page that waited hidden")
+        print("PASS: an overshooting flick shows the page past its target")
 
         // A far programmatic jump slides right through the pages between.
         selection = 3
@@ -160,6 +197,17 @@ struct SpaceSwitchCheck {
         precondition(strip.frame.minX == 0 && selection == 0, "A cancelled swipe returns to the selected page")
         print("PASS: interruption adopts the moving strip, cancel returns")
 
+        // A window grown taller mid-swipe grows the pages with it.
+        precondition(pager.beginDrag())
+        for step in 1...2 { pager.drag(.changed, delta: -40, time: 6 + Double(step) * 0.01) }
+        pager.setFrameSize(NSSize(width: 300, height: 500))
+        pager.layout()
+        precondition(shown() == 40 && strip.frame.height == 500 && strip.subviews.allSatisfy { $0.frame.height == 500 },
+                     "Pages follow a height change during a swipe and the strip stays under the fingers")
+        pager.drag(.cancelled, delta: 0, time: 6.05)
+        wait(0.7)
+        print("PASS: a height change mid-swipe resizes the pages")
+
         // A resize mid-settle lands on the selected page at the new width.
         coordinator.refresh(to: 2, animated: true)
         selection = 2
@@ -177,14 +225,36 @@ struct SpaceSwitchCheck {
         selection = 0
         coordinator.refresh(to: 0, animated: false)
         precondition(pager.beginDrag())
-        for step in 1...3 { pager.drag(.changed, delta: 40, time: 4 + Double(step) * 0.01) }
+        pager.drag(.changed, delta: -40, time: 4)
+        for step in 1...4 { pager.drag(.changed, delta: 40, time: 4 + Double(step) * 0.01) }
         guard case .changed(let distance) = pulls.last, distance == 120 else { preconditionFailure("The pull is heard as it goes, got \(pulls)") }
         precondition(shown() == 0, "The first page holds still under a pull, at \(shown())")
-        pager.drag(.ended, delta: 0, time: 4.04)
+        pager.drag(.ended, delta: 0, time: 4.05)
         guard case .ended(let released, _) = pulls.last, released == 120 else { preconditionFailure("The release is heard, got \(pulls)") }
         precondition(!pager.isTracking && strip.frame.minX == 0 && shown() == 0 && selection == 0)
+        wait(0.05)
+        precondition(swipes.last! == nil, "The dots hear the swipe end when a pull is let go, got \(String(describing: swipes.last))")
         coordinator.onLeadingOverscroll = nil
         print("PASS: a pull past the first page goes to its listener and the strip holds")
+
+        // A pager that gets its window after it was shown builds its neighbours then.
+        let later = Pager(frame: NSRect(x: 0, y: 0, width: 300, height: 400))
+        let laterCoordinator = parent.makeCoordinator()
+        laterCoordinator.pager = later
+        later.coordinator = laterCoordinator
+        selection = 1
+        laterCoordinator.show(1)
+        later.layout()
+        wait(0.4)
+        precondition(later.subviews[0].subviews.count == 1, "Without a window only the selected page is built")
+        let laterWindow = NSWindow(contentRect: later.bounds, styleMask: [.borderless], backing: .buffered, defer: false)
+        laterWindow.contentView = later
+        laterWindow.setFrameOrigin(NSPoint(x: -2600, y: -2600))
+        laterWindow.orderFront(nil)
+        wait(0.1)
+        precondition(later.subviews[0].subviews.count == 3, "In a window the pages either side are built, got \(later.subviews[0].subviews.count)")
+        laterWindow.orderOut(nil)
+        print("PASS: a pager given a window builds its neighbours")
     }
 
     /// Real scroll events dispatched over a page holding a vertical list, as the sidebar's tabs are.

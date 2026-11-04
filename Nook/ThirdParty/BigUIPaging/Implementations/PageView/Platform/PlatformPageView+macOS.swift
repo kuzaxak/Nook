@@ -108,8 +108,8 @@ extension PlatformPageView: NSViewRepresentable {
         private var wheel = Wheel()
         /// How far a pull past the first page has gone, while its listener has not heard it end.
         private var leadingPull: CGFloat?
-        /// The selection the pages either side were last built for; nil once the parent's content changed.
-        private var neighboursBuiltFor: SelectionValue?
+        /// The selection and the pages either side of it when those pages were last built.
+        private var builtNeighbours: [SelectionValue] = []
         private var neighbourTimer: Timer?
         private var lastReport: TimeInterval = -.infinity
         private var pendingReport: PageSwipePosition?
@@ -199,8 +199,7 @@ extension PlatformPageView: NSViewRepresentable {
             // Our own commit at lift lands here while the strip is still settling.
             if index == selected, isTracking || attached[index] != nil {
                 attach(index, refresh: true)
-                neighboursBuiltFor = nil
-                scheduleNeighbours()
+                if builtNeighbours != neighbourValues { scheduleNeighbours() }
                 return
             }
 
@@ -218,7 +217,7 @@ extension PlatformPageView: NSViewRepresentable {
             motion = .idle
             raw = CGFloat(selected) * width
             attach(selected)
-            detach(keeping: [selected])
+            detach(keeping: Set(neighbours))
             rest()
             relayout()
             evict()
@@ -228,15 +227,17 @@ extension PlatformPageView: NSViewRepresentable {
             [selected - 1, selected, selected + 1].filter(pages.indices.contains)
         }
 
+        private var neighbourValues: [SelectionValue] { neighbours.map { pages[$0] } }
+
         private func evict() {
             guard let coordinator, !pages.isEmpty else { return }
 
-            coordinator.evict(keeping: Set(neighbours.map { pages[$0] }))
+            coordinator.evict(keeping: Set(neighbourValues))
         }
 
-        /// Builds the pages either side of the selection once nothing moves the strip, so a swipe
-        /// starts on pages that already exist. The timer runs in the default mode only, never inside
-        /// a swipe's own event loop.
+        /// Builds the pages either side of the selection while the strip is at rest, so a swipe starts
+        /// on pages that already exist. The timer fires in the default run loop mode only, so never
+        /// inside a swipe's own event loop.
         private func scheduleNeighbours(after delay: TimeInterval = 0) {
             neighbourTimer?.invalidate()
             let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
@@ -248,13 +249,17 @@ extension PlatformPageView: NSViewRepresentable {
 
         private func buildNeighbours() {
             neighbourTimer = nil
-            guard width > 0, window != nil, !pages.isEmpty else { return }
-            if case .dragging = motion { return }
+            guard case .idle = motion, width > 0, window != nil, !pages.isEmpty else { return }
 
-            let stale = neighboursBuiltFor != selectedValue
+            let stale = builtNeighbours != neighbourValues
             for index in neighbours where index != selected { attach(index, refresh: stale) }
-            neighboursBuiltFor = selectedValue
-            if case .idle = motion { rest() }
+            builtNeighbours = neighbourValues
+            rest()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil { scheduleNeighbours() }
         }
 
         /// At rest only the selected page shows; the ones either side wait hidden, out of the way of
@@ -287,6 +292,10 @@ extension PlatformPageView: NSViewRepresentable {
             let position = coordinator?.onLeadingOverscroll != nil && selected == 0 ? max(raw, 0) : raw
             let shown = Self.rubberBand(position, max: maxPosition)
             if case .dragging = motion {
+                if strip.frame.height != bounds.height {
+                    strip.frame.size.height = bounds.height
+                    for view in attached.values { view.frame.size.height = bounds.height }
+                }
                 // Only the strip's layer follows the fingers: a frame change has AppKit tell every view
                 // on the strip its place in the window moved, and each page's hosting view and the
                 // window's lay out again on every event.
@@ -312,7 +321,6 @@ extension PlatformPageView: NSViewRepresentable {
             if view.superview !== strip { strip.addSubview(view) }
         }
 
-        /// Attaches and shows the pages that overlap `range`, page i covering i * width up to the next.
         private func attach(range: ClosedRange<CGFloat>) {
             guard width > 0, !pages.isEmpty else { return }
 
@@ -495,6 +503,7 @@ extension PlatformPageView: NSViewRepresentable {
                 raw = 0
                 motion = .idle
                 relayout()
+                report(nil)
                 endLeadingPull(distance: distance, velocity: -velocity * 2)
             case .ended:
                 var velocity = Self.velocity(drag.samples)
@@ -553,9 +562,10 @@ extension PlatformPageView: NSViewRepresentable {
             let id = motionID
             let target = CGFloat(index) * width
             let offsets = Self.springOffsets(from: raw - target, velocity: velocity)
-            let shownNow = Self.rubberBand(raw, max: maxPosition)
+            // A flick carries the spring past its page, so the strip shows the page beyond for a moment.
+            let path = offsets.map { Self.rubberBand(target + $0, max: maxPosition) }
 
-            attach(range: min(shownNow, target)...(max(shownNow, target) + width))
+            attach(range: (path.min() ?? target)...((path.max() ?? target) + width))
             raw = target
             motion = .settling(Settle(target: target))
             report(nil)
@@ -568,7 +578,7 @@ extension PlatformPageView: NSViewRepresentable {
                     self.detach(keeping: Set(self.neighbours))
                     self.evict()
                     self.rest()
-                    if self.neighboursBuiltFor != self.selectedValue { self.scheduleNeighbours() }
+                    if self.builtNeighbours != self.neighbourValues { self.scheduleNeighbours() }
                 }
             }
             relayout()
