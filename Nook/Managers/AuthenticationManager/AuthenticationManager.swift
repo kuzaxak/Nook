@@ -116,8 +116,9 @@ final class AuthenticationManager: NSObject {
     }
 
     /// Asks on the page's window before visiting it on a certificate that failed the check. On
-    /// Visit Website, that certificate is accepted for its host and port from then on and the
-    /// page loads again; a different certificate there brings the warning back.
+    /// Visit Website, while the page still shows this warning, that certificate is accepted for
+    /// its host and port from then on and the page loads again; a different certificate there
+    /// brings the warning back.
     func confirmVisit(despite warning: CertificateWarning, in session: PageSession) {
         guard warning.allowsVisit else { return }
         let alert = NSAlert()
@@ -130,7 +131,9 @@ final class AuthenticationManager: NSObject {
 
         let isPrivate = session.isPrivate
         let finish: (NSApplication.ModalResponse) -> Void = { [weak self, weak session] response in
-            guard response == .alertSecondButtonReturn, let self, let session else { return }
+            guard response == .alertSecondButtonReturn, let self, let session,
+                  session.certificateWarning == warning
+            else { return }
             var exceptions = self.certificateExceptions
             let saved = exceptions.saved
             exceptions.accept(warning.fingerprint, host: warning.host, port: warning.port, isPrivate: isPrivate)
@@ -138,7 +141,7 @@ final class AuthenticationManager: NSObject {
             if exceptions.saved != saved {
                 UserDefaults.standard.set(exceptions.saved, forKey: Self.certificateExceptionsKey)
             }
-            session.load(warning.url)
+            session.retryLoad(of: warning)
         }
 
         if let window = session.activeWebView.window {

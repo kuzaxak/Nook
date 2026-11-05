@@ -15,12 +15,13 @@ public struct CertificateWarning: Hashable, Sendable {
     /// The page that failed, loaded again once the person chooses to visit it.
     public let url: URL
     public let host: String
-    public let port: Int
+    public let port: Int?
     /// SHA-256 of the server's leaf certificate in lowercase hex, the form exceptions keep.
     public let fingerprint: String
     /// What Show Details says, one paragraph each.
     public let details: [String]
-    /// False on an Agent page, which never bypasses a certificate.
+    /// False on an Agent page, which never bypasses a certificate, and for a certificate already
+    /// accepted for this host and port, where visiting again cannot help.
     public let allowsVisit: Bool
 
     public static func fingerprint(of trust: SecTrust) -> String? {
@@ -41,10 +42,13 @@ public struct CertificateWarning: Hashable, Sendable {
         timeZone: TimeZone = .current
     ) -> [String] {
         let dateStyle = Date.FormatStyle(date: .long, time: .omitted, locale: locale, calendar: locale.calendar, timeZone: timeZone)
+        let failure = ServerText.displayable(failure, limit: 160)
+        let shown = { (text: String?) in text.map { ServerText.displayable($0) }.flatMap { $0.isEmpty ? nil : $0 } }
+        let dnsNames = certificate.dnsNames.compactMap(shown)
         let reason: String
         switch status {
         case errSecHostNameMismatch:
-            let names = certificate.dnsNames.isEmpty ? [certificate.subjectSummary].compactMap { $0 } : certificate.dnsNames
+            let names = dnsNames.isEmpty ? [shown(certificate.subjectSummary)].compactMap { $0 } : dnsNames
             reason = names.isEmpty ? failure : "The certificate is for \(Self.list(names)), not \(host)."
         // trustd reports a certificate that is not valid yet as expired too.
         case errSecCertificateExpired, errSecCertificateNotValidYet:
@@ -58,7 +62,7 @@ public struct CertificateWarning: Hashable, Sendable {
         case errSecNotTrusted:
             if certificate.isSelfSigned {
                 reason = "The certificate is self-signed."
-            } else if let issuer = certificate.issuer {
+            } else if let issuer = shown(certificate.issuer) {
                 reason = "The certificate was issued by \(issuer), which this Mac does not trust."
             } else {
                 reason = failure
@@ -103,7 +107,7 @@ extension CertificateWarning {
               let fingerprint = Self.fingerprint(of: trust)
         else { return nil }
 
-        let port = url.port ?? 443
+        let port = url.port
         let decision = exceptions.decision(host: host, port: port, fingerprint: fingerprint, isPrivate: isPrivate)
         self.init(
             url: url,
@@ -117,7 +121,7 @@ extension CertificateWarning {
                 certificate: CertificateFacts(chain: chain),
                 certificateChanged: decision == .changed,
                 now: Date(timeIntervalSinceReferenceDate: SecTrustGetVerifyTime(trust))),
-            allowsVisit: allowsVisit)
+            allowsVisit: allowsVisit && decision != .accepted)
     }
 }
 
@@ -163,4 +167,18 @@ extension CertificateFacts {
         return fields?[oid as String]?[kSecPropertyKeyValue as String] as? [[String: Any]] ?? []
     }
     #endif
+}
+
+/// Text a server chose, such as a certificate's names or the trust evaluation's description of
+/// them, made safe to show: no control, format or bidi characters, whitespace runs as one
+/// space, and at most `limit` characters, cut with an ellipsis.
+enum ServerText {
+    static func displayable(_ text: String, limit: Int = 64) -> String {
+        let scalars = text.unicodeScalars.compactMap { scalar -> Unicode.Scalar? in
+            if scalar.properties.isWhitespace { return " " }
+            return CharacterSet.controlCharacters.contains(scalar) ? nil : scalar
+        }
+        let line = String(String.UnicodeScalarView(scalars)).split(separator: " ").joined(separator: " ")
+        return line.count > limit ? String(line.prefix(limit - 1)) + "…" : line
+    }
 }

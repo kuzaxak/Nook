@@ -42,11 +42,22 @@ final class SplitPaneView: NSView {
     static let toolbarHeight = NookDesign.Size.navRow + 2 * NookDesign.Spacing.sm
     private let maskLayer = CAShapeLayer()
     private weak var settings: NookSettingsService?
+    /// The certificate warning card over the page, hidden while the page has none so the page
+    /// gets every click and cursor.
+    private let certificateCard: NSView
+    private weak var tabs: TabsController?
 
     init(frame: NSRect, position: SplitPanePosition, itemID: UUID, browserManager: BrowserManager, windowState: BrowserWindowState, hoverManager: HoverSidebarManager) {
         self.position = position
         self.itemID = itemID
         self.settings = browserManager.nookSettings
+        self.tabs = browserManager.tabs
+        let certificateCard = NSHostingView(rootView: SplitPaneCertificateWarning(itemID: itemID)
+            .environment(browserManager.tabs)
+            .environmentObject(browserManager.gradientColorManager))
+        certificateCard.sizingOptions = []
+        certificateCard.safeAreaRegions = []
+        self.certificateCard = certificateCard
         super.init(frame: frame)
         wantsLayer = true
         layer?.mask = maskLayer
@@ -55,6 +66,10 @@ final class SplitPaneView: NSView {
         content.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - Self.toolbarHeight))
         content.autoresizingMask = [.width, .height]
         addSubview(content)
+        certificateCard.frame = content.frame
+        certificateCard.autoresizingMask = [.width, .height]
+        addSubview(certificateCard)
+        followCertificateWarning()
 
         // Each control is its own hosting view sized to its content, so the rest of the pane
         // passes clicks to the page.
@@ -94,6 +109,15 @@ final class SplitPaneView: NSView {
     /// Puts `view` in the pane, leaving it alone when it is already there.
     func show(_ view: NSView) {
         content.showPage(view, inspector: (view as? WKWebView)?.dockedInspector, replacing: content.subviews)
+    }
+
+    private func followCertificateWarning() {
+        let itemID = itemID
+        certificateCard.isHidden = withObservationTracking {
+            tabs?.session(for: itemID)?.certificateWarning == nil
+        } onChange: { [weak self] in
+            DispatchQueue.main.async { self?.followCertificateWarning() }
+        }
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -180,6 +204,19 @@ private struct EmptySplitPaneStrip: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity)
             .frame(height: NookDesign.Size.navRow)
+    }
+}
+
+/// "This Connection Is Not Private" over this pane's page.
+private struct SplitPaneCertificateWarning: View {
+    let itemID: UUID
+
+    @Environment(TabsController.self) private var tabs
+
+    var body: some View {
+        if let session = tabs.session(for: itemID) {
+            CertificateWarningView(session: session)
+        }
     }
 }
 

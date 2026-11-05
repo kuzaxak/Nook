@@ -650,6 +650,44 @@ public final class PageSession: NSObject, Identifiable {
         controller?.sessionDelegate?.confirmVisit(despite: certificateWarning, in: self)
     }
 
+    /// Loads the page under `warning` again the way the failed navigation asked for it, so the
+    /// history ends up as if the first try had worked. A failed load leaves the committed page
+    /// current, so a plain reload would reload that page instead.
+    public func retryLoad(of warning: CertificateWarning) {
+        let webView = activeWebView
+        let list = webView.backForwardList
+        let offset = Self.retryOffset(
+            for: warning.url, after: mainFrameNavigationType, current: list.currentItem?.url,
+            back: list.backList.map(\.url), forward: list.forwardList.map(\.url))
+        if offset == 0 {
+            webView.reload()
+        } else if let offset, let item = list.item(at: offset) {
+            webView.go(to: item)
+        } else {
+            load(warning.url)
+        }
+    }
+
+    /// Where `url` sits in the history for retrying a navigation of `navigationType` to it: 0 to
+    /// reload the current page, the nearest entry back (negative) or forward for a Back or Forward
+    /// step, nil to load it as a new page.
+    nonisolated static func retryOffset(
+        for url: URL, after navigationType: WKNavigationType, current: URL?, back: [URL], forward: [URL]
+    ) -> Int? {
+        switch navigationType {
+        case .reload:
+            return current == url ? 0 : nil
+        case .backForward:
+            for distance in 1...max(1, back.count, forward.count) {
+                if back.count >= distance, back[back.count - distance] == url { return -distance }
+                if forward.count >= distance, forward[distance - 1] == url { return distance }
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
     /// Back to the page still showing under the blocked-page or certificate card, or closes a page that has none.
     public func leaveBlockedPage() {
         if hasCommittedPage {

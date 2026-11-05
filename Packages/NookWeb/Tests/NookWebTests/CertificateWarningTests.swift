@@ -72,6 +72,16 @@ struct CertificateWarningDetailsTests {
             == ["“device” certificate is not permitted for this usage"])
     }
 
+    @Test func theDetailsShowOnlyCleanedServerText() {
+        #expect(details(errSecNotTrusted, CertificateFacts(issuer: "Home\u{202E} Lab\nCA"))
+            == ["The certificate was issued by Home Lab CA, which this Mac does not trust."])
+        #expect(details(errSecHostNameMismatch, CertificateFacts(dnsNames: ["a\u{202E}.example", "\u{200B}", "b.example"]))
+            == ["The certificate is for a.example and b.example, not 100.64.0.43."])
+        #expect(details(errSecHostNameMismatch, CertificateFacts(subjectSummary: "router\u{2067}.local"))
+            == ["The certificate is for router.local, not 100.64.0.43."])
+        #expect(details(errSecInvalidExtendedKeyUsage, failure: "“x”\ncertificate  is\u{202E} bad") == ["“x” certificate is bad"])
+    }
+
     @Test func aChangedCertificateIsSaidFirst() {
         #expect(details(errSecNotTrusted, CertificateFacts(isSelfSigned: true), changed: true) == [
             "The certificate for 100.64.0.43 has changed since you chose to visit it. A reset or replaced device does that, and so does someone intercepting the connection.",
@@ -118,6 +128,70 @@ struct CertificateExceptionsTests {
         let exceptions = CertificateExceptions(saved: ["nas.local:443": "aa"])
         #expect(exceptions.decision(host: "nas.local", port: 443, fingerprint: "aa", isPrivate: true) == .accepted)
         #expect(exceptions.decision(host: "nas.local", port: 443, fingerprint: "bb", isPrivate: true) == .changed)
+    }
+
+    /// The warning stores the failed URL's host and port; the challenge looks up its protection
+    /// space's, which writes 443 or 0 where the URL has none and may bracket an IPv6 address.
+    @Test func theStoredKeyIsTheLookupKey() {
+        let stored: [(host: String, port: Int?)] = [
+            ("100.64.0.43", nil), ("fe80::1", nil), ("[FE80::1]", 8443), ("PiKVM.Local", nil), ("nas.local", 8443), ("nas.local", nil),
+        ]
+        let lookedUp: [(host: String, port: Int?)] = [
+            ("100.64.0.43", 443), ("[fe80::1]", 443), ("fe80::1", 8443), ("pikvm.local", 443), ("nas.local", 8443), ("nas.local", 0),
+        ]
+        for (store, lookup) in zip(stored, lookedUp) {
+            #expect(CertificateExceptions.key(host: store.host, port: store.port)
+                == CertificateExceptions.key(host: lookup.host, port: lookup.port), "\(store) and \(lookup)")
+        }
+        #expect(CertificateExceptions.key(host: "nas.local", port: 8443) != CertificateExceptions.key(host: "nas.local", port: 443))
+    }
+
+    @Test func aChoiceStoredFromTheWarningIsFoundByTheChallenge() {
+        var exceptions = CertificateExceptions()
+        exceptions.accept("aa", host: "fe80::1", port: nil, isPrivate: false)
+        #expect(exceptions.decision(host: "[fe80::1]", port: 0, fingerprint: "aa", isPrivate: false) == .accepted)
+        #expect(exceptions.saved == ["fe80::1:443": "aa"], "the format exceptions accepted before this card used")
+    }
+}
+
+/// Text a server chose shows without control or bidi characters, on one line, and short.
+struct ServerTextTests {
+    @Test func controlFormatAndBidiCharactersAreDropped() {
+        #expect(ServerText.displayable("evil\u{202E}moc.knab\u{2066}x\u{2069}") == "evilmoc.knabx")
+        #expect(ServerText.displayable("a\u{0007}b\u{200B}c\u{FEFF}") == "abc")
+    }
+
+    @Test func whitespaceCollapsesToSingleSpaces() {
+        #expect(ServerText.displayable("  Home \n\t Lab\u{2028}  CA ") == "Home Lab CA")
+    }
+
+    @Test func longTextIsCutWithAnEllipsis() {
+        #expect(ServerText.displayable(String(repeating: "a", count: 100), limit: 64) == String(repeating: "a", count: 63) + "…")
+        #expect(ServerText.displayable(String(repeating: "a", count: 64), limit: 64) == String(repeating: "a", count: 64))
+    }
+}
+
+/// Visit This Website tries the page again the way the failed navigation asked for it, so the
+/// history ends up as if the first try had worked.
+struct CertificateRetryTests {
+    private let page = URL(string: "https://100.64.0.43/kvm/")!
+    private let other = URL(string: "https://example.com/")!
+
+    @Test func aReloadOfTheCurrentPageReloads() {
+        #expect(PageSession.retryOffset(for: page, after: .reload, current: page, back: [other], forward: []) == 0)
+    }
+
+    @Test func aBackOrForwardStepGoesToTheNearestEntryForThePage() {
+        #expect(PageSession.retryOffset(for: page, after: .backForward, current: other, back: [page, other], forward: []) == -2)
+        #expect(PageSession.retryOffset(for: page, after: .backForward, current: other, back: [], forward: [other, page]) == 2)
+        #expect(PageSession.retryOffset(for: page, after: .backForward, current: other, back: [page, other, other], forward: [page]) == 1)
+    }
+
+    @Test func anyOtherNavigationLoadsThePage() {
+        #expect(PageSession.retryOffset(for: page, after: .linkActivated, current: other, back: [], forward: [page]) == nil)
+        #expect(PageSession.retryOffset(for: page, after: .other, current: nil, back: [], forward: []) == nil)
+        #expect(PageSession.retryOffset(for: page, after: .reload, current: other, back: [page], forward: []) == nil)
+        #expect(PageSession.retryOffset(for: page, after: .backForward, current: other, back: [other], forward: []) == nil)
     }
 }
 
@@ -179,7 +253,7 @@ struct CertificateWarningFromLoadTests {
         let error = TestCertificate.failedLoad("https://100.64.0.43/kvm/", trust: TestCertificate.trust(for: "100.64.0.43"))
         let warning = try #require(CertificateWarning(error: error, exceptions: CertificateExceptions(), isPrivate: false, allowsVisit: true))
         #expect(warning == CertificateWarning(
-            url: URL(string: "https://100.64.0.43/kvm/")!, host: "100.64.0.43", port: 443,
+            url: URL(string: "https://100.64.0.43/kvm/")!, host: "100.64.0.43", port: nil,
             fingerprint: TestCertificate.fingerprint, details: ["The certificate is self-signed."], allowsVisit: true))
     }
 
@@ -209,6 +283,16 @@ struct CertificateWarningFromLoadTests {
         let warning = try #require(CertificateWarning(error: error, exceptions: exceptions, isPrivate: false, allowsVisit: true))
         #expect(warning.details.first?.hasPrefix("The certificate for 100.64.0.43 has changed since you chose to visit it.") == true)
         #expect(warning.details.count == 2)
+    }
+
+    /// A secure-connection failure after the person chose this certificate: visiting again cannot help.
+    @Test func aCertificateAlreadyChosenOffersNoVisit() throws {
+        let error = TestCertificate.failedLoad(
+            "https://100.64.0.43/", code: NSURLErrorSecureConnectionFailed, trust: TestCertificate.trust(for: "100.64.0.43"))
+        let exceptions = CertificateExceptions(saved: ["100.64.0.43:443": TestCertificate.fingerprint])
+        let warning = try #require(CertificateWarning(error: error, exceptions: exceptions, isPrivate: false, allowsVisit: true))
+        #expect(!warning.allowsVisit)
+        #expect(warning.details == ["The certificate is self-signed."])
     }
 
     @Test func otherFailuresGetNoWarning() {
@@ -250,6 +334,34 @@ struct PageCertificateWarningTests {
 
         page.webView(webView, didStartProvisionalNavigation: nil)
         #expect(page.certificateWarning == nil)
+    }
+
+    /// A newer navigation started before this one failed; it owns the page now.
+    @Test func aSupersededLoadShowsNoCard() throws {
+        let host = try Host()
+        let page = try selectedPage(in: host)
+        page.webView(StillLoadingWebView(), didFailProvisionalNavigation: nil, withError: error)
+        #expect(page.certificateWarning == nil)
+    }
+
+    @Test func aCommitClearsTheCard() throws {
+        let host = try Host()
+        let page = try selectedPage(in: host)
+        page.webView(page.activeWebView, didFailProvisionalNavigation: nil, withError: error)
+        #expect(page.certificateWarning != nil)
+
+        page.webView(page.activeWebView, didCommit: nil)
+        #expect(page.certificateWarning == nil)
+    }
+
+    @Test func visitingLoadsTheFailedPageAgain() throws {
+        let host = try Host()
+        let page = try selectedPage(in: host)
+        page.webView(page.activeWebView, didFailProvisionalNavigation: nil, withError: error)
+        let warning = try #require(page.certificateWarning)
+
+        page.retryLoad(of: warning)
+        #expect((page.activeWebView as? RecordingWebView)?.requested.last == warning.url)
     }
 
     @Test func anotherFailureShowsNoCard() throws {
@@ -312,6 +424,11 @@ struct PageCertificateWarningTests {
         page.leaveBlockedPage()
         #expect(!host.items().contains(item))
     }
+}
+
+/// A web view in the middle of a newer navigation.
+final class StillLoadingWebView: WKWebView {
+    override var isLoading: Bool { true }
 }
 
 /// Answers a page's questions about certificates and records the visits it is asked to confirm.

@@ -51,6 +51,7 @@ extension PageSession: WKNavigationDelegate {
     ) {
         loadingState = .didCommit
         linkPreview = nil
+        certificateWarning = nil
         pdfLoadStateChanged(webView)
         if let capture = devCapture {
             capture.reset()
@@ -260,7 +261,7 @@ extension PageSession: WKNavigationDelegate {
         let attempted = url
         if Self.isBlockedByContentBlocker(error) {
             blockedURL = (error as NSError).userInfo[NSURLErrorFailingURLErrorKey] as? URL ?? attempted
-        } else if let warning = CertificateWarning(
+        } else if !webView.isLoading, let warning = CertificateWarning(
             error: error,
             exceptions: controller?.sessionDelegate?.certificateExceptions ?? CertificateExceptions(),
             isPrivate: isPrivate,

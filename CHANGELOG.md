@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- A page whose certificate isn't valid, such as a device opened by its IP address, shows This Connection Is Not Private with the reason instead of a blank tab, as in Safari: Show Details says why, and Visit This Website opens it after you confirm. The choice is remembered for that certificate and a changed certificate warns again. Local network devices use the same page instead of a separate prompt
+- A page whose certificate isn't valid, such as a device opened by its IP address, shows This Connection Is Not Private with the reason instead of a blank tab, as in Safari: Show Details says why, and Visit This Website opens it after you confirm. The choice is remembered for that certificate, or until you quit in a private window, and a changed certificate warns again. Local network devices use the same page instead of a separate prompt
 
 ## 1.5.3
 
