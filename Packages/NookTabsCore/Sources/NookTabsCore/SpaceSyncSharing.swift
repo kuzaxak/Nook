@@ -132,6 +132,15 @@ public enum SpaceSyncShareLink {
         guard path.count >= 2, path[0] == "share" else { return nil }
         return url
     }
+
+    /// The title Nook gives its share of the spaces.
+    public static let title = "Nook Spaces"
+
+    /// Whether the link is to Nook's share of the spaces: CloudKit ends a share's link with its
+    /// title, spaces turned to underscores, as in `#Nook_Spaces`.
+    public static func isNookSpaces(_ url: URL) -> Bool {
+        url.fragment == title.replacingOccurrences(of: " ", with: "_")
+    }
 }
 
 /// The code a Mac on another account shows in Settings for the owner to invite it: its CloudKit
@@ -189,6 +198,10 @@ extension SpaceSyncState {
 
     /// The owner of the zone this Mac syncs; nil for this account's own.
     public var zoneOwner: String? { sharing?.joinedOwner }
+
+    /// The code another account's owner invites this Mac by, this account's user record name,
+    /// while this Mac syncs its own zone unshared; nil otherwise.
+    public var inviteCode: String? { mode == .own ? account : nil }
 
     public var mode: SpaceSyncMode {
         if sharing?.joinedOwner != nil { return .joined(owner: sharing?.ownerName) }

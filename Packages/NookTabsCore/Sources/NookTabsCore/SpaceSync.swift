@@ -266,7 +266,7 @@ public struct SpaceSyncStatus: Equatable, Sendable {
     /// The iCloud account this Mac syncs with, as `SpaceSyncCodec.accountID` gives it.
     public var accountID: String?
     /// The full CloudKit user record name of that account, which the owner of another account's
-    /// share invites this Mac by.
+    /// share invites this Mac by; nil unless this Mac syncs that account's own zone unshared.
     public var inviteCode: String?
     public var mode: SpaceSyncMode = .own
     /// The people this account's zone is shared with, its owner left out.

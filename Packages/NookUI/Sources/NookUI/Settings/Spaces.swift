@@ -29,10 +29,10 @@ public struct SpacesSettingsView: View {
     @State private var pendingRemoval: SpaceSyncCloudSpace?
     @State private var joining = false
     @State private var joinLink = ""
-    @State private var inviting = false
+    @State private var askingForInviteCode = false
     @State private var inviteCode = ""
-    @State private var invitedLink: URL?
-    @State private var inviteFailure: String?
+    @State private var inviteRunning = false
+    @State private var inviteResult: SpaceSyncInviteResult?
     @State private var confirmingStopSharing = false
     @State private var confirmingLeave = false
     @State private var confirmingOldCopyRemoval = false
@@ -96,7 +96,7 @@ public struct SpacesSettingsView: View {
         } message: {
             Text("Paste the link someone on another iCloud account shared with you. Before anything syncs, Nook asks whether the spaces this Mac syncs now move in with theirs.")
         }
-        .alert("Invite with Code", isPresented: $inviting) {
+        .alert("Invite with Code", isPresented: $askingForInviteCode) {
             TextField("Invite code", text: $inviteCode)
             Button("Invite") { invite(inviteCode) }
                 .disabled(SpaceSyncInviteCode.parse(inviteCode) == nil)
@@ -104,18 +104,21 @@ public struct SpacesSettingsView: View {
         } message: {
             Text("On the Mac you are inviting, open Settings \u{2192} Spaces and copy its invite code.")
         }
-        .alert("Invited", isPresented: Binding(get: { invitedLink != nil }, set: { if !$0 { invitedLink = nil } }),
-               presenting: invitedLink) { link in
-            Button("Copy Link") { Self.copy(link.absoluteString) }
-            Button("Done", role: .cancel) {}
-        } message: { link in
-            Text("\(link.absoluteString)\n\nThe link is copied. Send it to that Mac and open it there, or paste it in Join Shared Sync\u{2026}")
-        }
-        .alert("Couldn\u{2019}t Invite", isPresented: Binding(get: { inviteFailure != nil }, set: { if !$0 { inviteFailure = nil } }),
-               presenting: inviteFailure) { _ in
-            Button("OK", role: .cancel) {}
-        } message: { message in
-            Text(message)
+        .alert(Self.title(inviteResult), isPresented: Binding(get: { inviteResult != nil }, set: { if !$0 { inviteResult = nil } }),
+               presenting: inviteResult) { result in
+            if case .invited(let link) = result {
+                Button("Copy Link") { Self.copy(link.absoluteString) }
+                Button("Done", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: { result in
+            switch result {
+            case .invited(let link):
+                Text("\(link.absoluteString)\n\nThe link is copied. Send it to that Mac and open it there, or paste it in Join Shared Sync\u{2026}")
+            case .failed(let message):
+                Text(message)
+            }
         }
         .alert("Stop sharing these spaces?", isPresented: $confirmingStopSharing) {
             Button("Stop Sharing", role: .destructive) { sync?.stopSharing() }
@@ -329,7 +332,7 @@ public struct SpacesSettingsView: View {
                 Button(offer.name.map { "Join \($0)\u{2019}s Sync\u{2026}" } ?? "Join Shared Sync\u{2026}") { sync.joinOffer(offer.owner) }
             }
         }
-        if status.mode == .own, let code = status.inviteCode {
+        if let code = status.inviteCode {
             LabeledContent("Invite code") {
                 HStack {
                     Text(code)
@@ -346,15 +349,22 @@ public struct SpacesSettingsView: View {
             switch status.mode {
             case .own:
                 Button("Invite with Code\u{2026}", action: startInviting)
+                    .disabled(inviteRunning)
                 Button("Join Shared Sync\u{2026}") {
                     joinLink = ""
                     joining = true
                 }
             case .sharing:
                 Button("Invite with Code\u{2026}", action: startInviting)
+                    .disabled(inviteRunning)
                 Button("Stop Sharing\u{2026}", role: .destructive) { confirmingStopSharing = true }
+                    .disabled(inviteRunning)
             case .joined:
                 Button("Leave Shared Sync\u{2026}", role: .destructive) { confirmingLeave = true }
+            }
+            if inviteRunning {
+                ProgressView().controlSize(.small)
+                Text("Inviting\u{2026}").foregroundStyle(.secondary)
             }
             Spacer()
         }
@@ -371,20 +381,23 @@ public struct SpacesSettingsView: View {
 
     private func startInviting() {
         inviteCode = ""
-        inviting = true
+        askingForInviteCode = true
     }
 
     private func invite(_ code: String) {
-        guard let sync else { return }
+        guard let sync, !inviteRunning else { return }
+        inviteRunning = true
         Task {
-            switch await sync.invite(code: code) {
-            case .invited(let link):
-                Self.copy(link.absoluteString)
-                invitedLink = link
-            case .failed(let message):
-                inviteFailure = message
-            }
+            let result = await sync.invite(code: code)
+            if case .invited(let link) = result { Self.copy(link.absoluteString) }
+            inviteRunning = false
+            inviteResult = result
         }
+    }
+
+    private static func title(_ result: SpaceSyncInviteResult?) -> String {
+        if case .invited? = result { return "Invited" }
+        return "Couldn\u{2019}t Invite"
     }
 
     private static func copy(_ text: String) {

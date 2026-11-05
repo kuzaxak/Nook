@@ -380,6 +380,31 @@ struct SpaceSyncSharingTests {
         }
     }
 
+    @Test func nooksOwnLinksAreToldFromOtherSharingLinksByTheShareTitle() throws {
+        let link = try #require(URL(string: "https://www.icloud.com/share/0aBcD_eFgHiJkLmNoPqRsTuVw#Nook_Spaces"))
+        #expect(SpaceSyncShareLink.isNookSpaces(link))
+        for other in ["https://www.icloud.com/share/0aBcD_eFgHiJkLmNoPqRsTuVw", "https://www.icloud.com/share/0aBcD#Shopping_List",
+                      "https://www.icloud.com/share/0aBcD#Nook_Spaces_2", "https://www.icloud.com/share/0aBcD#Nook"] {
+            #expect(!SpaceSyncShareLink.isNookSpaces(try #require(URL(string: other))), "took \(other) for Nook's")
+        }
+    }
+
+    @Test func aMacHasAnInviteCodeToSendOnlyWhileItSyncsItsOwnAccountUnshared() throws {
+        var (owner, guest, _, _, _, zones) = try setUp()
+        #expect(guest.state.inviteCode == Self.guestAccount)
+        #expect(owner.state.inviteCode == nil)
+
+        join(&guest, &zones, now: later(10))
+        #expect(guest.state.inviteCode == nil)
+        guest.state.leaveSharedZone(in: guest.tree)
+        #expect(guest.state.inviteCode == Self.guestAccount)
+
+        owner.state.stoppedSharing()
+        #expect(owner.state.inviteCode == Self.ownerAccount)
+        owner.state.reset(account: nil)
+        #expect(owner.state.inviteCode == nil)
+    }
+
     @Test func aShareIsJoinedOnlyWhenItIsAnotherAccountsSpacesZone() throws {
         var (owner, guest, _, _, _, zones) = try setUp()
         let container = SpaceSyncAvailability.containerID, zone = SpaceSyncAvailability.zoneName

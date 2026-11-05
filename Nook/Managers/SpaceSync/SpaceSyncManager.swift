@@ -111,9 +111,11 @@ final class SpaceSyncManager: SpaceSyncControls {
 
     private static let leaveBeforeInviting = "Leave the shared sync before inviting others."
 
-    /// Shares this account's zone with the account that has this code, making the share on the
-    /// first invite. Switching iCloud account, or joining another account's sync, while it runs
-    /// stops it before its next write, and it reports no invite.
+    /// Shares this account's zone with the account that has this code; the first invite saves a
+    /// new share with that account in it. Switching iCloud account, or joining another account's
+    /// sync, while it runs makes it report a failure and write nothing more. When that happens
+    /// after the share with the invite is saved, the invite stays in that share and this Mac's
+    /// list of the people in it is left as it was.
     func invite(code text: String) async -> SpaceSyncInviteResult {
         guard let container, engine != nil, status.availability == .available, let account = state.account else {
             return .failed(message: "iCloud is not available right now.")
@@ -129,36 +131,29 @@ final class SpaceSyncManager: SpaceSyncControls {
             return state.database == .private ? nil : .failed(message: Self.leaveBeforeInviting)
         }
         do {
-            let existing = try await zoneShare(in: container)
-            let participants = existing?.participants.map {
+            var share: CKShare?
+            if let existing = try await zoneShare(in: container) {
+                if let interrupted = interrupted() { return interrupted }
+                share = try await onlyInvited(existing, in: container)
+            }
+            let participants = share?.participants.map {
                 (recordName: $0.userIdentity.userRecordID?.recordName, status: Self.status($0.acceptanceStatus))
             } ?? []
-            var invitee: CKShare.Participant?
             switch SpaceSyncInviteDecision(code: code, account: account, participants: participants) {
             case .ownCode:
                 return .failed(message: "That is this iCloud account's own code. Copy the code from the Mac you are inviting.")
             case .alreadyInvited:
                 break
             case .invite:
-                invitee = try await participant(code, in: container)
-                if invitee == nil {
+                guard let invitee = try await participant(code, in: container) else {
                     return .failed(message: "No iCloud account has that code. Copy it again from the Mac you are inviting.")
                 }
-            }
-            if let interrupted = interrupted() { return interrupted }
-            var share: CKShare
-            if let existing {
-                share = try await onlyInvited(existing, in: container)
-            } else {
-                share = try await createShare(in: container)
-            }
-            if let invitee {
                 if let interrupted = interrupted() { return interrupted }
-                share = try await adding(invitee, as: code, to: share, in: container)
+                share = try await adding(invitee, as: code, to: share ?? newShare(), in: container)
             }
             if let interrupted = interrupted() { return interrupted }
-            shareChanged(share)
-            guard let link = share.url else { return .failed(message: "iCloud gave the share no link. Invite again.") }
+            if let share { shareChanged(share) }
+            guard let link = share?.url else { return .failed(message: "iCloud gave the share no link. Invite again.") }
             return .invited(link: link)
         } catch {
             log.error("Space sync invite error \((error as? CKError)?.code.rawValue ?? -1, privacy: .public)")
@@ -231,7 +226,7 @@ final class SpaceSyncManager: SpaceSyncControls {
             do {
                 if let metadata = try await container.shareMetadatas(for: [url])[url]?.get() { accept(metadata) }
             } catch let error as CKError where error.code == .unknownItem {
-                note(error, as: SpaceSyncErrorText.notInvited)
+                tellNotInvited()
             } catch {
                 note(error)
             }
@@ -374,9 +369,8 @@ final class SpaceSyncManager: SpaceSyncControls {
     }
 
     /// An iCloud sharing link opened from another app, Nook being the default browser. A share of
-    /// these spaces goes to the prompt to join; any other link is left to `open` as a page, and
-    /// Settings says when this account is not invited to it. False when it is no sharing link at
-    /// all.
+    /// these spaces goes to the prompt to join, and one this account is not invited to says so;
+    /// any other link is left to `open` as a page. False when it is no sharing link at all.
     func openShareLink(_ url: URL, otherwise open: @escaping () -> Void) -> Bool {
         guard SpaceSyncShareLink.parse(url.absoluteString) != nil else { return false }
         guard let container else {
@@ -385,18 +379,34 @@ final class SpaceSyncManager: SpaceSyncControls {
         }
         Task {
             do {
-                if let metadata = try await container.shareMetadatas(for: [url])[url]?.get(),
-                   metadata.containerIdentifier == SpaceSyncAvailability.containerID {
-                    return accept(metadata)
-                }
-            } catch let error as CKError where error.code == .unknownItem {
-                note(error, as: SpaceSyncErrorText.notInvited)
+                guard let metadata = try await container.shareMetadatas(for: [url])[url]?.get(),
+                      metadata.containerIdentifier == SpaceSyncAvailability.containerID else { return open() }
+                accept(metadata)
+            } catch let error as CKError where error.code == .unknownItem && SpaceSyncShareLink.isNookSpaces(url) {
+                tellNotInvited()
             } catch {
-                log.error("Space sync link error \((error as? CKError)?.code.rawValue ?? -1, privacy: .public)")
+                open()
             }
-            open()
         }
         return true
+    }
+
+    /// Says this Mac's account is not invited to the link opened or pasted, with its invite code
+    /// to copy while it has one.
+    private func tellNotInvited() {
+        let alert = NSAlert()
+        alert.messageText = "This Mac Is Not Invited"
+        alert.informativeText = SpaceSyncErrorText.notInvited
+        guard let code = state.inviteCode else {
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            return
+        }
+        alert.addButton(withTitle: "Copy Invite Code")
+        alert.addButton(withTitle: "OK")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code, forType: .string)
     }
 
     /// Names the owner and how many spaces would move: true moves them, false joins without,
@@ -493,13 +503,12 @@ final class SpaceSyncManager: SpaceSyncControls {
         }
     }
 
-    private func createShare(in container: CKContainer) async throws -> CKShare {
+    /// A share of this account's zone, open to invited people only, not saved yet.
+    private func newShare() -> CKShare {
         let share = CKShare(recordZoneID: state.zoneID)
         share.publicPermission = .none
-        share[CKShare.SystemFieldKey.title] = "Nook Spaces" as NSString
-        let saved = try await container.privateCloudDatabase.modifyRecords(saving: [share], deleting: []).saveResults[share.recordID]?.get()
-        guard let saved = saved as? CKShare else { throw CKError(.internalError) }
-        return saved
+        share[CKShare.SystemFieldKey.title] = SpaceSyncShareLink.title as NSString
+        return share
     }
 
     /// The zone's share is gone: the owner stopped sharing.
@@ -781,7 +790,7 @@ final class SpaceSyncManager: SpaceSyncControls {
         if status.lastError != state.lastError { status.lastError = state.lastError }
         let accountID = state.account.map(SpaceSyncCodec.accountID)
         if status.accountID != accountID { status.accountID = accountID }
-        if status.inviteCode != state.account { status.inviteCode = state.account }
+        if status.inviteCode != state.inviteCode { status.inviteCode = state.inviteCode }
         let spaces = state.cloudSpaces(in: tabs.tree)
         if cloudSpaces != spaces { cloudSpaces = spaces }
         let devices = state.cloudDevices
@@ -793,9 +802,9 @@ final class SpaceSyncManager: SpaceSyncControls {
         if status.joinOffers != state.joinOffers { status.joinOffers = state.joinOffers }
     }
 
-    private func note(_ error: Error, as text: String? = nil) {
+    private func note(_ error: Error) {
         log.error("Space sync error \((error as? CKError)?.code.rawValue ?? -1, privacy: .public)")
-        state.lastError = text ?? Self.text(error)
+        state.lastError = Self.text(error)
         publish()
         scheduleSave()
     }
