@@ -81,6 +81,12 @@ extension BrowserManager: PageSessionDelegate {
             challenge, for: session, completionHandler: completionHandler)
     }
 
+    var certificateExceptions: CertificateExceptions { authenticationManager.certificateExceptions }
+
+    func confirmVisit(despite warning: CertificateWarning, in session: PageSession) {
+        authenticationManager.confirmVisit(despite: warning, in: session)
+    }
+
     func loadZoom(for itemID: UUID) { loadZoomForTab(itemID) }
 
     func cleanupZoom(for itemID: UUID) { cleanupZoomForTab(itemID) }

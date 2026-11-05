@@ -7,9 +7,7 @@
 //
 
 import AppKit
-import CryptoKit
 import Foundation
-import Network
 import WebKit
 import NookBlocker
 import NookWeb
@@ -23,8 +21,6 @@ final class AuthenticationManager: NSObject {
     private static let certificateExceptionsKey = "security.acceptedCertificateExceptions"
     /// Exceptions accepted in private windows; gone at quit.
     private var privateCertificateExceptions: [String: String] = [:]
-    /// Connections waiting on a certificate alert that is already up, so one page load asks once.
-    private var pendingCertificateDecisions: [String: [(Bool) -> Void]] = [:]
 
     func attach(browserManager: BrowserManager) {
         self.browserManager = browserManager
@@ -70,24 +66,21 @@ final class AuthenticationManager: NSObject {
             }
             return true
         case NSURLAuthenticationMethodServerTrust:
-            if let trust = challenge.protectionSpace.serverTrust {
-                var error: CFError?
-                if SecTrustEvaluateWithError(trust, &error) {
-                    completionHandler(.useCredential, URLCredential(trust: trust))
-                } else if Self.isPrivateHost(challenge.protectionSpace.host) {
-                    // Local network hosts (routers, NAS devices, IoT, etc.) are usually
-                    // self-signed: accept once the user has confirmed this certificate
-                    confirmUntrustedCertificate(trust, for: challenge.protectionSpace, tab: tab) { accepted in
-                        if accepted {
-                            completionHandler(.useCredential, URLCredential(trust: trust))
-                        } else {
-                            completionHandler(.cancelAuthenticationChallenge, nil)
-                        }
-                    }
-                } else {
-                    completionHandler(.cancelAuthenticationChallenge, nil)
-                }
+            let space = challenge.protectionSpace
+            guard let trust = space.serverTrust else {
+                completionHandler(.performDefaultHandling, nil)
+                return true
+            }
+            if SecTrustEvaluateWithError(trust, nil) {
+                completionHandler(.useCredential, URLCredential(trust: trust))
+            } else if let fingerprint = CertificateWarning.fingerprint(of: trust),
+                      certificateExceptions.decision(
+                          host: space.host, port: space.port, fingerprint: fingerprint, isPrivate: tab.isPrivate
+                      ) == .accepted {
+                completionHandler(.useCredential, URLCredential(trust: trust))
             } else {
+                // WebKit attaches the server's trust to the load's error only under default
+                // handling; the certificate warning card reads it from there.
                 completionHandler(.performDefaultHandling, nil)
             }
             return true
@@ -96,38 +89,6 @@ final class AuthenticationManager: NSObject {
             return true
         default:
             return false
-        }
-    }
-
-    /// Returns true when the host is a private/local network address (RFC 1918, link-local, loopback).
-    ///
-    /// The host must be an address literal. Splitting on "." and dropping the components that
-    /// are not numbers classified `10.0.0.1.attacker.example` as private, which handed a public
-    /// host the self-signed certificate exception flow. `IPv4Address` parses strictly.
-    private static func isPrivateHost(_ host: String) -> Bool {
-        if host == "localhost" { return true }
-        // URLs carry IPv6 literals in brackets.
-        let bare = host.hasPrefix("[") && host.hasSuffix("]")
-            ? String(host.dropFirst().dropLast())
-            : host
-
-        if let v6 = IPv6Address(bare) {
-            let bytes = Array(v6.rawValue)
-            if v6.isLoopback { return true }                        // ::1
-            if bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80 { return true }  // fe80::/10 link-local
-            if (bytes[0] & 0xFE) == 0xFC { return true }            // fc00::/7 unique-local
-            return false
-        }
-
-        guard let v4 = IPv4Address(bare) else { return false }
-        let parts = Array(v4.rawValue)
-        switch parts[0] {
-        case 10: return true                                       // 10.0.0.0/8
-        case 172: return (16...31).contains(parts[1])              // 172.16.0.0/12
-        case 192: return parts[1] == 168                           // 192.168.0.0/16
-        case 169: return parts[1] == 254                           // 169.254.0.0/16 link-local
-        case 127: return true                                      // 127.0.0.0/8
-        default: return false
         }
     }
 
@@ -147,60 +108,40 @@ final class AuthenticationManager: NSObject {
 
     // MARK: - Untrusted Certificates
 
-    /// Trust on first use: a certificate the user accepted for `host:port` is accepted again,
-    /// anything else asks, and a certificate that replaced an accepted one says so.
-    private func confirmUntrustedCertificate(
-        _ trust: SecTrust,
-        for space: URLProtectionSpace,
-        tab: PageSession,
-        completion: @escaping (Bool) -> Void
-    ) {
-        guard let leaf = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first else {
-            return completion(false)
-        }
-        let fingerprint = SHA256.hash(data: SecCertificateCopyData(leaf) as Data)
-            .map { String(format: "%02x", $0) }.joined()
-        let key = "\(space.host.lowercased()):\(space.port)"
-        let isPrivate = tab.isPrivate
+    /// Certificates the person chose to visit sites with although they failed the check.
+    var certificateExceptions: CertificateExceptions {
+        CertificateExceptions(
+            saved: UserDefaults.standard.dictionary(forKey: Self.certificateExceptionsKey) as? [String: String] ?? [:],
+            privateOnly: privateCertificateExceptions)
+    }
 
-        let persisted = UserDefaults.standard.dictionary(forKey: Self.certificateExceptionsKey) as? [String: String]
-        let known = (isPrivate ? privateCertificateExceptions[key] : nil) ?? persisted?[key]
-        if known == fingerprint { return completion(true) }
-
-        // Same rule as credential prompts: no alert over a page for another host's resource.
-        guard Self.isPageHost(space.host, of: tab) else { return completion(false) }
-
-        let pendingKey = "\(key) \(fingerprint) \(isPrivate)"
-        if pendingCertificateDecisions[pendingKey] != nil {
-            pendingCertificateDecisions[pendingKey]?.append(completion)
-            return
-        }
-        pendingCertificateDecisions[pendingKey] = [completion]
-
+    /// Asks on the page's window before visiting it on a certificate that failed the check. On
+    /// Visit Website, that certificate is accepted for its host and port from then on and the
+    /// page loads again; a different certificate there brings the warning back.
+    func confirmVisit(despite warning: CertificateWarning, in session: PageSession) {
+        guard warning.allowsVisit else { return }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "The certificate for \(key) cannot be verified"
-        alert.informativeText = known == nil
-            ? "Nook cannot confirm that this is really \(space.host). Someone on your network could be answering in its place. Continue only if you expect this device to use a self-signed certificate."
-            : "The certificate has CHANGED since it was last accepted. A reset or replaced device does that, and so does someone intercepting the connection."
+        alert.messageText = "Visit this website on a connection that is not private?"
+        alert.informativeText = "Anyone on the network could read or change what you send to \(warning.host), including passwords."
         // Cancel first, so Return takes the safe choice.
         alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Continue")
+        alert.addButton(withTitle: "Visit Website")
 
-        let finish: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard let self else { return completion(false) }
-            let accepted = response == .alertSecondButtonReturn
-            if accepted, isPrivate {
-                self.privateCertificateExceptions[key] = fingerprint
-            } else if accepted {
-                var exceptions = UserDefaults.standard.dictionary(forKey: Self.certificateExceptionsKey) as? [String: String] ?? [:]
-                exceptions[key] = fingerprint
-                UserDefaults.standard.set(exceptions, forKey: Self.certificateExceptionsKey)
+        let isPrivate = session.isPrivate
+        let finish: (NSApplication.ModalResponse) -> Void = { [weak self, weak session] response in
+            guard response == .alertSecondButtonReturn, let self, let session else { return }
+            var exceptions = self.certificateExceptions
+            let saved = exceptions.saved
+            exceptions.accept(warning.fingerprint, host: warning.host, port: warning.port, isPrivate: isPrivate)
+            self.privateCertificateExceptions = exceptions.privateOnly
+            if exceptions.saved != saved {
+                UserDefaults.standard.set(exceptions.saved, forKey: Self.certificateExceptionsKey)
             }
-            self.pendingCertificateDecisions.removeValue(forKey: pendingKey)?.forEach { $0(accepted) }
+            session.load(warning.url)
         }
 
-        if let window = tab.activeWebView.window {
+        if let window = session.activeWebView.window {
             alert.beginSheetModal(for: window, completionHandler: finish)
         } else {
             finish(alert.runModal())

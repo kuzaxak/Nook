@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A page whose certificate isn't valid, such as a device opened by its IP address, shows This Connection Is Not Private with the reason instead of a blank tab, as in Safari: Show Details says why, and Visit This Website opens it after you confirm. The choice is remembered for that certificate and a changed certificate warns again. Local network devices use the same page instead of a separate prompt
+
 ## 1.5.3
 
 Spaces sync between your Macs through iCloud, also between Macs on different iCloud accounts, split view works as in Arc, USB security keys work for passkeys, and pages can translate with an AI model.

@@ -70,6 +70,7 @@ struct PeekOverlayView: View {
                             .id(page.itemID)
 
                         BlockedPageView(session: page)
+                        CertificateWarningView(session: page)
                         TranslationTaskHost(session: page)
 
                         if let webView = page.webView {

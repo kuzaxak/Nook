@@ -106,6 +106,10 @@ extension BrowserModel: PageSessionDelegate {
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) -> Bool { false }
 
+    /// Only the macOS certificate warning card visits a site past its certificate.
+    var certificateExceptions: CertificateExceptions { CertificateExceptions() }
+    func confirmVisit(despite warning: CertificateWarning, in session: PageSession) {}
+
     func loadZoom(for itemID: UUID) {}
     func cleanupZoom(for itemID: UUID) {}
     func setMuteState(_ muted: Bool, for itemID: UUID) {}

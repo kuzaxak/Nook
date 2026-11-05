@@ -54,6 +54,8 @@ public final class PageSession: NSObject, Identifiable {
     public var favicon: SwiftUI.Image
     /// A page the ad blocker stopped from loading. The blocked-page card shows while it is set.
     public internal(set) var blockedURL: URL?
+    /// A page whose server's certificate failed the check. The certificate warning card shows while it is set.
+    public internal(set) var certificateWarning: CertificateWarning?
     /// The site enhanced fingerprinting protection is off for until the tab leaves it.
     var enhancedFingerprintingProtectionOffHost: String?
 
@@ -642,10 +644,17 @@ public final class PageSession: NSObject, Identifiable {
         load(blockedURL)
     }
 
-    /// Back to the page still showing under the card, or closes a page that has none.
+    /// Asks the person to confirm, then loads the page under the certificate warning on its certificate.
+    public func visitDespiteCertificateWarning() {
+        guard let certificateWarning, certificateWarning.allowsVisit else { return }
+        controller?.sessionDelegate?.confirmVisit(despite: certificateWarning, in: self)
+    }
+
+    /// Back to the page still showing under the blocked-page or certificate card, or closes a page that has none.
     public func leaveBlockedPage() {
         if hasCommittedPage {
             blockedURL = nil
+            certificateWarning = nil
         } else if isDetached {
             onClose?()
         } else {

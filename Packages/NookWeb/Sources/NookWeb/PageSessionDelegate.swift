@@ -4,8 +4,8 @@
 //  NookWeb
 //
 //  Everything a live page needs from the app around it: downloads, Peek, sign-in windows,
-//  zoom, mute, picture-in-picture, cross-window navigation, website keyboard shortcuts,
-//  the Chrome Web Store handler and the space's data store.
+//  certificate exceptions, zoom, mute, picture-in-picture, cross-window navigation, website
+//  keyboard shortcuts, the Chrome Web Store handler and the space's data store.
 //
 
 import Combine
@@ -46,6 +46,14 @@ public protocol PageSessionDelegate: AnyObject {
         for session: PageSession,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) -> Bool
+
+    // MARK: Certificates
+
+    /// The certificates the person chose to visit sites with although they failed the check.
+    var certificateExceptions: CertificateExceptions { get }
+    /// Asks the person before visiting the page under `warning` anyway; on yes, remembers its
+    /// certificate for that host and port and loads the page again.
+    func confirmVisit(despite warning: CertificateWarning, in session: PageSession)
 
     // MARK: Per-page chrome
 

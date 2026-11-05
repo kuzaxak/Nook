@@ -21,6 +21,7 @@ extension PageSession: WKNavigationDelegate {
     ) {
         loadingState = .didStartProvisionalNavigation
         blockedURL = nil
+        certificateWarning = nil
         controller?.tabEvents?.tabPropertiesChanged(self, properties: [.loading])
 
         if let newURL = webView.url {
@@ -259,6 +260,13 @@ extension PageSession: WKNavigationDelegate {
         let attempted = url
         if Self.isBlockedByContentBlocker(error) {
             blockedURL = (error as NSError).userInfo[NSURLErrorFailingURLErrorKey] as? URL ?? attempted
+        } else if let warning = CertificateWarning(
+            error: error,
+            exceptions: controller?.sessionDelegate?.certificateExceptions ?? CertificateExceptions(),
+            isPrivate: isPrivate,
+            allowsVisit: !isAgentPage
+        ) {
+            certificateWarning = warning
         }
 
         // didStartProvisionalNavigation moved `url` to the attempted URL. A navigation that
@@ -285,7 +293,8 @@ extension PageSession: WKNavigationDelegate {
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        // An agent page gets no sign-in dialog over the person's window.
+        // An agent page gets no sign-in dialog over the person's window and never takes a
+        // certificate exception: default handling fails a bad certificate, and the card shows.
         if !isAgentPage, controller?.sessionDelegate?.handleAuthenticationChallenge(
             challenge,
             for: self,

@@ -273,6 +273,7 @@ struct WebsiteView: View {
 
             if !shouldShowSplit, let session = browserManager.tabs.controllableSession(in: windowState) {
                 BlockedPageView(session: session)
+                CertificateWarningView(session: session)
             }
 
             // Link Previews: Shift held over a link in the page.
