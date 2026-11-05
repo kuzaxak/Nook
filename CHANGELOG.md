@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.5.3
+
+Spaces sync between your Macs through iCloud, also between Macs on different iCloud accounts, split view works as in Arc, USB security keys work for passkeys, and pages can translate with an AI model.
 
 ### Added
 
