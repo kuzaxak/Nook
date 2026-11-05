@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.5.4
+
+A page with a certificate that is not valid, such as a device opened by its IP address, says why and can be opened anyway, as in Safari, instead of showing a blank tab.
 
 ### Fixed
 
